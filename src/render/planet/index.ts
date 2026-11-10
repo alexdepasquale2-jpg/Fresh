@@ -432,6 +432,8 @@ export const factory: PlanetRendererFactory = () => {
         W = g.width; H = g.height; FWd = env.fieldW; FHd = env.fieldH;
         top = new Uint8Array(W);
         colKind = new Uint8Array(W);
+        // A new size replaces the old textures; free them so switching worlds does not leak GPU memory.
+        for (const k of ['cells', 'top', 'mat', 'temp', 'hum'] as const) { const old = tex[k]; if (old) gl.deleteTexture(old); }
         tex.cells = makeTex(W, H, gl.R8UI, gl.RED_INTEGER, false);
         tex.top = makeTex(W, 1, gl.R8UI, gl.RED_INTEGER, false);
         tex.mat = makeTex(256, 1, gl.RG8UI, gl.RG_INTEGER, false);
@@ -447,6 +449,7 @@ export const factory: PlanetRendererFactory = () => {
         const eng: [number, number, number][] = [[ENGINE.ice.id, ENGINE.ice.color, 1], [ENGINE.snow.id, ENGINE.snow.color, 2], [ENGINE.ore.id, ENGINE.ore.color, 1], [ENGINE.fire.id, ENGINE.fire.color, 5], [ENGINE.ash.id, ENGINE.ash.color, 2]];
         for (const [id, c, k] of eng) { mat[id * 2] = c; mat[id * 2 + 1] = k; }
         upload(tex.mat!, 256, 1, gl.RG_INTEGER, mat);
+        if (tex.pal) gl.deleteTexture(tex.pal);
         tex.pal = core.paletteTexture(v.universe.palette);
         for (let i = 0; i < 16; i++) { const c = hexToRgb(v.universe.palette[i] ?? '#000000'); palF[i * 3] = c[0] / 255; palF[i * 3 + 1] = c[1] / 255; palF[i * 3 + 2] = c[2] / 255; }
         let h = 2166136261;

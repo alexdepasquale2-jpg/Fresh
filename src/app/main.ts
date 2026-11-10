@@ -79,6 +79,20 @@ export const boot = async (host: HTMLElement) => {
     for (const s of STARTER_SERIALS) ctx.box.add(s);
   }
 
+  // Errors inside a frame are reported once per place and never stop the loop.
+  const seen = new Set<string>();
+  const report = (where: string, e: unknown) => {
+    const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    const key = `${where}|${msg}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    console.error(`[sallow] ${where} failed:`, e);
+    try { localStorage.setItem('sallow-last-error', JSON.stringify({ where, msg, stack: e instanceof Error ? (e.stack ?? '').slice(0, 800) : '', at: Date.now(), ua: navigator.userAgent })); } catch { /* storage blocked */ }
+    if (seen.size <= 3) shellToast?.(`Something stumbled (${where}). The game carries on. ${msg.slice(0, 140)}`, { title: 'Mote', sfx: '' });
+  };
+  let shellToast: ((t: string, o?: { title?: string; sfx?: string }) => void) | null = null;
+  const guard = (where: string, fn: () => void) => { try { fn(); } catch (e) { report(where, e); } };
+
   createFrameLoop({
     stepMs: 1000 / TICKS_PER_SECOND,
     fixed: () => {},
@@ -89,11 +103,13 @@ export const boot = async (host: HTMLElement) => {
         ctx.pulse().step(ticks, []);
         ctx.sim.step(ticks);
       }
-      ctx.audio.setPulse(ctx.pulse());
-      ctx.audio.update(dt);
-      current?.frame(dt);
-      for (const cb of frameCbs) cb(dt);
+      // Each part of a frame is guarded on its own, so a failing piece (a renderer quirk on one
+      // GPU, an audio hiccup, a plugin) cannot take the rest of the game down with it.
+      guard('audio', () => { ctx.audio.setPulse(ctx.pulse()); ctx.audio.update(dt); });
+      guard(`screen:${currentId ?? '-'}`, () => current?.frame(dt));
+      for (let i = 0; i < frameCbs.length; i++) { const cb = frameCbs[i]!; guard(`plugin:${i}`, () => cb(dt)); }
     },
+    onError: (e) => report('frame', e),
   }).start();
 
   // Test hook (also handy in the console).
@@ -106,6 +122,7 @@ export const boot = async (host: HTMLElement) => {
     onNavigate: (cb) => void navCbs.push(cb),
     setTransition: (fn) => void (transition = fn),
   };
+  shellToast = shell.toast;
   for (const p of await loadPlugins()) {
     try { p(shell); } catch (e) { console.error('plugin failed', e); }
   }

@@ -48,7 +48,15 @@ export const plugin: Plugin = (shell) => {
     seg.append(b);
     return [m, b] as const;
   });
-  panel.append(head, times, level, spark, seg);
+  // The last thing that stumbled in a frame (written by main.ts), so it can be reported.
+  const lastErr = el('div', 'q-line', '');
+  const showErr = () => {
+    let t = '';
+    try { const r = JSON.parse(localStorage.getItem('sallow-last-error') ?? 'null') as { where: string; msg: string; at: number } | null; if (r) t = `Last stumble: ${r.where} · ${r.msg.slice(0, 160)} · ${new Date(r.at).toLocaleString()}`; } catch { /* nothing stored */ }
+    lastErr.textContent = t;
+    lastErr.hidden = !t;
+  };
+  panel.append(head, times, level, spark, seg, lastErr);
 
   const g = spark.getContext('2d');
   const css = getComputedStyle(document.documentElement);
@@ -98,7 +106,7 @@ export const plugin: Plugin = (shell) => {
 
   shell.menu.add({
     id: 'performance', label: 'Performance', hint: 'Frame rate and quality', order: 90,
-    render: (into) => { into.append(panel); open = true; refresh(); return () => { open = false; }; },
+    render: (into) => { into.append(panel); open = true; showErr(); refresh(); return () => { open = false; }; },
   });
 
   let acc = 0;
