@@ -10,6 +10,8 @@ import type { SurfaceModifiers } from '@/contracts/sky';
 import { child, mix, rng, seedToU32 } from '@/core/hash';
 import type { Seed } from '@/contracts/seed';
 import type { Rng } from '@/core/hash';
+import type { Figure, Relation } from '@/contracts/sim';
+import { figName, creedName, WORKS } from './lore';
 
 type V = {
   id: number; x: number; y: number; souls: number; name: string; tech: number; belief: Belief;
@@ -17,7 +19,38 @@ type V = {
   starving: boolean; cold: boolean; lastBurn: number; lastLaunch: number; lastFest?: number; lastMove?: number;
   wealth?: number; goods?: number; ore?: number; bld?: Building[]; planT?: number;
   enl?: number; lastOmen?: number; sawStranger?: number; festUntil?: number; lastPreach?: number;
+  // The wider world. All optional, so a snapshot from before these existed still restores.
+  creed?: number; ruler?: number; rulerEnd?: number; heir?: number; usurp?: number;
+  plague?: number; plagueDead?: number; immune?: number;
+  works?: number; workK?: number; workT?: number; lastWork?: number; school?: boolean; inv?: number;
+  hard?: number; hardT?: number; raidedT?: number; tributeTo?: number; tributeUntil?: number;
+  seasonFest?: number; festN?: number; songOf?: number; songs?: number; lastSong?: number;
+  heretic?: number; hereticT?: number; hereticCause?: number; dreadT?: number;
+  cap?: number; waterN?: number; lastVoyage?: number; lastConv?: number; lastArk?: number; dry?: number;
 };
+type Site = { x: number; belief: Belief; tech: number; creed?: number; ruin?: number; who?: number; from?: number };
+type Rel = { s: number; pact?: boolean; ally?: boolean; rival?: boolean; war?: number; warCause?: number; wed?: number; raidT?: number; lastWar?: number };
+type W = {
+  rel: Record<string, Rel>; creeds: { id: number; belief: Belief; holyV?: number }[]; nextCreed: number; nextFig: number;
+  ruins: { x: number; id: number; t: number }[]; inv: number; pm: number[] | null; arks: number; arkT?: number;
+  coldT: number; coldN: number; coldLo: number; coldHi: number; metT: number; metN: number; metLo: number; metHi: number; signQ: number[];
+};
+const newWorld = (): W => ({ rel: {}, creeds: [], nextCreed: 1, nextFig: 1, ruins: [], inv: 0, pm: null, arks: 0, coldT: -1, coldN: 0, coldLo: 0, coldHi: 0, metT: -1, metN: 0, metLo: 0, metHi: 0, signQ: [] });
+// How each faith (row: BELIEFS order) meets a sign in the sky (column): 1 joy, 2 dread, 0 a shrug.
+// Signs: 1 a new light at night, 2 a night light gone, 3 stones gathering, 4 a veil, 5 a harder sun,
+// 6 a higher tide, 7 the sun gone dark, 8 a comet, 9 a rain of stars, 10 the stranger walking.
+const REACT: number[][] = [
+  [0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 0],
+  [0, 2, 1, 0, 2, 1, 0, 2, 2, 0, 1],
+  [0, 1, 2, 0, 2, 2, 1, 1, 1, 1, 0],
+  [0, 1, 2, 0, 0, 2, 1, 2, 2, 0, 0],
+  [0, 0, 0, 1, 0, 0, 0, 2, 1, 1, 2],
+  [0, 0, 0, 1, 2, 1, 2, 2, 1, 1, 2],
+  [0, 1, 2, 2, 1, 0, 0, 1, 1, 1, 1],
+];
+// The high day of each faith: 1 sowing, 2 midsummer, 3 harvest, 4 midwinter.
+const FEAST = [3, 2, 4, 1, 3, 4, 3];
+const WORK_COST = [0, 120, 180, 220, 160, 280, 360];
 type A = { x: number; y: number; hp: number; tx: number; hitT: number; action: BodyAction | null; actionT: number; preachT: number };
 const DESTRUCTIVE = new Set<Tool>(['fire', 'meteor', 'lightning', 'quake', 'freeze', 'erase', 'cold', 'heat']);
 type P = { x: number; y: number; role: number; home: number; tx: number; wait: number; id?: number; until?: number; work?: number };
@@ -106,7 +139,9 @@ const deedLine = (code: number, arg: number): string => {
 export const factory: CivFactory = () => {
   let vs: V[] = [];
   let people: P[] = [];
-  let pending: { x: number; belief: Belief; tech: number }[] = [];
+  let pending: Site[] = [];
+  let w: W = newWorld();
+  let wseed: Seed = { hi: 1, lo: 1 };
   let tick = 0;
   let nextId = 1;
   let glow = 0;
@@ -285,7 +320,8 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
         if (p.role === ROLE.trade && hv) {
           // Sold: coin for both sides, and a little goodwill.
           const there = vs.find((o) => o !== hv && Math.abs((o.bld?.find((b) => b.kind === 'market')?.x ?? o.x) - p.x) <= 2);
-          hv.wealth = Math.min(999, (hv.wealth ?? 0) + 22);
+          hv.wealth = Math.min(999, (hv.wealth ?? 0) + (work(hv, 4) ? 30 : 22));
+          if (there) { const rl = relOf(hv, there); rl.s = Math.min(100, rl.s + 5); if ((hv.plague ?? 0) > tick && r.chance(1, 4)) startPlague(there, 1, hv.id, pendingEv); }
           if (there && notable && p.id === notable.pid) nTrade = there.id;
           if (there) { there.wealth = Math.min(999, (there.wealth ?? 0) + 5); there.mood = Math.min(100, there.mood + 1); if (r.chance(1, 12)) pendingEv.push({ kind: 'traded', tick, villageId: hv.id, x: hv.x, y: hv.y, detail: there.id }); }
           p.role = ROLE.carry; p.work = 0; p.tx = hv.x; continue;
@@ -330,7 +366,9 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
     if (vs.length + pending.length < 2 && tick % 3200 < EVAL) {
       for (let k = 0; k < 30; k++) {
         const x = r.range(8, g.width - 9);
-        if (at(g, x, ground[x]!) !== WATER && Math.abs(ground[x - 2]! - ground[x + 2]!) <= 2) { pending.push({ x, belief: 'none', tech: Math.max(0, era - 2) }); break; }
+        const ru = k === 0 ? w.ruins[0] : undefined;
+        if (ru && at(g, ru.x, ground[ru.x]!) !== WATER) { w.ruins.shift(); pending.push({ x: ru.x, belief: 'none', tech: Math.max(0, Math.min(5, era) - 2), ruin: ru.id }); break; }
+        if (at(g, x, ground[x]!) !== WATER && Math.abs(ground[x - 2]! - ground[x + 2]!) <= 2) { pending.push({ x, belief: 'none', tech: Math.max(0, Math.min(5, era) - 2) }); break; }
       }
     }
     // Found waiting sites.
@@ -341,8 +379,16 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       if (y > 0 && at(g, x, y + 1) !== WATER && vs.length < 12) {
         const v: V = { id: nextId++, x, y, souls: 10, name: `#${nextId - 1}`, tech: s.tech, belief: s.belief, food: 120, mood: 20, age: 0, scores: BELIEFS.map(() => 0), progress: 0, wet: 0, starving: false, cold: false, lastBurn: -9999, lastLaunch: -99999, enl: 0 };
         if (s.belief !== 'none') v.scores[BELIEFS.indexOf(s.belief)] = 50;
+        if (s.creed && w.creeds.some((c) => c.id === s.creed && c.belief === s.belief)) v.creed = s.creed;
+        const lone = !!v.creed && !vs.some((o) => o.creed === v.creed);
         vs.push(v);
-        ev(events, 'found', v, { belief: v.belief });
+        // A daughter village starts as kin to the one it left.
+        const parent = s.from !== undefined && s.who !== undefined && !lone ? vs.find((o) => o.id === s.from) : undefined;
+        if (parent) relOf(v, parent).s = 40;
+        const from = s.from !== undefined ? { other: s.from } : {};
+        const who = s.who !== undefined ? { who: s.who } : {};
+        if (s.ruin !== undefined) { v.food = 180; ev(events, 'resettled', v, { belief: v.belief, other: s.ruin, ...who, ...(s.from !== undefined ? { detail: s.from } : {}) }); }
+        else ev(events, 'found', v, { belief: v.belief, ...from, ...who, ...(s.who !== undefined ? { cause: lone ? 3 : 2 } : {}), ...(v.creed ? { creed: v.creed } : {}) });
       }
     }
     for (const v of [...vs]) {
@@ -355,14 +401,15 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       }
       if (at(g, v.x, v.y) === WATER) v.wet++;
       else v.wet = 0;
-      if (v.wet >= 2) {
+      // A sea wall keeps shallow water out of the doors.
+      if (v.wet >= (work(v, 1) ? 6 : 2)) {
         // Climb to the nearest dry high ground if there is any; otherwise the water wins.
         let best = -1;
         for (let d = 1; d < 30 && best < 0; d++) for (const sx of [v.x - d, v.x + d]) {
           if (sx > 2 && sx < g.width - 3 && at(g, sx, ground[sx]!) !== WATER && ground[sx]! < v.y) { best = sx; break; }
         }
-        if (best >= 0 && v.wet < 8) { v.x = best; v.y = ground[best]! - 1; v.souls = Math.max(1, v.souls - 2); v.mood -= 10; if (v.wet === 2) ev(events, 'migrate', v, { detail: v.id }); }
-        else if (v.wet >= 8 || best < 0) { ev(events, 'flooded', v); vs = vs.filter((o) => o !== v); continue; }
+        if (best >= 0 && v.wet < 8) { v.x = best; v.y = ground[best]! - 1; v.souls = Math.max(1, v.souls - 2); v.mood -= 10; hardship(v, 2); v.songOf = 6; if (v.wet === 2 || v.wet === 6) ev(events, 'migrate', v, { detail: v.id }); }
+        else if (v.wet >= 8 || best < 0) { ev(events, 'flooded', v); remove(v); flee(v, v.souls >> 2, events); continue; }
       }
       // Fire at the doors.
       let fires = 0;
@@ -371,7 +418,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
         v.souls = Math.max(0, v.souls - 1 - (fires >> 2));
         v.mood -= 8;
         v.scores[BELIEFS.indexOf('fire')]! += 6;
-        if (tick - v.lastBurn > 400) { ev(events, 'burn', v); v.lastBurn = tick; }
+        if (tick - v.lastBurn > 400) { ev(events, 'burn', v); v.lastBurn = tick; hardship(v, 1); v.songOf = 6; }
       }
       // Cold.
       const T = tempAt(env, v.x, v.y);
@@ -387,19 +434,27 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       const fishers = people.filter((p) => p.home === v.id && p.role === ROLE.fish && p.wait > 0).length;
       const ice = near(g, v.x, v.y, 22, ENGINE.ice.id, 6);
       let prod = 2 + (moss * 3 + farmers * 2) * (winter ? 1 : 2) + water + (ice >> 1) + fishers * 2 + (v.tech >= 2 ? 3 : 0) + (m.tide > 20 ? 2 : 0);
+      if (knows(v, 0) && moss > 0) prod += 3;
+      if (knows(v, 1) && water > 0) prod += 2;
       if (T > 200 || T < 96) prod >>= 1;
+      if ((v.plague ?? 0) > tick) prod = (prod * 3) >> 2;
+      v.waterN = water;
+      v.dry = water === 0 ? (v.dry ?? 0) + 1 : 0;
       const eat = Math.ceil(v.souls / 2);
       v.food = Math.max(0, Math.min(999, v.food + prod - eat));
       if (v.food === 0) {
-        if (!v.starving) ev(events, 'famine', v);
+        // Why the stores are empty: 6 tribute, 5 raiders, 3 too many mouths, 4 the cold or the heat, 2 winter.
+        if (!v.starving) { hardship(v, 5); ev(events, 'famine', v, { cause: v.tributeTo ? 6 : tick - (v.raidedT ?? -99999) < 1600 ? 5 : v.souls > (v.cap ?? 999) ? 3 : T > 200 || T < 96 ? 4 : winter ? 2 : 0 }); }
         v.starving = true;
         v.mood -= 4;
-        if (r.chance(1, 4)) v.souls--;
+        if (r.chance(1, work(v, 0) ? 10 : 4)) v.souls--;
       } else if (v.food > 220) v.starving = false;
       const capacity = 12 + moss * 6 + water * 3 + v.tech * 9 + (m.tide > 20 ? 5 : 0);
+      v.cap = capacity;
       if (v.food > v.souls * 3 && v.souls < capacity && r.chance(1, 5)) { v.souls++; v.food -= 10; }
       if (v.souls > capacity + 6 && r.chance(1, 4)) { v.mood -= 3; }
-      const moodTarget = (v.food > v.souls * 2 ? 30 : v.food > 0 ? 0 : -60) + (m.nightLight > 20 ? 10 : 0) - (m.warmth > 50 ? 15 : 0) - (v.souls > capacity ? 20 : 0) + v.tech * 4;
+      const moodTarget = (v.food > v.souls * 2 ? 30 : v.food > 0 ? 0 : -60) + (m.nightLight > 20 ? 10 : 0) - (m.warmth > 50 ? 15 : 0) - (v.souls > capacity ? 20 : 0) + Math.min(5, v.tech) * 4
+        + Math.min(5, v.songs ?? 0) + (work(v, 2) ? 6 : 0) + (trait(v) === 0 ? 5 : 0) - (v.tributeTo ? 10 : 0);
       v.mood = Math.max(-100, Math.min(100, v.mood + Math.sign(moodTarget - v.mood) * 2));
       // Belief: they read the sky and what it does to them.
       const sc = v.scores;
@@ -417,8 +472,18 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       }
       let top = 0;
       for (let k = 1; k < sc.length; k++) { sc[k] = sc[k]! - (sc[k]! >> 5); if (sc[k]! > sc[top]!) top = k; }
-      const nb: Belief = sc[top]! > 24 ? BELIEFS[top]! : v.belief;
-      if (nb !== v.belief) { v.belief = nb; ev(events, 'convert', v, { belief: nb }); }
+      const curI = BELIEFS.indexOf(v.belief);
+      // A people does not change gods every season: the new one must clearly outweigh the old, and not too soon.
+      const nb: Belief = sc[top]! > 24 && (curI === 0 || (sc[top]! > sc[curI]! + 12 && tick - (v.lastConv ?? -99999) > 4800)) ? BELIEFS[top]! : v.belief;
+      if (nb !== v.belief) {
+        v.lastConv = tick;
+        // Their neighbours may already keep a creed of this god; otherwise they name their own.
+        v.belief = nb;
+        v.creed = 0;
+        const src = creedSource(v);
+        if (src) { v.creed = src.creed!; ev(events, 'convert', v, { belief: nb, creed: v.creed, other: src.id, cause: 5 }); }
+        else { ev(events, 'convert', v, { belief: nb }); adopt(v, events, 1); }
+      }
       // What they have built. Each new kind of building is an event, and brings builders.
       if (tick - (v.planT ?? -9999) >= 100) {
         v.planT = tick;
@@ -456,9 +521,11 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       if (v.food < 120 && (v.wealth ?? 0) >= 4 && v.bld?.some((b) => b.kind === 'market')) { v.wealth = (v.wealth ?? 0) - 4; v.food += 45; }
       // Tech.
       const ore = near(g, v.x, v.y, 30, ENGINE.ore.id, 8) > 0 || m.impacts > 25;
-      v.progress += 1 + (v.souls >> 4) + (v.mood > 30 ? 1 : 0) + ((v.wealth ?? 0) >> 6);
-      const need = [260, 700, 1300, 2200, 3400][v.tech] ?? Infinity;
-      const can = [v.souls >= 14, v.souls >= 22 && ore, v.souls >= 35, v.souls >= 50 && v.mood > 0, totalSouls >= 140 && vs.filter((o) => o.tech >= 4).length >= 2][v.tech] ?? false;
+      v.progress += 1 + (v.souls >> 4) + (v.mood > 30 ? 1 : 0) + ((v.wealth ?? 0) >> 6) + (v.school ? 1 : 0) + (knows(v, 2) ? 1 : 0) + (knows(v, 4) ? 1 : 0);
+      // Past star-reaching the eras are unlocked by inventions: the engine, the far-voice, the sun-sail.
+      const need = [260, 700, 1300, 2200, 3400, 1800, 2200, 2600][v.tech] ?? Infinity;
+      const can = [v.souls >= 14, v.souls >= 22 && ore, v.souls >= 35, v.souls >= 50 && v.mood > 0, totalSouls >= 140 && vs.filter((o) => o.tech >= 4).length >= 2,
+        knows(v, 5) && v.souls >= 36, knows(v, 6) && (v.wealth ?? 0) >= 60, knows(v, 7) && v.souls >= 36][v.tech] ?? false;
       if (v.progress >= need && can) {
         v.tech++;
         v.progress = 0;
@@ -475,10 +542,17 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       }
       // Enlightenment: high eras, joy, faith, and what they have seen of you.
       const before = enl(v);
-      v.enl = Math.max(0, Math.min(100, before + (v.tech >= 3 ? 1 : 0) + (v.tech >= 5 ? 1 : 0) + (v.mood > 50 && r.chance(1, 3) ? 1 : 0) + (v.belief === 'sky' && r.chance(1, 4) ? 1 : 0)));
+      v.enl = Math.max(0, Math.min(100, before + (work(v, 5) ? 1 : 0) + (v.tech >= 3 ? 1 : 0) + (v.tech >= 5 ? 1 : 0) + (v.mood > 50 && r.chance(1, 3) ? 1 : 0) + (v.belief === 'sky' && r.chance(1, 4) ? 1 : 0)));
       if (before < 100 && v.enl >= 100) ev(events, 'enlightened', v, { belief: v.belief });
       if (avatar && Math.abs(avatar.x - v.x) < 45) {
-        if ((v.sawStranger ?? -99999) < tick - 3200) { v.sawStranger = tick; ev(events, stance(v) === ROLE.kneel ? 'worship' : stance(v) === ROLE.attack ? 'attack' : 'stranger', v, { belief: v.belief }); }
+        if ((v.sawStranger ?? -99999) < tick - 3200) {
+          v.sawStranger = tick;
+          // What their creed makes of a light that walks.
+          const re = REACT[BELIEFS.indexOf(v.belief)]![10]!;
+          if (re === 1) v.enl = Math.min(100, enl(v) + 8);
+          else if (re === 2) { v.enl = Math.max(0, enl(v) - 8); v.dreadT = tick; }
+          ev(events, stance(v) === ROLE.kneel ? 'worship' : stance(v) === ROLE.attack ? 'attack' : 'stranger', v, { belief: v.belief, ...(re && v.creed ? { cause: re, creed: v.creed } : {}) });
+        }
         if (stance(v) === ROLE.kneel) { v.mood = Math.min(100, v.mood + 2); }
         else if (stance(v) === ROLE.watch) { v.enl = Math.min(100, v.enl + 1); }
       }
@@ -491,8 +565,9 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       if (v.souls >= 44 + v.tech * 12 && vs.length + pending.length < 10 && r.chance(1, 3)) {
         v.souls -= 14;
         const nx = Math.max(4, Math.min(g.width - 5, v.x + (r.chance(1, 2) ? 1 : -1) * r.range(18, 40)));
-        pending.push({ x: nx, belief: v.belief, tech: Math.max(0, v.tech - 1) });
-        ev(events, 'split', v);
+        const who = figure();
+        pending.push({ x: nx, belief: v.belief, tech: Math.max(0, v.tech - 1), who, from: v.id, ...(v.creed ? { creed: v.creed } : {}) });
+        ev(events, 'split', v, { who });
       }
       if (v.mood < -40 && vs.length > 1 && tick - (v.lastMove ?? -99999) > 1600 && r.chance(1, 5)) {
         v.lastMove = tick;
@@ -504,13 +579,14 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
         v.mood += 15;
         ev(events, 'migrate', v, { detail: dest.id });
       }
-      if (v.souls <= 0) { ev(events, 'die', v); vs = vs.filter((o) => o !== v); continue; }
+      if (v.souls <= 0) { ev(events, 'die', v); remove(v); continue; }
     }
     // Feuds between neighbours of different faiths.
     for (let i = 0; i < vs.length; i++) for (let j = i + 1; j < vs.length; j++) {
       const a = vs[i]!, b = vs[j]!;
       if (Math.abs(a.x - b.x) < 60 && a.belief !== b.belief && a.belief !== 'none' && b.belief !== 'none' && a.souls > 18 && b.souls > 18 && r.chance(1, 160)) {
         a.souls -= 3; b.souls -= 3; a.mood -= 25; b.mood -= 25;
+        const rl = relOf(a, b); rl.s = Math.max(-100, rl.s - 15);
         ev(events, 'feud', a, { detail: b.id, belief: a.belief });
       }
     }
@@ -521,10 +597,452 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       for (let k = mine.length; k < want; k++) spawnPerson(v, k % 3 === 0 ? ROLE.fish : ROLE.farm);
       for (let k = want; k < mine.length; k++) if (!notable || mine[k]!.id !== notable.pid) people.splice(people.indexOf(mine[k]!), 1);
     }
+    world(g, m, env, events);
     people = people.filter((p) => p.role === ROLE.travel || vs.some((v) => v.id === p.home));
     tendNotable(events, surface);
     const nl = Math.max(0, m.nightLight);
-    glow = Math.floor(vs.reduce((n, v) => n + v.souls * (2 + v.tech) * (v.mood > 0 ? 2 : 1) * (enl(v) >= 100 ? 2 : 1), 0) * (100 + nl) / 6400) + worshippers * 2;
+    glow = Math.floor(vs.reduce((n, v) => n + v.souls * (2 + v.tech + (v.works ? 1 : 0)) * (v.mood > 0 ? 2 : 1) * (enl(v) >= 100 ? 2 : 1), 0) * (100 + nl) / 6400) + worshippers * 2;
+  };
+
+  // ---- The wider world: what villages are to each other, what they believe, what befalls
+  // them and what they make. Every roll is a pure function of (planet seed, tick, salt), so
+  // none of it disturbs the villages' own rng stream and all of it survives snapshot/restore.
+  // Each of the four parts runs once every 80 ticks, on its own evaluation.
+  const dice = (salt: number, n: number) => seedToU32(mix(mix(wseed, tick), salt)) % n;
+  const dv = (v: V, salt: number, n: number) => dice(salt * 8191 + v.id, n);
+  const key = (a: V, b: V) => (a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`);
+  const relOf = (a: V, b: V): Rel => (w.rel[key(a, b)] ??= { s: 0 });
+  const has = (v: V, k: BuildingKind) => !!v.bld?.some((b) => b.kind === k);
+  const work = (v: V, k: number) => (((v.works ?? 0) >> k) & 1) === 1;
+  const knows = (v: V, k: number) => (((v.inv ?? 0) >> k) & 1) === 1;
+  const sick = (v: V) => (v.plague ?? 0) > tick;
+  /** A ruler's temper: 0 mild, 1 hard, 2 devout, 3 a builder. -1 with no ruler. */
+  const trait = (v: V) => (v.ruler ? seedToU32(mix(wseed, v.ruler % 4096)) % 4 : -1);
+  /** A new named figure. An heir is given the house of the one before. */
+  const figure = (house?: number) => { const ord = w.nextFig++ % 4096; return ord + 4096 * (house ?? ord); };
+  const strength = (v: V) => Math.floor((v.souls * (2 + Math.min(5, v.tech)) * (trait(v) === 1 ? 5 : 4)) / 4) + ((v.wealth ?? 0) >> 3);
+  const hardship = (v: V, code: number) => { v.hard = code; v.hardT = tick; };
+  const remove = (v: V) => {
+    w.ruins.push({ x: v.x, id: v.id, t: tick });
+    if (w.ruins.length > 6) w.ruins.shift();
+    vs = vs.filter((o) => o !== v);
+  };
+  const unseat = (v: V, cause: number, events: CivEvent[], keepHouse: boolean) => {
+    if (!v.ruler) return;
+    ev(events, 'fell', v, { who: v.ruler, cause, belief: v.belief });
+    v.heir = keepHouse ? Math.floor(v.ruler / 4096) : 0;
+    v.usurp = keepHouse ? 0 : 1;
+    v.ruler = 0;
+    v.songOf = 4;
+  };
+  const startPlague = (v: V, cause: number, other: number, events: CivEvent[]) => {
+    if (sick(v) || tick < (v.immune ?? 0) || v.souls < 12) return;
+    v.plague = tick + 480 + dv(v, 31, 9) * 80;
+    v.plagueDead = 0;
+    ev(events, 'plague', v, { cause, belief: v.belief, ...(other ? { other } : {}) });
+  };
+  /** Survivors of a lost village walk to the nearest smoke that is not at war with them. */
+  const flee = (from: V, n: number, events: CivEvent[], not?: V) => {
+    if (n <= 0) return;
+    const dest = vs.filter((o) => o !== from && o !== not && !w.rel[key(from, o)]?.war).sort((a, b) => Math.abs(a.x - from.x) - Math.abs(b.x - from.x) || a.id - b.id)[0];
+    if (!dest) return;
+    dest.souls += n;
+    dest.mood -= 6;
+    ev(events, 'refugees', dest, { other: from.id, count: n, belief: dest.belief });
+    if (sick(from)) startPlague(dest, 4, from.id, events);
+    for (let k = 0; k < Math.min(3, n) && people.length < MAX_PEOPLE; k++) people.push({ x: from.x, y: from.y, role: ROLE.travel, home: dest.id, tx: dest.x, wait: k * 8 });
+  };
+  const creedSource = (v: V) => vs.filter((q) => q !== v && !!q.creed && q.belief === v.belief).sort((a, b) => Math.abs(a.x - v.x) - Math.abs(b.x - v.x) || a.id - b.id)[0];
+  const newCreed = (belief: Belief) => { const id = w.nextCreed++; w.creeds.push({ id, belief }); if (w.creeds.length > 48) w.creeds = w.creeds.filter((c) => c.id === id || vs.some((v) => v.creed === c.id) || pending.some((s) => s.creed === c.id)); return id; };
+  /** Give a believing village a creed: a neighbour's of the same god, or one of its own with a first voice. */
+  const adopt = (v: V, events: CivEvent[], cause: number) => {
+    if (v.belief === 'none') { v.creed = 0; return; }
+    const src = creedSource(v);
+    if (src) { v.creed = src.creed!; return; }
+    v.creed = newCreed(v.belief);
+    ev(events, 'creed', v, { belief: v.belief, creed: v.creed, who: figure(), cause });
+  };
+  const takeCreed = (dst: V, src: V) => {
+    dst.belief = src.belief;
+    dst.creed = src.creed ?? 0;
+    dst.lastConv = tick;
+    for (let k = 0; k < dst.scores.length; k++) dst.scores[k] = BELIEFS[k] === src.belief ? 70 : 0;
+  };
+  /** The true grievance between two villages, as a code the chronicle can tell. */
+  const grievance = (a: V, b: V) =>
+    a.starving !== b.starving ? 1
+      : a.creed && b.creed && a.creed !== b.creed ? (a.belief === b.belief ? 6 : 2)
+        : Math.abs(prosperityOf(a) - prosperityOf(b)) > 30 ? 3
+          : Math.abs(a.x - b.x) < 45 && (a.souls > (a.cap ?? 999) || b.souls > (b.cap ?? 999)) ? 4
+            : trait(a) === 1 || trait(b) === 1 ? 7 : 5;
+  const clampS = (n: number) => Math.max(-100, Math.min(100, n));
+  const allies = (v: V) => vs.reduce((n, o) => (o !== v && w.rel[key(v, o)]?.ally ? n + 1 : n), 0);
+
+  const endWar = (a: V, b: V, rel: Rel, events: CivEvent[], salt: number) => {
+    const allies = (v: V, foe: V) => vs.reduce((n, o) => (o !== v && o !== foe && w.rel[key(v, o)]?.ally ? n + (strength(o) >> 1) : n), 0);
+    const sa = (strength(a) + allies(a, b)) * (80 + dice(salt + 3, 41)), sb = (strength(b) + allies(b, a)) * (80 + dice(salt + 4, 41));
+    const [win, lose] = sa >= sb ? [a, b] : [b, a];
+    const ratio = Math.floor((Math.max(sa, sb) * 10) / Math.max(1, Math.min(sa, sb)));
+    const len = tick - (rel.war ?? tick);
+    const cause = rel.warCause ?? 5;
+    if (ratio < 13) {
+      if (len < 1440 && !((a.starving || b.starving) && len >= 800)) return;
+      delete rel.war;
+      rel.lastWar = tick;
+      rel.s = -10;
+      ev(events, 'peace', a, { other: b.id, cause: a.starving || b.starving ? 2 : a.souls < 14 || b.souls < 14 ? 1 : 3, belief: a.belief });
+      return;
+    }
+    delete rel.war;
+    rel.lastWar = tick;
+    win.mood = Math.min(100, win.mood + 15);
+    win.songOf = 1;
+    if (dice(salt + 5, 2) === 0) unseat(lose, 2, events, true);
+    if (ratio > 24 && lose.souls < 14) {
+      // Razed. Those who can, run. Its fellow believers remember, if a holy place burned.
+      if (lose.creed && lose.creed !== win.creed && w.creeds.some((c) => c.id === lose.creed && c.holyV === lose.id))
+        for (const o of vs) if (o !== lose && o !== win && o.creed === lose.creed) { const rl = relOf(o, win); rl.s = clampS(rl.s - 30); }
+      ev(events, 'razed', win, { other: lose.id, cause, belief: win.belief });
+      remove(lose);
+      flee(lose, lose.souls >> 1, events, win);
+    } else if (lose.souls < 10 || (ratio > 17 && (win.belief === lose.belief || dice(salt + 6, 2) === 0))) {
+      win.souls += Math.floor((lose.souls * 2) / 3);
+      win.food = Math.min(999, win.food + (lose.food >> 1));
+      win.wealth = Math.min(999, (win.wealth ?? 0) + ((lose.wealth ?? 0) >> 1));
+      win.inv = (win.inv ?? 0) | (lose.inv ?? 0);
+      for (const p of people) if (p.home === lose.id) { p.home = win.id; p.wait = 0; }
+      ev(events, 'absorbed', win, { other: lose.id, cause, belief: win.belief });
+      remove(lose);
+    } else {
+      lose.tributeTo = win.id;
+      lose.tributeUntil = tick + 6400;
+      lose.mood -= 15;
+      hardship(lose, 6);
+      rel.s = -25;
+      ev(events, 'tribute', lose, { other: win.id, cause, belief: lose.belief });
+      if (win.creed && win.creed !== lose.creed && dice(salt + 7, 3) === 0) {
+        takeCreed(lose, win);
+        ev(events, 'convert', lose, { belief: lose.belief, creed: lose.creed!, other: win.id, cause: 2 });
+      }
+    }
+  };
+
+  const relationsStep = (events: CivEvent[]) => {
+    for (const k of Object.keys(w.rel)) {
+      const c = k.indexOf(':'), ia = +k.slice(0, c), ib = +k.slice(c + 1);
+      if (!vs.some((v) => v.id === ia) || !vs.some((v) => v.id === ib)) delete w.rel[k];
+    }
+    // The beaten pay, until the years of the debt are done.
+    for (const v of vs) if (v.tributeTo) {
+      const lord = vs.find((o) => o.id === v.tributeTo);
+      if (!lord || tick > (v.tributeUntil ?? 0)) { v.tributeTo = 0; if (lord) ev(events, 'peace', v, { other: lord.id, cause: 4, belief: v.belief }); continue; }
+      const c = Math.min(2, v.wealth ?? 0), f = Math.min(8, v.food);
+      v.wealth = (v.wealth ?? 0) - c; lord.wealth = Math.min(999, (lord.wealth ?? 0) + c);
+      v.food -= f; lord.food = Math.min(999, lord.food + f);
+    }
+    const list = vs.slice();
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const a = list[i]!, b = list[j]!;
+      if (!vs.includes(a) || !vs.includes(b)) continue;
+      const dd = Math.abs(a.x - b.x);
+      if (dd > 130) continue;
+      const rel = relOf(a, b);
+      const salt = (a.id * 131 + b.id) * 16;
+      if (rel.war) {
+        // War: both bleed, both go hungry, and after a season it is decided or it drags on.
+        a.souls = Math.max(1, a.souls - dice(salt + 1, 2)); b.souls = Math.max(1, b.souls - dice(salt + 2, 2));
+        a.mood -= 3; b.mood -= 3;
+        a.food = Math.max(0, a.food - 8); b.food = Math.max(0, b.food - 8);
+        if (tick - rel.war >= 480) endWar(a, b, rel, events, salt);
+        continue;
+      }
+      const pa = prosperityOf(a), pb = prosperityOf(b);
+      const ta = trait(a), tb = trait(b);
+      // Standing drifts with what is true between them. pos: what binds; neg: real grievances.
+      let pos = 0, neg = 0;
+      if (a.creed && a.creed === b.creed) pos += 1;
+      else if (a.creed && b.creed && (a.belief === b.belief || dice(salt + 16, 2) === 0)) neg += 1; // those who share a god and not the rite forgive least
+      if (rel.pact) pos += 1;
+      if (rel.wed) pos += 1;
+      if (!rel.pact && has(a, 'market') && has(b, 'market')) pos += 1;
+      if (ta === 0 || tb === 0) pos += 1;
+      if (knows(a, 6) && knows(b, 6)) pos += 2;
+      if (a.starving !== b.starving) neg += 2;
+      if (Math.abs(pa - pb) > 30 && Math.min(a.age, b.age) >= 400 && dice(salt + 17, 2) === 0) neg += 1; // envy, between villages old enough to compare
+      if (dd < 45 && (a.souls > (a.cap ?? 999) || b.souls > (b.cap ?? 999))) neg += 1;
+      if (dd < 60 && a.souls >= 40 && b.souls >= 40) neg += 1; // two big villages on one stretch of shore
+      if (ta === 1 || tb === 1) neg += 1;
+      if (rel.s > 50 && !(rel.pact && a.creed && a.creed === b.creed)) neg += 1; // warmth needs a shared road and a shared god to last
+      if (pos > 0 && dice(salt + 15, 2) === 0) pos = 0; // trust is slower to build than to lose
+      let ds = pos - neg;
+      if (a.tributeTo === b.id || b.tributeTo === a.id) ds = Math.min(ds, 0);
+      if (rel.s > -30 && rel.s < 30) ds += dice(salt + 14, 3) - 1;
+      if (neg === 0 && rel.s < 0) ds += 1; // a grudge fades when nothing feeds it
+      rel.s = clampS(rel.s + ds);
+      const bound = a.tributeTo === b.id || b.tributeTo === a.id;
+      // What one knows, a partner soon learns; and a stronger faith travels the same road.
+      if (rel.pact) {
+        if ((a.inv ?? 0) !== (b.inv ?? 0) && dice(salt + 8, 6) === 0) a.inv = b.inv = (a.inv ?? 0) | (b.inv ?? 0);
+        if (sick(a) && !sick(b) && dice(salt + 9, 20) === 0) startPlague(b, 1, a.id, events);
+        else if (sick(b) && !sick(a) && dice(salt + 9, 20) === 0) startPlague(a, 1, b.id, events);
+        if (a.creed !== b.creed && (a.creed || b.creed) && dice(salt + 10, 60) === 0) {
+          const holds = (v: V) => (work(v, 2) ? 30 : 0) + (w.creeds.some((c) => c.id === v.creed && c.holyV === v.id) ? 20 : 0) + (v.creed ? 10 : -100) + prosperityOf(v);
+          const [src, dst] = holds(a) >= holds(b) ? [a, b] : [b, a];
+          // Only a clearly stronger faith moves a neighbour, and not one that has just chosen.
+          if (holds(src) - holds(dst) >= 15 && tick - (dst.lastConv ?? -99999) > 8000) {
+            takeCreed(dst, src);
+            ev(events, 'convert', dst, { belief: dst.belief, creed: dst.creed!, other: src.id, cause: 1 });
+          }
+        }
+      }
+      if (!rel.pact && rel.s >= 30 && has(a, 'market') && has(b, 'market')) {
+        rel.pact = true; rel.rival = false;
+        ev(events, 'pact', a, { other: b.id, cause: rel.wed ? 3 : a.creed && a.creed === b.creed ? 1 : 2, belief: a.belief, ...(a.creed ? { creed: a.creed } : {}) });
+      } else if (rel.pact && !rel.ally && rel.s >= 80 && allies(a) < 2 && allies(b) < 2) {
+        rel.ally = true;
+        const foe = vs.some((c) => c !== a && c !== b && ((w.rel[key(a, c)]?.s ?? 0) <= -30) && ((w.rel[key(b, c)]?.s ?? 0) <= -30));
+        ev(events, 'alliance', a, { other: b.id, cause: foe ? 2 : a.creed && a.creed === b.creed ? 1 : 3, belief: a.belief, ...(a.creed ? { creed: a.creed } : {}) });
+      } else if (!rel.wed && rel.s >= 45 && a.ruler && b.ruler && dice(salt + 11, 6) === 0) {
+        rel.wed = tick; rel.s = clampS(rel.s + 20);
+        ev(events, 'wedding', a, { other: b.id, who: a.ruler, detail: b.ruler, belief: a.belief });
+      } else if (!rel.rival && rel.s <= -30) {
+        rel.rival = true; rel.pact = false; rel.ally = false;
+        ev(events, 'rivalry', a, { other: b.id, cause: grievance(a, b), belief: a.belief });
+      } else if (rel.rival && rel.s >= 0) rel.rival = false;
+      if (bound || a.age < 160 || b.age < 160) continue; // a village in its first years is not worth a raid
+      // Raids: the hungry take from the full, and rivals take from each other.
+      const hungry = a.starving && !b.starving && b.food > 250 ? a : b.starving && !a.starving && a.food > 250 ? b : null;
+      if ((rel.s <= -40 || (hungry && rel.s < 25 && !rel.ally)) && tick - (rel.raidT ?? -99999) > 3200 && a.souls >= 8 && b.souls >= 8 && dice(salt + 12, 3) === 0) {
+        const cause = hungry ? 1 : grievance(a, b);
+        const at = hungry ?? (cause === 3 ? (pa <= pb ? a : b) : strength(a) >= strength(b) ? a : b);
+        const df = at === a ? b : a;
+        rel.raidT = tick;
+        const won = strength(at) * (60 + dice(salt + 13, 81)) > strength(df) * (work(df, 3) ? 125 : 100);
+        let loot = 0;
+        if (won) {
+          loot = Math.min(150, df.food >> 1);
+          const coin = Math.min(20, (df.wealth ?? 0) >> 2);
+          df.food -= loot; at.food = Math.min(999, at.food + loot);
+          df.wealth = (df.wealth ?? 0) - coin; at.wealth = Math.min(999, (at.wealth ?? 0) + coin);
+          df.souls = Math.max(1, df.souls - 2); at.souls = Math.max(1, at.souls - 1);
+          df.mood -= 15; df.raidedT = tick; hardship(df, 4);
+        } else { at.souls = Math.max(1, at.souls - 3); at.mood -= 10; df.mood = Math.min(100, df.mood + 5); }
+        rel.s = clampS(rel.s - 20); rel.pact = false; rel.ally = false;
+        ev(events, 'raid', at, { other: df.id, cause, detail: won ? 1 : 0, count: loot, belief: at.belief });
+      } else if (rel.s <= -70 && neg > 0 && a.souls >= 16 && b.souls >= 16 && !warOf(a) && !warOf(b) && tick - (rel.lastWar ?? -99999) > 6400
+        && Math.min(strength(a), strength(b)) * 2 >= Math.max(strength(a), strength(b))) {
+        // War is between villages that can each hurt the other; the small are raided, not marched on.
+        const cause = grievance(a, b);
+        const at = cause === 1 ? (a.starving ? a : b) : strength(a) >= strength(b) ? a : b;
+        rel.war = tick; rel.warCause = cause; rel.pact = false; rel.ally = false; rel.rival = true;
+        ev(events, 'war', at, { other: at === a ? b.id : a.id, cause, belief: at.belief });
+      }
+    }
+  };
+
+  /** What in the sky or the stores gives the lie to a village's creed. 0 when nothing does. */
+  const contradiction = (v: V, m: SurfaceModifiers) =>
+    tick - (v.dreadT ?? -99999) < 1600 ? 8 : sick(v) ? 9 : v.starving ? 7
+      : v.belief === 'sun' && m.dimming + m.dust > 25 ? 1
+        : v.belief === 'moon' && m.nightLight < 5 && m.tide < 5 ? 2
+          : v.belief === 'sea' && (v.dry ?? 0) >= 40 ? 3
+            : v.belief === 'stone' && m.impacts < 5 ? 4
+              : v.belief === 'fire' && v.cold ? 5 : 0;
+
+  const faithStep = (m: SurfaceModifiers, events: CivEvent[]) => {
+    // Signs: what was hung in the sky or taken from it since they last looked, and what was thrown.
+    const cur = [m.nightLight, m.impacts, m.dimming + m.dust, m.warmth, m.tide];
+    const q = w.signQ;
+    w.signQ = [];
+    if (w.pm) {
+      const d = (i: number) => cur[i]! - (w.pm![i] ?? 0);
+      if (d(0) >= 15) q.push(1);
+      if (d(0) <= -15) q.push(2);
+      if (d(1) >= 15) q.push(3);
+      if (d(2) >= 15) q.push(4);
+      if (d(3) >= 15) q.push(5);
+      if (d(4) >= 15) q.push(6);
+    }
+    w.pm = cur;
+    for (const s of q) for (const v of vs) {
+      const bi = BELIEFS.indexOf(v.belief);
+      let re = REACT[bi]![s] ?? 0;
+      if (!re) continue;
+      if (re === 2 && work(v, 5)) re = 3; // the Star House had already found it
+      if (re === 1) {
+        v.mood = Math.min(100, v.mood + 12); v.enl = Math.min(100, enl(v) + 2); v.scores[bi]! += 20;
+        const c = w.creeds.find((k) => k.id === v.creed);
+        if (c && c.holyV === undefined && (s === 3 || s >= 7)) { c.holyV = v.id; ev(events, 'holy', v, { creed: c.id, belief: v.belief, cause: 2, detail: s }); }
+      } else if (re === 2) { v.mood -= 12; v.dreadT = tick; } else v.enl = Math.min(100, enl(v) + 4);
+      ev(events, 'sign', v, { detail: s, cause: re, belief: v.belief, ...(v.creed ? { creed: v.creed } : {}) });
+    }
+    for (const v of vs) {
+      if (v.belief !== 'none' && !v.creed) adopt(v, events, 1);
+      if (!v.creed) continue;
+      // A holy place draws pilgrims while others keep the creed.
+      if (w.creeds.some((c) => c.id === v.creed && c.holyV === v.id)) {
+        v.mood = Math.min(100, v.mood + 1);
+        if (vs.some((o) => o !== v && o.creed === v.creed)) v.wealth = Math.min(999, (v.wealth ?? 0) + 1);
+      }
+      if (v.heretic) {
+        if (tick - (v.hereticT ?? 0) < 800) continue;
+        // The village decides: follow the heretic, silence them, or drive them out.
+        const who = v.heretic, cause = v.hereticCause ?? 0;
+        v.heretic = 0;
+        const sup = (v.mood < 0 ? 1 : 0) + (v.starving ? 1 : 0) + (knows(v, 4) ? 1 : 0) + (contradiction(v, m) ? 1 : 0) + dv(v, 21, 3) - (trait(v) === 2 ? 1 : 0);
+        if (sup >= 3) {
+          const old = v.creed;
+          v.creed = newCreed(v.belief);
+          for (const o of vs) if (o !== v && o.creed === old && Math.abs(o.x - v.x) <= 130) { const rl = relOf(v, o); rl.s = clampS(rl.s - 30); }
+          v.songOf = 7;
+          ev(events, 'schism', v, { who, creed: v.creed, detail: old, belief: v.belief, cause });
+        } else if (trait(v) === 1 || sup <= 0) {
+          v.mood -= 8;
+          ev(events, 'fell', v, { who, cause: 5, belief: v.belief, creed: v.creed });
+        } else {
+          v.souls = Math.max(1, v.souls - 4);
+          v.songOf = 7;
+          ev(events, 'exile', v, { who, cause, belief: v.belief, creed: v.creed });
+          if (vs.length + pending.length < 10 && ground.length) {
+            const nx = Math.max(4, Math.min(ground.length - 5, v.x + (dv(v, 22, 2) ? 1 : -1) * (40 + dv(v, 23, 40))));
+            pending.push({ x: nx, belief: v.belief, tech: Math.max(0, v.tech - 1), creed: newCreed(v.belief), who, from: v.id });
+          }
+        }
+        continue;
+      }
+      if (v.souls >= 20 && v.age >= 240 && tick - (v.hereticT ?? -99999) > 5600) {
+        const cz = contradiction(v, m);
+        if (cz && dv(v, 24, 16) === 0) {
+          v.heretic = figure(); v.hereticT = tick; v.hereticCause = cz;
+          ev(events, 'heresy', v, { who: v.heretic, cause: cz, belief: v.belief, creed: v.creed });
+        }
+      }
+    }
+  };
+
+  const hardshipStep = (g: GridView, events: CivEvent[]) => {
+    for (const v of vs.slice()) {
+      if (v.plague) {
+        if (tick >= v.plague) {
+          v.plague = 0; v.immune = tick + 19200; hardship(v, 3); v.songOf = 2;
+          ev(events, 'plagueEnd', v, { count: v.plagueDead ?? 0, belief: v.belief, cause: v.school || work(v, 3) ? 2 : 1 });
+        } else {
+          if (v.souls > 3 && dv(v, 32, v.school || work(v, 3) ? 3 : 2) === 0) { const n = v.souls > 40 ? 2 : 1; v.souls -= n; v.plagueDead = (v.plagueDead ?? 0) + n; }
+          v.mood -= 2;
+          if (v.ruler && dv(v, 33, 70) === 0) unseat(v, 3, events, true);
+        }
+      } else if (v.souls >= 14) {
+        if (v.souls > (v.cap ?? 999) + 4 && dv(v, 34, 90) === 0) startPlague(v, 2, 0, events);
+        else if (v.wet > 0 && dv(v, 35, 6) === 0) startPlague(v, 3, 0, events);
+      }
+      if (v.hard && tick - (v.hardT ?? 0) > 800 && v.food > 200 && v.mood > 0 && !v.starving && !sick(v) && !v.tributeTo) { ev(events, 'recovered', v, { cause: v.hard, belief: v.belief }); v.hard = 0; }
+      // The last few of a starving village do not wait to die. They walk.
+      if (v.starving && v.souls > 0 && v.souls <= 5 && vs.length > 1 && v.age > 40) { ev(events, 'die', v, { cause: 9 }); remove(v); flee(v, v.souls, events); }
+    }
+    // Ghost towns: good ground does not stay empty for ever.
+    if (!w.ruins.length) return;
+    const ru = w.ruins[dice(36, w.ruins.length)]!;
+    if (vs.some((v) => Math.abs(v.x - ru.x) <= 12) || pending.some((s) => Math.abs(s.x - ru.x) <= 12) || tick - ru.t > 40000) { w.ruins = w.ruins.filter((o) => o !== ru); return; }
+    if (tick - ru.t <= 3200 || vs.length + pending.length >= 10 || !ground.length || at(g, ru.x, ground[ru.x]!) === WATER) return;
+    const from = vs.filter((v) => v.souls >= 26 && v.mood > 0 && !sick(v) && Math.abs(v.x - ru.x) < 170).sort((a, b) => Math.abs(a.x - ru.x) - Math.abs(b.x - ru.x) || a.id - b.id)[0];
+    if (from && dv(from, 37, 10) === 0) {
+      from.souls -= 8;
+      w.ruins = w.ruins.filter((o) => o !== ru);
+      pending.unshift({ x: ru.x, belief: from.belief, tech: Math.max(0, from.tech - 1), ruin: ru.id, who: figure(), from: from.id, ...(from.creed ? { creed: from.creed } : {}) });
+    }
+  };
+
+  const cultureStep = (env: SurfaceEnv, events: CivEvent[]) => {
+    const year = Math.floor(tick / YEAR_TICKS);
+    const sz = env.season;
+    const feast = sz < 90 ? 1 : sz >= 210 && sz < 300 ? 2 : sz >= 460 && sz < 550 ? 3 : sz >= 710 && sz < 800 ? 4 : 0;
+    for (const v of vs) {
+      const wl = v.wealth ?? 0;
+      // Rulers: raised, grown old, thrown down, followed by their house or by a stranger to it.
+      if (v.ruler && tick >= (v.rulerEnd ?? 0)) unseat(v, 1, events, true);
+      else if (v.ruler && v.mood < -60 && dv(v, 41, 12) === 0) unseat(v, 4, events, false);
+      else if (!v.ruler && v.souls >= 18 && v.tech >= 1) {
+        v.ruler = figure(v.heir || undefined);
+        v.rulerEnd = tick + (7 + dv(v, 42, 12)) * YEAR_TICKS;
+        ev(events, 'crowned', v, { who: v.ruler, cause: v.heir ? 2 : v.usurp ? 3 : 1, detail: trait(v), belief: v.belief });
+        v.heir = 0; v.usurp = 0;
+      }
+      // The high day of their faith, once a year, if there is anything to feast on.
+      if (feast && feast === FEAST[BELIEFS.indexOf(v.belief)] && v.seasonFest !== year && v.mood > -10 && v.food > 100 && v.souls >= 10 && !sick(v)) {
+        v.seasonFest = year; v.festUntil = tick + 200; v.food -= 20; v.mood = Math.min(100, v.mood + 6); v.festN = (v.festN ?? 0) + 1;
+        ev(events, 'festival', v, { detail: feast, belief: v.belief, count: v.festN, ...(v.creed ? { creed: v.creed } : {}) });
+      }
+      // Songs are made of what they lived through, and keep their spirits up afterwards.
+      if (v.songOf) {
+        if (tick - (v.lastSong ?? -99999) > 2400) { v.lastSong = tick; v.songs = (v.songs ?? 0) + 1; v.mood = Math.min(100, v.mood + 5); ev(events, 'song', v, { cause: v.songOf, belief: v.belief, count: v.songs }); }
+        v.songOf = 0;
+      }
+      if (!v.school && v.tech >= 2 && wl >= 50 && v.souls >= 22) { v.wealth = wl - 40; v.school = true; ev(events, 'school', v, { belief: v.belief }); continue; }
+      // Great works: each asks something real and gives something lasting.
+      if (v.workK) {
+        if (tick >= (v.workT ?? 0)) {
+          const k = v.workK - 1;
+          v.workK = 0; v.works = (v.works ?? 0) | (1 << k); v.lastWork = tick; v.songOf = 3;
+          ev(events, 'wonder', v, { detail: k, belief: v.belief, ...(v.ruler ? { who: v.ruler } : {}), ...(v.creed ? { creed: v.creed } : {}) });
+          const c = k === 2 ? w.creeds.find((q) => q.id === v.creed) : undefined;
+          if (c && c.holyV === undefined) { c.holyV = v.id; ev(events, 'holy', v, { creed: c.id, belief: v.belief, cause: 1 }); }
+        }
+      } else if (tick - (v.lastWork ?? v.age * -EVAL + 1600) > 4800 && v.souls >= 20 && !sick(v) && !v.starving) {
+        const can = (k: number) => !work(v, k) && wl >= WORK_COST[k]! + 40;
+        // The Sky Dock comes before all else once they can build it; otherwise the oldest need first.
+        const k = can(6) && v.tech >= 7 && has(v, 'pad') ? 6
+          : can(0) && v.tech >= 1 && v.food >= 500 && v.souls >= 24 ? 0
+            : can(1) && has(v, 'dock') && v.tech >= 2 && (v.waterN ?? 0) >= 3 ? 1
+              : can(2) && has(v, 'shrine') && !!v.creed && v.souls >= 28 && !vs.some((o) => o !== v && o.creed === v.creed && (work(o, 2) || o.workK === 3)) ? 2
+                : can(3) && has(v, 'tower') ? 3
+                  : can(4) && has(v, 'dock') && v.tech >= 3 ? 4
+                    : can(5) && v.tech >= 4 && enl(v) >= 40 ? 5 : -1;
+        if (k >= 0) {
+          v.wealth = wl - WORK_COST[k]!;
+          if (k === 0) v.food -= 200;
+          v.workK = k + 1;
+          v.workT = tick + (trait(v) === 3 ? 960 : 1600);
+          let sent = 0;
+          for (const p of people) if (sent < 3 && p.home === v.id && (p.role === ROLE.idle || p.role === ROLE.farm || p.role === ROLE.chat)) { p.role = ROLE.build; p.tx = Math.max(0, Math.min(ground.length - 1, v.x + sent * 2 - 2)); p.wait = 0; p.work = 0; sent++; }
+        }
+      }
+      // Inventions: someone has to be first. After that it spreads along the trade roads.
+      const elig = [has(v, 'farm') && v.tech >= 1 && v.souls >= 18, has(v, 'dock') && v.tech >= 1, !!v.school, v.tech >= 3 && has(v, 'workshop'), v.tech >= 4 && knows(v, 2),
+        v.tech >= 5 && has(v, 'mine') && wl >= 60, v.tech >= 6 && has(v, 'tower'), v.tech >= 7 && has(v, 'pad')];
+      for (let k = 0; k < elig.length; k++) {
+        if (!elig[k] || knows(v, k)) continue;
+        const first = ((w.inv >> k) & 1) === 0;
+        if (dv(v, 50 + k, first ? 20 : 6) === 0) {
+          v.inv = (v.inv ?? 0) | (1 << k);
+          if (first) { w.inv |= 1 << k; ev(events, 'invention', v, { detail: k, who: figure(), belief: v.belief }); }
+        }
+        break;
+      }
+      // With sails, someone goes to see what is past the last headland.
+      if (knows(v, 1) && has(v, 'dock') && vs.length > 1 && tick - (v.lastVoyage ?? -99999) > 16000 && dv(v, 60, 60) === 0) {
+        const far = vs.filter((o) => o !== v).sort((a, b) => Math.abs(b.x - v.x) - Math.abs(a.x - v.x) || a.id - b.id)[0]!;
+        v.lastVoyage = tick;
+        const rl = relOf(v, far); rl.s = clampS(rl.s + 15);
+        v.inv = (v.inv ?? 0) | (far.inv ?? 0);
+        v.wealth = Math.min(999, (v.wealth ?? 0) + 10);
+        ev(events, 'voyage', v, { other: far.id, who: figure(), belief: v.belief });
+      }
+      // The leaving: a ship that does not come back. It joins what they have already put in orbit.
+      if (v.tech >= 8 && work(v, 6) && (v.wealth ?? 0) >= 300 && v.souls >= 40 && tick - (v.lastArk ?? -99999) > 16000 && tick - (w.arkT ?? -99999) > 4800) {
+        w.arkT = tick;
+        v.souls -= 12; v.wealth = (v.wealth ?? 0) - 250;
+        launches++; lastLaunchT = tick; v.lastLaunch = tick; v.lastArk = tick; w.arks++; v.songOf = 5;
+        ev(events, 'ark', v, { count: 12, who: figure(), detail: w.arks, belief: v.belief });
+      }
+    }
+  };
+
+  const world = (g: GridView, m: SurfaceModifiers, env: SurfaceEnv, events: CivEvent[]) => {
+    const phase = (tick / EVAL) & 3;
+    if (phase === 0) relationsStep(events);
+    else if (phase === 1) faithStep(m, events);
+    else if (phase === 2) hardshipStep(g, events);
+    else cultureStep(env, events);
   };
 
   // Stateless dice for the notable: a pure function of (planet seed, tick, salt), so this
@@ -671,6 +1189,39 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
   };
 
   const prosperityOf = (v: V) => Math.round(Math.min(30, (v.food / 600) * 30) + Math.min(40, ((v.wealth ?? 0) / 300) * 40) + ((Math.max(-100, Math.min(100, v.mood)) + 100) / 200) * 30);
+  const warOf = (v: V) => vs.find((o) => o !== v && w.rel[key(v, o)]?.war);
+  const extra = (v: V): Partial<Village> => {
+    const foe = warOf(v);
+    const state: Village['state'] = foe ? 'war' : (v.plague ?? 0) > tick ? 'plague' : v.tributeTo ? 'tribute' : v.heretic ? 'heresy' : (v.festUntil ?? 0) > tick ? 'festival' : v.workK ? 'building' : undefined;
+    const works: string[] = [];
+    for (let k = 0; k < WORKS.length; k++) if (work(v, k)) works.push(WORKS[k]!);
+    return {
+      era: v.tech,
+      ...(v.creed ? { creed: creedName(pseed, v.creed, v.belief) } : {}),
+      ...(v.ruler ? { ruler: figName(pseed, v.ruler).full } : {}),
+      ...(state ? { state } : {}),
+      ...(foe ? { stateWith: foe.id } : state === 'tribute' ? { stateWith: v.tributeTo! } : {}),
+      ...(works.length ? { works } : {}),
+      ...(v.school ? { school: true } : {}),
+    };
+  };
+  const figures = (): Figure[] => {
+    const out: Figure[] = [];
+    for (const v of vs) {
+      if (v.ruler) out.push({ name: figName(pseed, v.ruler).full, title: 'ruler', villageId: v.id });
+      if (v.heretic) out.push({ name: figName(pseed, v.heretic).full, title: 'heretic', villageId: v.id });
+    }
+    return out;
+  };
+  const relations = (): Relation[] => {
+    const out: Relation[] = [];
+    for (let i = 0; i < vs.length; i++) for (let j = i + 1; j < vs.length; j++) {
+      const a = vs[i]!, b = vs[j]!, rl = w.rel[key(a, b)];
+      const kind: Relation['kind'] | null = rl?.war ? 'war' : a.tributeTo === b.id || b.tributeTo === a.id ? 'tribute' : rl?.ally ? 'alliance' : rl?.pact ? 'pact' : rl?.rival ? 'rivalry' : null;
+      if (kind) out.push({ a: a.id, b: b.id, kind });
+    }
+    return out;
+  };
   const view = () => {
     const n = Math.min(people.length, MAX_PEOPLE);
     for (let i = 0; i < n; i++) {
@@ -680,12 +1231,18 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       peopleBuf[k] = p.x; peopleBuf[k + 1] = p.y; peopleBuf[k + 2] = p.role === ROLE.farm && !p.work ? ROLE.idle : p.role; peopleBuf[k + 3] = p.home; peopleBuf[k + 4] = p.id % 30000;
     }
     return {
-      villages: vs.map((v): Village => ({ id: v.id, x: v.x, y: v.y, souls: v.souls, name: v.name, tech: v.tech, belief: v.belief, food: v.food, mood: v.mood, enlightenment: v.enl ?? 0, wealth: v.wealth ?? 0, goods: v.goods ?? 0, prosperity: prosperityOf(v), buildings: v.bld ?? [] })),
+      villages: vs.map((v): Village => ({ id: v.id, x: v.x, y: v.y, souls: v.souls, name: v.name, tech: Math.min(5, v.tech), belief: v.belief, food: v.food, mood: v.mood, enlightenment: v.enl ?? 0, wealth: v.wealth ?? 0, goods: v.goods ?? 0, prosperity: prosperityOf(v), buildings: v.bld ?? [], ...extra(v) })),
       souls: vs.reduce((s, v) => s + v.souls, 0),
       glowPerMinute: glow,
       people: peopleBuf.subarray(0, n * PERSON_STRIDE),
       peopleCount: n,
-      era,
+      era: Math.min(5, era),
+      age: era,
+      figures: figures(),
+      creeds: w.creeds.map((c) => ({ id: c.id, name: creedName(pseed, c.id, c.belief), belief: c.belief, villages: vs.filter((v) => v.creed === c.id).length })).filter((c) => c.villages > 0),
+      relations: relations(),
+      ruins: w.ruins.length,
+      arks: w.arks,
       prosperity: vs.length ? Math.round(vs.reduce((n, v) => n + prosperityOf(v), 0) / vs.length) : 0,
       launches,
       launchAge: tick - lastLaunchT,
@@ -699,6 +1256,8 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       r = rng(child(p.seed, 'civ'));
       pseed = p.seed;
       nseed = child(p.seed, 'notable');
+      wseed = child(p.seed, 'civ-world');
+      w = newWorld();
       notable = null;
       line = { ord: 0, house: 0, nextAt: 0, lastHome: -1, lastCalling: 0 };
       nTrade = 0;
@@ -753,8 +1312,10 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
           // Two faiths that meet make a third.
           const others = BELIEFS.filter((k) => k !== 'none' && k !== a.belief && k !== b.belief);
           const belief = a.belief === b.belief ? a.belief : others[(a.id * 7 + b.id * 3) % others.length]!;
-          const v: V = { id: nextId++, x: mx, y: ground.length ? ground[mx]! - 1 : a.y, souls: a.souls + b.souls, name: `#${nextId - 1}`, tech: Math.min(5, Math.max(a.tech, b.tech) + (a.tech === b.tech ? 1 : 0)), belief, food: Math.min(999, a.food + b.food), mood: 40, age: 0, scores: BELIEFS.map((k) => (k === belief ? 80 : 0)), progress: 0, wet: 0, starving: false, cold: false, lastBurn: -9999, lastLaunch: -99999, enl: Math.min(100, Math.max(enl(a), enl(b)) + 10) };
+          const v: V = { id: nextId++, x: mx, y: ground.length ? ground[mx]! - 1 : a.y, souls: a.souls + b.souls, name: `#${nextId - 1}`, tech: Math.max(a.tech, b.tech, Math.min(5, Math.max(a.tech, b.tech) + (a.tech === b.tech ? 1 : 0))), belief, food: Math.min(999, a.food + b.food), mood: 40, age: 0, scores: BELIEFS.map((k) => (k === belief ? 80 : 0)), progress: 0, wet: 0, starving: false, cold: false, lastBurn: -9999, lastLaunch: -99999, enl: Math.min(100, Math.max(enl(a), enl(b)) + 10) };
           vs = vs.filter((o) => o !== a && o !== b);
+          v.inv = (a.inv ?? 0) | (b.inv ?? 0); v.works = (a.works ?? 0) | (b.works ?? 0); v.school = !!(a.school || b.school); v.songs = Math.max(a.songs ?? 0, b.songs ?? 0);
+          if (a.belief === b.belief && a.creed) v.creed = a.creed;
           vs.push(v);
           era = Math.max(era, v.tech);
           for (const p of people) if (p.home === a.id || p.home === b.id) { p.home = v.id; p.wait = 0; p.tx = v.x; }
@@ -762,8 +1323,19 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
         }
       } else if (tool === 'whisper') {
         const v = near(40).sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0];
-        if (v) { v.belief = 'sky'; v.scores[BELIEFS.indexOf('sky')] = 80; v.enl = Math.min(100, enl(v) + 6); push('omen', v, 100); }
+        if (v) { if (v.belief !== 'sky') v.creed = 0; v.belief = 'sky'; v.scores[BELIEFS.indexOf('sky')] = 80; v.enl = Math.min(100, enl(v) + 6); push('omen', v, 100); }
       } else {
+        // Things thrown at the whole world at once are read as signs: an eclipse is a cold laid
+        // across every horizon in one breath, a rain of stars is many stones, a comet a stone with rain.
+        if (tool === 'cold') {
+          if (w.coldT !== tick) { w.coldT = tick; w.coldN = 0; w.coldLo = x; w.coldHi = x; }
+          w.coldN++; w.coldLo = Math.min(w.coldLo, x); w.coldHi = Math.max(w.coldHi, x);
+          if (w.coldN >= 3 && w.coldHi - w.coldLo >= 90 && !w.signQ.includes(7)) w.signQ.push(7);
+        } else if (tool === 'meteor') {
+          if (w.metT !== tick) { w.metT = tick; w.metN = 0; w.metLo = x; w.metHi = x; }
+          w.metN++; w.metLo = Math.min(w.metLo, x); w.metHi = Math.max(w.metHi, x);
+          if (w.metN >= 3 && w.metHi - w.metLo >= 90 && !w.signQ.includes(9)) w.signQ.push(9);
+        } else if (tool === 'rain' && w.metT === tick && w.metN === 1 && w.metLo === x && !w.signQ.includes(8)) w.signQ.push(8);
         const bad = DESTRUCTIVE.has(tool);
         for (const v of near(60)) {
           if (bad) { v.enl = Math.max(0, enl(v) - 2); v.mood -= 4; v.scores[BELIEFS.indexOf(tool === 'fire' || tool === 'heat' ? 'fire' : tool === 'meteor' || tool === 'quake' ? 'stone' : 'sky')]! += 12; }
@@ -836,7 +1408,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       avatar = null;
       for (const p of people) if (p.role === ROLE.attack || p.role === ROLE.kneel || p.role === ROLE.watch || p.role === ROLE.listen || p.role === ROLE.flee) { p.role = ROLE.idle; p.wait = 0; }
     },
-    snapshot: () => new TextEncoder().encode(JSON.stringify({ vs, people, pending, tick, nextId, glow, era, nextPid, notable, line })),
+    snapshot: () => new TextEncoder().encode(JSON.stringify({ vs, people, pending, tick, nextId, glow, era, nextPid, notable, line, w, launches, lastLaunchT })),
     restore: (s) => {
       const o = JSON.parse(new TextDecoder().decode(s)) as { vs: V[]; people: P[]; pending: typeof pending; tick: number; nextId: number; glow: number; era: number };
       ({ vs, people, pending, tick, nextId, glow, era } = o);
@@ -844,6 +1416,11 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       nextPid = x.nextPid ?? people.reduce((m, p) => Math.max(m, p.id ?? 0), 0) + 1;
       notable = x.notable ?? null;
       line = x.line ?? { ord: 0, house: 0, nextAt: 0, lastHome: -1, lastCalling: 0 };
+      // The wider world is newer than some snapshots: an older one wakes with no pacts, creeds or ruins yet.
+      const y = o as { w?: Partial<W>; launches?: number; lastLaunchT?: number };
+      w = { ...newWorld(), ...(y.w ?? {}) };
+      if (y.launches !== undefined) launches = y.launches;
+      if (y.lastLaunchT !== undefined) lastLaunchT = y.lastLaunchT;
     },
   };
 };
