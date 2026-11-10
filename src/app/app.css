@@ -66,3 +66,6 @@
 @keyframes ripple-big { to { transform: scale(9); opacity: 0; } }
 .screen .surface-slot.big { height: 250px; }
 .fighter .row.nowrap > .k-tag, .fighter .row.nowrap > .glyph { flex: 0 0 auto; }
+.screen[data-screen='planet'], .screen[data-screen='system'] { overflow-y: auto; }
+.screen[data-screen='planet'] .chronicle { min-height: 140px; flex: none; }
+.k-hold, .k-hold * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }

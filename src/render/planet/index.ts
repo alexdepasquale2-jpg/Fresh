@@ -235,9 +235,15 @@ export const factory: PlanetRendererFactory = () => {
       const tickNow = env.day + env.season * 1000;
       if (tickNow !== lastTick) {
         lastTick = tickNow;
+        // Ground starts at the first run of 4 solid-ish cells. Sparks, ash, steam and
+        // falling drops in the air are not ground, so the air under them is not a cave.
+        const airy = (c: number) => c === 0 || c === 5 || c === ENGINE.fire.id;
         for (let x = 0; x < W; x++) {
           let y = 0;
-          while (y < H - 1 && (g.cells[y * W + x] === 0 || g.cells[y * W + x] === 5)) y++;
+          while (y < H - 4) {
+            if (!airy(g.cells[y * W + x]!) && !airy(g.cells[(y + 1) * W + x]!) && !airy(g.cells[(y + 2) * W + x]!) && !airy(g.cells[(y + 3) * W + x]!)) break;
+            y++;
+          }
           top[x] = y;
         }
         upload(tex.cells!, W, H, gl.RED_INTEGER, g.cells as Uint8Array);

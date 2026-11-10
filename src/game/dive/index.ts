@@ -8,7 +8,7 @@ import type { FoldNode } from '@/contracts/fold';
 const FALL_PER_TICK = 45; // progress units (1000 per fold): ~1.1 s per fold
 const LINES: Record<DivePhase, string[]> = {
   surfaced: ['The box is quiet.'],
-  hovering: ['Mote hangs in the dark, waiting.', 'Something flickers between the folds.', 'Let go and the folds hold still.'],
+  hovering: ['Hold to fall. Tap a ring to steer. Fall into a star to land.', 'Mote hangs in the dark, waiting.', 'Something flickers between the folds.'],
   falling: ['The folds open under you.', 'Deeper. The light thins.', 'Rings inside rings inside rings.'],
   stopped: ['A star. Mote settles beside it.'],
 };
@@ -21,6 +21,9 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
   let best = 0;
   let progress = 0;
   let reliquaries = RELIQUARIES_PER_DIVE;
+  let aim = 0;
+  let cameFrom = 0;
+  let landed: import('@/contracts/fold').StarRef | null = null;
   const nearStar = () => children.find((c) => c.star)?.star ?? null;
   const surface = () => {
     if (address) box.recordDepth(box.selected(), address.depth);
@@ -34,10 +37,13 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
       best = b;
       progress = 0;
       reliquaries = RELIQUARIES_PER_DIVE;
+      aim = 0;
+      cameFrom = 0;
+      landed = null;
       phase = 'hovering';
     },
     hold: () => {
-      if (phase === 'hovering' || phase === 'stopped') phase = 'falling';
+      if (phase === 'hovering' || phase === 'stopped') { phase = 'falling'; landed = null; }
     },
     release: () => {
       if (phase === 'falling') phase = nearStar() && progress < 500 ? 'stopped' : 'hovering';
@@ -58,7 +64,16 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
       progress += ticks * FALL_PER_TICK;
       while (progress >= 1000) {
         progress -= 1000;
-        address = children[0]!.address;
+        const into = children[aim] ?? children[0]!;
+        // Falling into a star lands on it.
+        if (into.star) {
+          progress = 0;
+          phase = 'stopped';
+          landed = into.star;
+          return;
+        }
+        address = into.address;
+        cameFrom = aim;
         children = fold.childrenOf(address);
         best = Math.max(best, address.depth);
         if (!light.drainFolds(1)) {
@@ -67,6 +82,7 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
         }
       }
     },
+    aim: (i) => { if (i >= 0 && i <= 6 && phase !== 'surfaced' && progress < 600) aim = i; },
     surface,
     view: (): DiveView => {
       const lines = LINES[phase];
@@ -79,7 +95,9 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
         progress,
         children,
         reliquaries,
-        star: nearStar(),
+        star: landed ?? nearStar(),
+        aim,
+        cameFrom,
         narration: lines[(address?.depth ?? 0) % lines.length]!,
       };
     },

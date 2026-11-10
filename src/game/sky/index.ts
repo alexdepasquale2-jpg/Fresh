@@ -16,16 +16,34 @@ export const factory: SkyGameFactory = () => {
       const key = seedToHex(system.planets[orbit.planet]!.seed);
       const sky = get(key);
       if (sky.pieces.length >= 4) return { ok: false, reason: 'sky-full' };
-      const next = { planetKey: key, pieces: [...sky.pieces, kind] };
+      const next = { ...sky, planetKey: key, pieces: [...sky.pieces, kind] };
       skies.set(key, next);
       inventory[kind]--;
       return { ok: true, sky: next };
     },
     remove: (key, i) => {
       const s = get(key);
-      skies.set(key, { planetKey: key, pieces: s.pieces.filter((_, j) => j !== i) });
+      skies.set(key, { ...s, planetKey: key, pieces: s.pieces.filter((_, j) => j !== i) });
     },
     skyOf: (planet) => get(seedToHex(planet.seed)),
+    nudge: (key, delta) => {
+      const sky = get(key);
+      const next = { ...sky, drift: Math.max(-3, Math.min(3, (sky.drift ?? 0) + Math.sign(delta))) };
+      skies.set(key, next);
+      return next;
+    },
+    queue: (key, event) => {
+      const sky = get(key);
+      const next = { ...sky, queued: [...(sky.queued ?? []), event].slice(-8) };
+      skies.set(key, next);
+      return next;
+    },
+    takeQueued: (key) => {
+      const sky = get(key);
+      if (!sky.queued?.length) return [];
+      skies.set(key, { ...sky, queued: [] });
+      return [...sky.queued];
+    },
     snapshot: () => ({ inventory: { ...inventory }, skies: [...skies.values()] }),
     restore: (s) => {
       inventory = { ...s.inventory };

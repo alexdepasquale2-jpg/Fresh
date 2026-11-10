@@ -8,7 +8,7 @@ const FS = `#version 300 es
 precision highp float;
 in vec2 v_uv; out vec4 o;
 uniform vec2 u_res; uniform vec2 u_c; uniform float u_R, u_zoom, u_depth, u_pulse, u_light, u_time;
-uniform vec3 u_pal[6]; uniform vec4 u_mark[7]; uniform float u_family; uniform vec2 u_jc;
+uniform vec3 u_pal[6]; uniform vec4 u_mark[7]; uniform float u_family; uniform vec2 u_jc; uniform vec2 u_aimOff; uniform float u_t, u_aim, u_came;
 float h(vec2 n){ return fract(sin(dot(n, vec2(12.9898, 78.233))) * 43758.5453); }
 float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + 1.0), f.x), f.y); }
@@ -23,10 +23,10 @@ float pattern(vec2 p, float key){
 }
 void main(){
   vec2 fc = vec2(v_uv.x * u_res.x, (1.0 - v_uv.y) * u_res.y);
-  vec2 p = (fc - u_c) / (u_R * u_zoom);
+  vec2 p = (fc - u_c) / (u_R * u_zoom) + u_aimOff * u_t;
   float neb = fbm((fc - u_c) / u_R * 1.3 + vec2(u_time * 0.02, -u_time * 0.015));
   vec3 col = u_pal[0] + u_pal[1] * neb * 0.35 + u_pal[3] * pow(neb, 3.0) * 0.4;
-  float lvl = 0.0; float idx = 0.0;
+  float lvl = 0.0; float idx = u_came;
   for (int L = 0; L < 8; L++) {
     float d = length(p);
     if (d > 1.0) break;
@@ -51,8 +51,9 @@ void main(){
   }
   for (int i = 0; i < 7; i++) {
     vec4 m = u_mark[i];
-    if (m.w < 0.5) continue;
     float d = length(fc - m.xy);
+    if (float(i) == u_aim) col += u_pal[5] * smoothstep(2.5, 0.0, abs(d - m.z * 0.97)) * (0.55 + 0.25 * sin(u_time * 5.0));
+    if (m.w < 0.5) continue;
     if (m.w < 1.5) { // star
       float core = smoothstep(m.z * 0.22, 0.0, d);
       float halo = smoothstep(m.z * 0.9, 0.0, d) * 0.35;
@@ -78,7 +79,7 @@ export const factory: DiveRendererFactory = () => {
   const loc: Record<string, WebGLUniformLocation | null> = {};
   const build = () => {
     prog = core!.program(FULLSCREEN_VS, FS);
-    for (const n of ['u_res', 'u_c', 'u_R', 'u_zoom', 'u_depth', 'u_pulse', 'u_light', 'u_time', 'u_pal', 'u_mark', 'u_family', 'u_jc']) loc[n] = core!.gl.getUniformLocation(prog, n);
+    for (const n of ['u_res', 'u_c', 'u_R', 'u_zoom', 'u_depth', 'u_pulse', 'u_light', 'u_time', 'u_pal', 'u_mark', 'u_family', 'u_jc', 'u_aimOff', 'u_t', 'u_aim', 'u_came']) loc[n] = core!.gl.getUniformLocation(prog, n);
   };
   return {
     init: (c) => {
@@ -101,11 +102,12 @@ export const factory: DiveRendererFactory = () => {
         pal[12] = r / 255; pal[13] = g / 255; pal[14] = b / 255; // stars in gold
       }
       const w = core.width(), h = core.height();
-      const f = foldFrame(w, h, v.dive.progress);
+      const f = foldFrame(w, h, v.dive.progress, v.dive.aim);
       marks.fill(0);
-      for (const ch of v.dive.children) {
-        const s = childScreen(f, ch.index);
-        marks.set([s.x, s.y, s.r, ch.star ? 1 : ch.flicker ? 2 : 0], ch.index * 4);
+      for (let i = 0; i < 7; i++) {
+        const ch = v.dive.children[i];
+        const s = childScreen(f, i);
+        marks.set([s.x, s.y, s.r, ch?.star ? 1 : ch?.flicker ? 2 : 0], i * 4);
       }
       gl.useProgram(prog);
       gl.uniform2f(loc.u_res!, w, h);
@@ -118,6 +120,10 @@ export const factory: DiveRendererFactory = () => {
       gl.uniform1f(loc.u_time!, time % 1000);
       gl.uniform3fv(loc.u_pal!, pal);
       gl.uniform4fv(loc.u_mark!, marks);
+      gl.uniform2f(loc.u_aimOff!, f.ax, f.ay);
+      gl.uniform1f(loc.u_t!, f.t);
+      gl.uniform1f(loc.u_aim!, v.dive.phase === 'surfaced' || !v.dive.universe ? -1 : v.dive.aim);
+      gl.uniform1f(loc.u_came!, v.dive.cameFrom);
       gl.uniform1f(loc.u_family!, u ? (u.glyph + u.seed.lo) % 3 : 0);
       gl.uniform2f(loc.u_jc!, u ? -0.8 + ((u.seed.hi >>> 8) % 100) / 250 : -0.7, u ? 0.156 + ((u.seed.lo >>> 8) % 100) / 400 : 0.27);
       core.quad(prog);

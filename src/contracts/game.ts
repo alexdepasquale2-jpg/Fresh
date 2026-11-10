@@ -73,6 +73,10 @@ export interface DiveView {
   readonly progress: number;
   readonly children: readonly FoldNode[];
   readonly reliquaries: number;
+  /** Child index the fall is steering into (0 centre, 1..6 ring). */
+  readonly aim: number;
+  /** Child index the current fold was entered through, for seamless drawing. */
+  readonly cameFrom: number;
   /** Star the player stopped at, or is near enough to stop at. */
   readonly star: StarRef | null;
   readonly narration: string;
@@ -91,6 +95,8 @@ export interface Dive {
   release(): void;
   /** Throw a reliquary at child index (1..6 or 0). */
   throwAt(childIndex: number): CaptureResult;
+  /** Steer the fall into child index 0..6. Falling into a star lands on it. */
+  aim(childIndex: number): void;
   update(ticks: number): void;
   surface(): void;
   view(): DiveView;

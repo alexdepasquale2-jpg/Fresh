@@ -55,6 +55,10 @@ export interface SystemRenderView {
   readonly drag: { kind: SkyPieceKind; x: number; y: number; overOrbit: number } | null;
   readonly tick: number;
   readonly pulse: Fx;
+  /** 0..1 star flare flash, decaying. */
+  readonly flare?: number;
+  /** Ripple at a touched point, 0..1 age. */
+  readonly touch?: { x: number; y: number; age: number } | null;
 }
 export interface SystemRenderer extends Renderer<SystemRenderView> {
   /** Orbit index under a CSS px point, or -1. */

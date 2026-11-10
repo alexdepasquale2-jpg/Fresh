@@ -1,7 +1,8 @@
 // Solar system and Planet screens (unit 23). The player only ever changes the sky.
 import type { ScreenFactory, AppContext } from '@/contracts/app';
 import type { StarRef } from '@/contracts/fold';
-import type { SkyPieceKind } from '@/contracts/sky';
+import type { SkyPieceKind, CosmicEvent } from '@/contracts/sky';
+import { seedToHex } from '@/core/hash';
 import { SKY_PIECE_KINDS } from '@/contracts/sky';
 import { child } from '@/core/hash';
 import { el, backChip, label, button, skyPieceTile, stat, narration, tag } from '@/ui/kit';
@@ -18,11 +19,32 @@ const ensureSystem = (c: AppContext) => {
   return { u, sys: c.selection.system };
 };
 
+// Cosmic tools: act on whole worlds from the solar system.
+type Cosmic = 'pieces' | 'pull' | 'push' | 'flare' | CosmicEvent;
+const COSMIC: { mode: Cosmic; label: string; hint: string }[] = [
+  { mode: 'pieces', label: 'Pieces', hint: 'Drag sky pieces onto an orbit.' },
+  { mode: 'pull', label: 'Pull in', hint: 'Tap an orbit to draw that world nearer its star. Hotter, harsher years.' },
+  { mode: 'push', label: 'Push out', hint: 'Tap an orbit to push that world out. Colder and dimmer.' },
+  { mode: 'flare', label: 'Flare', hint: 'Tap anywhere. The star flares and every world in the system burns a little.' },
+  { mode: 'shower', label: 'Shower', hint: 'Tap an orbit to send a meteor shower down on that world.' },
+  { mode: 'comet-strike', label: 'Comet', hint: 'Tap an orbit to throw a comet straight at that world.' },
+  { mode: 'eclipse', label: 'Eclipse', hint: 'Tap an orbit to darken that world for a season.' },
+  { mode: 'panspermia', label: 'Seed life', hint: 'Tap an orbit to scatter life onto that world.' },
+];
+const COSMIC_SAYS: Record<string, string> = {
+  pull: 'You pull it closer. Its star fills more of their sky.', push: 'You push it out. Their sun shrinks.',
+  flare: 'The star flares. Every world here will remember it.', shower: 'Stones are on their way down.',
+  'comet-strike': 'A comet turns toward them.', eclipse: 'Their sun will go dark.', panspermia: 'Seeds of life drift down to them.',
+};
+
 const PLACE_FAIL: Record<string, string> = { 'none-left': 'None left.', 'sky-full': 'That sky is full.', 'bad-orbit': 'Drop it on an orbit.' };
 
 const system: ScreenFactory = () => {
   let ctx: AppContext | null = null;
   let drag: { kind: SkyPieceKind; x: number; y: number; overOrbit: number } | null = null;
+  let cosmic: Cosmic = 'pieces';
+  let flare = 0;
+  let touch: { x: number; y: number; age: number } | null = null;
   return {
     id: 'system',
     mount: (root, c) => {
@@ -39,11 +61,12 @@ const system: ScreenFactory = () => {
         const p = sys.planets[c.selection.planetIndex] ?? sys.planets[0]!;
         const sky = c.sky.skyOf(p);
         const says = c.skyRules.explain(sky, p);
-        card.replaceChildren(
+        card.replaceChildren(...[
           el('div', { class: 'row' }, el('div', { class: 'k-title' }, p.name), label(`ORBIT ${c.selection.planetIndex + 1}`)),
           el('div', { class: 'row start' }, ...(sky.pieces.length ? sky.pieces.map((k) => tag(k)) : [label('an empty sky')])),
           narration(says[says.length - 1] ?? 'Nothing moves their sky yet.'),
-        );
+          (sky.drift ?? 0) !== 0 || sky.queued?.length ? label(`${sky.drift ? `ORBIT ${sky.drift < 0 ? 'PULLED IN' : 'PUSHED OUT'} ${Math.abs(sky.drift)}` : ''}${sky.drift && sky.queued?.length ? ' · ' : ''}${sky.queued?.length ? `${sky.queued.length} COMING` : ''}`) : null,
+        ].filter((x): x is HTMLElement => x !== null));
         const inv = c.sky.inventory();
         tray.replaceChildren(...SKY_PIECE_KINDS.map((k) => {
           const t = skyPieceTile(k, inv[k]);
@@ -77,15 +100,48 @@ const system: ScreenFactory = () => {
         }));
       };
       const field = el('div', { class: 'spacer', 'data-id': 'orbits' });
+      const keyOf = (o: number) => seedToHex(sys.planets[sys.orbits[o]!.planet]!.seed);
       field.addEventListener('pointerdown', (e) => {
         const at = local(e);
+        touch = { ...at, age: 0 };
         const o = c.renderers.system.orbitAt(at.x, at.y);
-        if (o >= 0) { c.selection.planetIndex = o; renderCard(); }
+        if (cosmic === 'flare') {
+          flare = 1;
+          for (let i = 0; i < sys.orbits.length; i++) c.sky.queue(keyOf(i), 'flare');
+          note.textContent = COSMIC_SAYS.flare!;
+          c.persist();
+          renderCard();
+          return;
+        }
+        if (o < 0) { if (cosmic !== 'pieces') note.textContent = 'Tap an orbit.'; return; }
+        c.selection.planetIndex = o;
+        if (cosmic === 'pull' || cosmic === 'push') {
+          const sky = c.sky.nudge(keyOf(o), cosmic === 'pull' ? -1 : 1);
+          note.textContent = (sky.drift ?? 0) === (cosmic === 'pull' ? -3 : 3) ? 'It will not go any further.' : COSMIC_SAYS[cosmic]!;
+          c.bus.emit('sky:changed', { planetKey: keyOf(o) });
+        } else if (cosmic !== 'pieces') {
+          c.sky.queue(keyOf(o), cosmic);
+          note.textContent = `${COSMIC_SAYS[cosmic]} Watch the surface to see it land.`;
+        }
+        c.persist();
+        renderCard();
       });
+      const hint = el('p', { class: 'k-label tool-hint' }, COSMIC[0]!.hint);
+      const cosmicRow = el('div', { class: 'tools' }, ...COSMIC.map((t) => {
+        const b = el('button', { class: 'k-tag tool', type: 'button', 'aria-pressed': String(t.mode === cosmic), 'data-id': `cosmic-${t.mode}` }, t.label);
+        b.addEventListener('click', () => {
+          cosmic = t.mode;
+          hint.textContent = t.hint;
+          cosmicRow.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+        });
+        return b;
+      }));
       root.append(
         el('header', { class: 'row' }, backChip('DIVE', () => c.go('dive')), c.battle?.outcome === 'ongoing' ? backChip('BATTLE', () => c.go('battle')) : null, label(`${u.name} · FOLD ${sys.star.address.depth}`)),
         el('h1', { class: 'k-title' }, sys.name),
         field,
+        cosmicRow,
+        hint,
         card,
         note,
         button('Watch the surface', () => c.go('planet'), { primary: true, id: 'watch' }),
@@ -98,7 +154,9 @@ const system: ScreenFactory = () => {
       const s = ctx?.selection;
       if (!ctx || !s?.system || !s.universe) return;
       const skies = s.system.planets.map((p) => ctx!.sky.skyOf(p));
-      ctx.renderers.system.draw({ universe: s.universe, system: s.system, skies, selectedOrbit: s.planetIndex, drag, tick: ctx.clock.tick(), pulse: ctx.pulse().phase() }, dt);
+      flare = Math.max(0, flare - dt / 1500);
+      if (touch) { touch = { ...touch, age: touch.age + dt / 700 }; if (touch.age >= 1) touch = null; }
+      ctx.renderers.system.draw({ universe: s.universe, system: s.system, skies, selectedOrbit: s.planetIndex, drag, tick: ctx.clock.tick(), pulse: ctx.pulse().phase(), flare, touch }, dt);
     },
     unmount: () => void (ctx = null),
   };
@@ -152,6 +210,16 @@ const planet: ScreenFactory = () => {
       const p = sys.planets[c.selection.planetIndex] ?? sys.planets[0]!;
       planetSpec = p;
       c.sim.open(u, p);
+      // Cosmic events thrown from the solar system land now.
+      const landed = c.sky.takeQueued(seedToHex(p.seed));
+      for (const ev of landed) {
+        const xs = [30, 80, 130, 180, 210];
+        if (ev === 'flare') { for (const x of xs) c.sim.tool('heat', x, 60, 24); for (const x of [50, 150]) c.sim.tool('fire', x, 90, 3); }
+        else if (ev === 'shower') for (const x of [40, 95, 120, 170, 200]) c.sim.tool('meteor', x, 0, 6);
+        else if (ev === 'comet-strike') { c.sim.tool('meteor', 118, 0, 16); c.sim.tool('rain', 118, 0, 30); }
+        else if (ev === 'eclipse') for (const x of xs) c.sim.tool('cold', x, 60, 24);
+        else if (ev === 'panspermia') { for (const x of xs) c.sim.tool('seed', x, 100, 8); c.sim.tool('sow', 70, 0, 0); c.sim.tool('sow', 170, 0, 0); }
+      }
       c.box.recordTended(c.box.selected());
       c.persist();
       const sky = c.sky.skyOf(p);

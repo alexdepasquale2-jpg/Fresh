@@ -46,10 +46,12 @@ export const factory: CivFactory = () => {
   const scanGround = (g: GridView) => {
     if (ground.length !== g.width) ground = new Int16Array(g.width);
     for (let x = 0; x < g.width; x++) {
+      // Ground is the first run of 4 non-air cells; drops and ash in the air are not ground.
+      const airy = (c: number) => c === 0 || c === 5 || c === ENGINE.fire.id;
       let y = 0;
-      while (y < g.height - 1) {
-        const c = g.cells[y * g.width + x]!;
-        if (c !== 0 && c !== 5 && c !== ENGINE.fire.id) break;
+      while (y < g.height - 4) {
+        const i = y * g.width + x, w = g.width;
+        if (!airy(g.cells[i]!) && !airy(g.cells[i + w]!) && !airy(g.cells[i + 2 * w]!) && !airy(g.cells[i + 3 * w]!)) break;
         y++;
       }
       ground[x] = y;

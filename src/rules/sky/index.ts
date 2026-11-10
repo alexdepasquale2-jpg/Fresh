@@ -32,9 +32,20 @@ export const factory: SkyRulesFactory = () => {
     effects: (sky) => {
       const m: Record<ModifierKey, number> = { ...NEUTRAL_MODIFIERS };
       for (const r of matching(sky.pieces)) for (const [k, v] of Object.entries(r.effects) as [ModifierKey, number][]) m[k] += v;
+      // A nudged orbit: closer is hotter with harsher seasons, further is colder and dimmer.
+      const d = sky.drift ?? 0;
+      m.warmth -= d * 20;
+      m.seasons += Math.abs(d) * 6;
+      if (d > 0) m.dimming += d * 8;
       for (const k of Object.keys(m) as ModifierKey[]) m[k] = Math.max(-100, Math.min(100, m[k]));
       return m as SurfaceModifiers;
     },
-    explain: (sky) => matching(sky.pieces).map((r) => r.says),
+    explain: (sky) => {
+      const says = matching(sky.pieces).map((r) => r.says);
+      const d = sky.drift ?? 0;
+      if (d < 0) says.push(d <= -2 ? 'Their world was pulled close to the star. It burns.' : 'Their world was drawn nearer the star.');
+      if (d > 0) says.push(d >= 2 ? 'Their world was pushed out into the cold.' : 'Their world was pushed further from the star.');
+      return says;
+    },
   };
 };

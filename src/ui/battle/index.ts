@@ -131,7 +131,7 @@ const battle: ScreenFactory = () => {
       if (!ctx?.battle || !bg) { ctx?.gl.clear('#17140c'); return; }
       t += dt;
       ctx.renderers.dive.draw({
-        dive: { phase: 'hovering', universe: bg.spec, address: bg.addr, depth: 0, best: 0, progress: Math.floor((t / 12) % 1000), children: bg.children, reliquaries: 0, star: null, narration: '' },
+        dive: { phase: 'hovering', universe: bg.spec, address: bg.addr, depth: 0, best: 0, progress: Math.floor((t / 12) % 1000), children: bg.children, reliquaries: 0, star: null, narration: '', aim: 0, cameFrom: 0 },
         pulse: ctx.pulse().phase(), lightPips: 3,
       }, dt);
     },
