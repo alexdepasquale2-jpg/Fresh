@@ -18,9 +18,10 @@ export interface Sheet {
 export const createSheet = (root: HTMLElement, town: Town, sfx: (n: string, a?: number) => void): Sheet => {
   const box = el('section', { class: 'town-sheet', 'data-id': 'town-sheet', hidden: true });
   root.append(box);
-  let current: Scene | null = null, kind: 'scene' | 'skim' | 'bag' | 'map' | null = null;
+  let current: Scene | null = null, kind: 'scene' | 'skim' | 'fish' | 'bag' | 'map' | null = null;
+  let fishT = 0, biteAt = 0, fishWhere = '', floatEl: HTMLElement | null = null, bitten = false;
   let skimP = 0, skimDir = 1, marker: HTMLElement | null = null, skimPlace = '';
-  const close = (): void => { box.hidden = true; box.replaceChildren(); current = null; kind = null; marker = null; };
+  const close = (): void => { box.hidden = true; box.replaceChildren(); current = null; kind = null; marker = null; floatEl = null; };
   const head = (who: string, look?: Scene['look']): HTMLElement => {
     const h = el('header', { class: 'town-sheet-head' });
     if (look) { const c = el('canvas', { class: 'town-face', width: CELL_W, height: 14 }); c.getContext('2d')!.drawImage(lookSheet(look), 0, look.tall ? 3 : 6, CELL_W, 14, 0, 0, CELL_W, 14); h.append(c); }
@@ -30,6 +31,7 @@ export const createSheet = (root: HTMLElement, town: Town, sfx: (n: string, a?: 
   const show = (s: Scene | null): void => {
     if (!s) { close(); return; }
     if (s.skim) { skim(s); return; }
+    if (s.fish) { fish(s); return; }
     current = s; kind = 'scene'; box.hidden = false; box.className = 'town-sheet';
     const kids: HTMLElement[] = [];
     if (s.who) kids.push(head(s.who, s.look));
@@ -66,6 +68,24 @@ export const createSheet = (root: HTMLElement, town: Town, sfx: (n: string, a?: 
     box.replaceChildren(head(PLACES.find((p) => p.id === skimPlace)?.name ?? 'The water'), el('p', { class: 'k-narration town-say' }, `${s.text} Throw when the mark is in the bright part. Best: ${town.state.skim.best}.`), bar, el('div', { class: 'town-choices' }, go, stop));
   };
 
+  // Fishing: the float sits for a while, then goes under. Strike within about a second of that.
+  const fish = (s: Scene): void => {
+    kind = 'fish'; current = s; fishWhere = s.fish!; box.hidden = false; box.className = 'town-sheet';
+    fishT = 0; biteAt = 1400 + Math.random() * 3600; bitten = false;
+    floatEl = el('i', { class: 'town-float' });
+    const water = el('div', { class: 'town-fish', 'data-id': 'town-fish' }, floatEl);
+    const go = el('button', { class: 'k-btn town-choice', type: 'button', 'data-id': 'town-strike' }, 'Strike');
+    go.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const late = fishT - biteAt, q = late < 0 || late > 1100 ? 0 : late < 450 ? 1 : 0.5;
+      sfx('water');
+      show(town.fishDone(fishWhere, q));
+    });
+    const stop = el('button', { class: 'k-btn town-choice', type: 'button', 'data-id': 'town-fish-leave' }, 'Wind it in');
+    stop.addEventListener('click', (e) => { e.stopPropagation(); close(); });
+    box.replaceChildren(head(s.who || 'The water'), el('p', { class: 'k-narration town-say', 'data-id': 'town-say' }, s.text), water, el('div', { class: 'town-choices' }, go, stop));
+  };
+
   const closer = (): HTMLElement => { const b = el('button', { class: 'k-btn town-choice', type: 'button', 'data-id': 'town-sheet-close' }, 'Close'); b.addEventListener('click', (e) => { e.stopPropagation(); close(); }); return b; };
   const bag = (): void => {
     kind = 'bag'; current = null; box.hidden = false; box.className = 'town-sheet tall';
@@ -86,14 +106,16 @@ export const createSheet = (root: HTMLElement, town: Town, sfx: (n: string, a?: 
     paintMap(c, town, 2);
     const lead = town.lead();
     box.replaceChildren(head(`The neighbourhood · ${town.state.districts.length}/12 districts`), c,
-      el('p', { class: 'k-label town-legend' }, 'MINT you · GOLD + your errand · RUST bus stops · PALE places'),
+      el('p', { class: 'k-label town-legend' }, 'MINT you · GOLD + your errand · GOLD dots other errands · RUST bus stops · PALE places'),
       el('p', { class: 'k-narration town-say' }, lead ? `${lead.name}: ${lead.hint}` : 'Nothing is asked of you just now.'),
+      el('p', { class: 'k-label town-legend', 'data-id': 'town-stops' }, (() => { const k = PLACES.filter((p) => p.stop && town.state.places.includes(p.id)); return k.length ? `THE 4 STOPS AT: ${k.map((p) => p.name.replace(/ stop$/, '')).join(' · ')}. BOARD AT ANY STOP.` : 'FIND A BUS STOP ON FOOT AND THE 4 WILL TAKE YOU BACK TO IT.'; })()),
       el('div', { class: 'town-choices' }, closer()));
   };
   return {
     show, open: () => !box.hidden, close, bag, map,
     advance: () => { if (kind === 'scene' && current) { if (current.choices?.length) show(current.choices[0]!.pick()); else close(); } else if (kind === 'bag' || kind === 'map') close(); },
     frame: (dt) => {
+      if (kind === 'fish' && floatEl) { fishT += dt; const under = fishT >= biteAt && fishT < biteAt + 1100; if (under !== bitten) { bitten = under; floatEl.classList.toggle('bite', under); if (under) sfx('water', 0.6); } if (fishT > biteAt + 1100 && fishT - dt <= biteAt + 1100) { biteAt = fishT + 1400 + Math.random() * 3600; } return; }
       if (kind !== 'skim' || !marker) return;
       skimP += skimDir * dt * 0.0008; if (skimP > 1) { skimP = 1; skimDir = -1; } else if (skimP < 0) { skimP = 0; skimDir = 1; }
       marker.style.left = `${(skimP * 100).toFixed(1)}%`;

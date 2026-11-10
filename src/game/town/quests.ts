@@ -141,19 +141,19 @@ export const QUESTS: QuestDef[] = [
     id: 'lamps', name: 'The Age of Lamps', thread: 'side', giver: 'avery',
     offer: 'You keep worlds, I am told. Do any of them keep a light at night yet? Show me one that has come as far as lamps and I shall stop setting you lines about attention.',
     steps: [
-      { hint: 'Tend a world in your Box until its people reach their third age.', on: { type: 'cond', need: { fact: ['era', '>=', 3] }, say: 'One of your worlds keeps lamps now. You could tell her.' }, mark: [136, 56] },
+      { hint: 'Tend a world in your Box until its people keep lamps (the age after iron).', on: { type: 'cond', need: { fact: ['era', '>=', 3] }, say: 'One of your worlds keeps lamps now. You could tell her.' }, mark: [136, 56] },
       { hint: 'Tell Miss Avery.', on: { type: 'talk', npc: 'avery', say: 'Lamps. So they are afraid of the dark as well. That is the first thing we have in common with them. Thank you.' } },
     ],
     reward: { coins: 10, sky: [['moon', 1]] }, end: 'Miss Avery knows one of your worlds keeps a light on.',
   },
   {
     id: 'three', name: 'Company', thread: 'side', giver: 'pip',
-    offer: 'How many have you got in your Box? I am not asking to see. Only, come back when it is three. One is lonely and two is an argument.',
+    offer: 'How many have you got in your Box? I am not asking to see. Only, come back when you have three you have been right to the bottom of. One is lonely and two is an argument.',
     steps: [
-      { hint: 'Hold three universes in your Box.', on: { type: 'cond', need: { fact: ['count', '>=', 3] } }, mark: [84, 57] },
+      { hint: 'Reach the floor of three dives (any of your universes).', on: { type: 'cond', need: { fact: ['floors', '>=', 3] } }, mark: [84, 57] },
       { hint: 'Tell Pip.', on: { type: 'talk', npc: 'pip', say: 'Three. Good. Now they can take sides. Have this, it is my second-best.' } },
     ],
-    reward: { items: [['pip-marble', 1]], sky: [['dust', 2]] }, end: 'Three in the Box. Pip approves.',
+    reward: { items: [['pip-marble', 1]], sky: [['dust', 2]] }, end: 'Three known to the floor. Pip approves.',
   },
   {
     id: 'skim', name: 'Seven Skips', thread: 'side', giver: 'nell',

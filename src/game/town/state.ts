@@ -35,6 +35,8 @@ export const migrate = (raw: unknown): TownState => {
     skim: { best: num(sk.best, 0), day: num(sk.day, -1), throws: num(sk.throws, 0) },
     stats: { steps: num(st.steps, 0), talks: num(st.talks, 0), rides: num(st.rides, 0), sits: num(st.sits, 0) },
     log: strs(j.log).slice(-40),
+    ...(typeof j.inside === 'string' ? { inside: j.inside, bx: num(j.bx, f.x), by: num(j.by, f.y) } : {}),
+    ...(j.riding === true ? { riding: true } : {}),
   };
 };
 

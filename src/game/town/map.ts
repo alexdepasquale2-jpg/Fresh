@@ -1,7 +1,7 @@
 // The neighbourhood, built once from a fixed seed. 160x160 tiles, twelve districts.
 // Everything here is a pure function of SEED and the registered PLACES and GATES.
 import { rng, makeSeed, child, type Rng } from '@/core/hash';
-import { T, MAP_W as W, MAP_H as H, type Builder, type District, type PlaceDef, type GateDef } from './types';
+import { T, MAP_W as W, MAP_H as H, type Builder, type District, type PlaceDef, type GateDef, type InteriorDef } from './types';
 
 export const SEED = makeSeed(0x5a110, 0x70c0de);
 
@@ -67,6 +67,10 @@ export const PLACES: PlaceDef[] = [
   { id: 'sign-lots', name: 'Sign', at: [41, 102], sign: 'ALLOTMENT SOCIETY. Gate locked at dusk. Plot 9 is not let and is not to be dug.' },
   { id: 'sign-halt', name: 'Sign', at: [121, 78], sign: 'HOLLIN HALT. Timetable: a blank sheet behind glass, very clean.' },
   { id: 'sign-cut', name: 'Sign', at: [40, 131], sign: 'THE CUT. Stepping stones. Count them going over. Count them coming back.' },
+  { id: 'board', name: 'The noticeboard', at: [127, 98], build: (b) => { b.set(127, 98, T.SIGN); } },
+  { id: 'photo-hill', name: 'The view from Mast Hill', at: [33, 25], photo: 'The whole parish, small enough to cover with a hand. From here the Row is one line of lit squares, like a box with the lid off.' },
+  { id: 'photo-mere', name: 'The end of the Long Pier', at: [90, 152], photo: 'Flat water to the far trees. Under it, if you hold still, a street. One window down there is lit.' },
+  { id: 'bike-spot', name: 'A bike in the nettles', at: [155, 95], hidden: true },
   { id: 'sign-school', name: 'Sign', at: [112, 57], sign: 'HOLLIN PRIMARY. "Lost: one lunch box, plain, heavy." The notice is years old. Someone renews the pin.' },
 ];
 
@@ -83,10 +87,12 @@ export interface TownMap {
   readonly noise: Uint8Array;
   readonly lamps: readonly (readonly [number, number])[];
   readonly doors: readonly { x: number; y: number; label: string }[];
+  /** Tiles and reach as they were before registered places built on the map: seeded scatter is placed against these, so new places never move old finds. */
+  readonly baseTiles?: Uint8Array; readonly baseReach?: Uint8Array;
 }
 
 const SOLID = new Uint8Array(64);
-for (const t of [T.WATER, T.DEEP, T.TREE, T.BUSH, T.FENCE, T.WALL, T.ROOF, T.DOOR, T.RAIL, T.BALLAST, T.ROCK, T.GRAVE, T.LAMP, T.BENCH, T.SIGN, T.STOP, T.WINDOW, T.CLIFF, T.MAST, T.SHED, T.HEDGE, T.PIT, T.PINE, T.STUMP, T.CHURCH]) SOLID[t] = 1;
+for (const t of [T.VOID, T.COUNTER, T.BOX, T.SHELF, T.BED, T.WATER, T.DEEP, T.TREE, T.BUSH, T.FENCE, T.WALL, T.ROOF, T.DOOR, T.RAIL, T.BALLAST, T.ROCK, T.GRAVE, T.LAMP, T.BENCH, T.SIGN, T.STOP, T.WINDOW, T.CLIFF, T.MAST, T.SHED, T.HEDGE, T.PIT, T.PINE, T.STUMP, T.CHURCH]) SOLID[t] = 1;
 export const solidTile = (t: number): boolean => SOLID[t] === 1;
 
 let built: TownMap | null = null;
@@ -240,13 +246,24 @@ const build = (): TownMap => {
     path([[45, 130], [40, 130], [40, 127], [24, 127], [24, 131]]); rect(46, 129, 2, 2, T.PLANK);
     path([[36, 142], [14, 142]]); house(12, 137, 5, 4, 2, T.SHED); doors.push({ x: 14, y: 140, label: 'Pump house' }); set(14, 141, T.PATH); }
 
-  // Registered places: benches, signs, stops, and anything they build themselves.
+  // Registered places: benches, signs, stops. Then a snapshot, then anything places build themselves.
   for (const p of PLACES) {
     if (p.stop) set(p.at[0], p.at[1], T.STOP);
     if (p.sign) set(p.at[0], p.at[1], T.SIGN);
     if (p.bench) set(p.at[0], p.at[1], T.BENCH);
-    p.build?.(B);
   }
+  const flood = (out: Uint8Array): void => {
+    const q = new Int32Array(W * H); let qh = 0, qt = 0;
+    q[qt++] = 57 * W + 62; out[57 * W + 62] = 1;
+    while (qh < qt) { const c = q[qh++]!, x = c % W, y = (c / W) | 0; for (let d = 0; d < 4; d++) { const nx = x + (d === 0 ? 1 : d === 1 ? -1 : 0), ny = y + (d === 2 ? 1 : d === 3 ? -1 : 0); if (!inb(nx, ny)) continue; const n = ny * W + nx; if (out[n] || (SOLID[tiles[n]!] && !BASE_GATE.has(n))) continue; out[n] = 1; q[qt++] = n; } }
+  };
+  // The first eight gates are the shipped ones; they count as open ground for the snapshot, as they always did.
+  const BASE_GATE = new Set<number>();
+  GATES.slice(0, 8).forEach((g) => { for (let j = 0; j < (g.h ?? 1); j++) for (let k = 0; k < (g.w ?? 1); k++) BASE_GATE.add((g.at[1] + j) * W + g.at[0] + k); });
+  const baseTiles = tiles.slice(), baseReach = new Uint8Array(W * H);
+  for (const n of BASE_GATE) baseTiles[n] = T.GATE;
+  flood(baseReach);
+  for (const p of PLACES) p.build?.(B);
   GATES.forEach((g, i) => { for (let j = 0; j < (g.h ?? 1); j++) for (let k = 0; k < (g.w ?? 1); k++) { set(g.at[0] + k, g.at[1] + j, T.GATE); gate[(g.at[1] + j) * W + g.at[0] + k] = i + 1; } });
   // Lamps list is rebuilt from tiles so extension lamps count.
   lamps.length = 0;
@@ -260,7 +277,7 @@ const build = (): TownMap => {
     const c = q[qh++]!, x = c % W, y = (c / W) | 0;
     for (let d = 0; d < 4; d++) { const nx = x + (d === 0 ? 1 : d === 1 ? -1 : 0), ny = y + (d === 2 ? 1 : d === 3 ? -1 : 0); if (!inb(nx, ny)) continue; const n = ny * W + nx; if (reach[n] || SOLID[tiles[n]!]) continue; reach[n] = 1; q[qt++] = n; }
   }
-  return { w: W, h: H, tiles, district, gate, reach, noise, lamps, doors };
+  return { w: W, h: H, tiles, district, gate, reach, noise, lamps, doors, baseTiles, baseReach };
 };
 
 /** A reachable, plain tile near (x, y): the nearest by rings. Used for seeded scatter and safe spawns. */
@@ -270,4 +287,40 @@ export const nearestOpen = (m: TownMap, x: number, y: number): readonly [number,
     if (x + dx > 1 && y + dy > 1 && x + dx < W - 2 && y + dy < H - 2 && m.reach[i] && m.tiles[i] !== T.GATE) return [x + dx, y + dy];
   }
   return [62, 57];
+};
+
+/* ---- Interiors: small rooms on a second layer, each behind a street door. Add more with INTERIORS.push(...). ---- */
+const SHOP = ['#######', '#sssss#', '#.....#', '#.ccc.#', '#.....#', '#.....#', '###D###'];
+const HOUSE = ['#######', '#bb.ss#', '#.....#', '#...p.#', '#.....#', '###D###'];
+export const INTERIORS: InteriorDef[] = [
+  { id: 'in-dray', name: 'Dray\'s Corner', door: 'Dray\'s Corner', rows: SHOP, shop: 'dray', says: 'A bell, late. Jars of things in the colours sweets used to be.', reads: ['Tins with the labels soaked off. She knows which is which.', 'A jar of humbugs. One fewer than there should be, always.', 'Yesterday\'s paper. The date has been neatly cut out.'] },
+  { id: 'in-post', name: 'Post Office', door: 'Post Office', rows: SHOP, says: 'Brown paper, string, gum. A grille with nobody behind it this minute.', reads: ['Pigeonholes, one per house on the Row. Yours has a square of card in it. Blank.', 'WANTED: nothing. The poster is only the word.', 'A parcel scale. It reads a little, with nothing on it.'] },
+  { id: 'in-brisk', name: 'Brisk & Daughter', door: 'Brisk & Daughter', rows: SHOP, shop: 'brisk', says: 'Sawdust, cold. The middle of a tune from the back.', reads: ['Hooks, mostly empty. One swings.', 'A photograph: Brisk, and a daughter nobody has met.', 'String, paper, a pencil behind an ear that is not here.'] },
+  { id: 'in-sull', name: 'Sull & Son', door: 'Sull & Son', rows: SHOP, shop: 'sull', says: 'One of everything, each on its own nail.', reads: ['A drawer of keys cut for locks that were never made.', 'Fishing line, hooks, a float. "For Lowmere, or the pond, if you must."', 'A box of little squares of slate. No price.'] },
+  { id: 'in-lantern', name: 'The Lantern Café', door: 'The Lantern Café', rows: SHOP, shop: 'lantern', says: 'Steam on the glass. Somebody has drawn a box in it with a finger.', reads: ['The specials board says COCOA, eleven times.', 'A shelf of cups, each with a name. One says yours, in old paint.', 'The clock here is right. It is the only one.'] },
+  { id: 'in-school', name: 'Hollin Primary', door: 'Hollin Primary', day: true, says: 'Floor polish and chalk. The corridor is longer than the building.',
+    rows: ['############', '#s..#ssssss#', '#...#.c.c..#', '#......c.c.#', '#...#.c.c..#', '#...#......#', '#D##########'],
+    reads: ['Coat pegs with names. One peg has a name and has never had a coat.', 'The blackboard: I MUST PAY ATTENTION, down to the bottom, then smaller.', 'A nature table. A cube of stone with a label: "found, quarry, do not hold to ear".', 'A map of the parish. The reservoir has been coloured in as fields.', 'Class photograph. Count the children. Count again.', 'The register. A line for a name, ruled each morning, left empty.', 'Lost property: one lunch box, plain, heavy. It is warm.'] },
+  { id: 'in-no4', name: 'No. 4', door: 'No. 4', day: true, rows: HOUSE, says: 'Mrs Pell\'s front room. Every chair faces the window.', reads: ['Sixty years of diaries. Each day says who went by.', 'A birthday card, unopened, addressed to her in her own hand.'] },
+  { id: 'in-no8', name: 'No. 8', door: 'No. 8', day: true, rows: HOUSE, says: 'Nobody in. A kettle is coming to the boil and does not.', reads: ['A shelf of jigsaws. All the lids show the Row.', 'A radio, between stations. Underneath the hiss, counting.'] },
+  { id: 'in-rival', name: 'A bedroom at No. 12', door: 'No. 12', rows: ['#######', '#bb.ss#', '#.....#', '#..B..#', '#.....#', '###D###'], says: 'Not your room. The same desk, the same light. Their box is on the floor.',
+    box: 'Their Box, lid shut. Twenty-five small sounds inside, like rain on a tin a long way off. It is not yours to open.', reads: ['Comics, in order. A notebook: tallies of wins, and one loss, underlined.', 'A drawing of the mast with rings round it. Yours looked the same.'] },
+  { id: 'in-church', name: 'St Orrin\'s', at: [[22, 53], [23, 53]], says: 'Cold stone and wax. The pews face a window of plain glass.',
+    rows: ['#########', '#s..c..s#', '#.......#', '#pp...pp#', '#.......#', '#pp...pp#', '#.......#', '####D####'],
+    reads: ['The hymn board. The numbers are a date in 1931.', 'A brass plate: ELEVEN HOUSES AND ONE CHAPEL, GIVEN TO THE WATER.'] },
+  { id: 'in-signal', name: 'The signal box', door: 'Signal box', rows: ['#####', '#sss#', '#...#', '#.c.#', '##D##'], says: 'Levers, polished by one hand. A bell that has just stopped.',
+    reads: ['The train register. Every entry is tonight\'s date.', 'A lever painted white, wired off: DOWN LINE. DO NOT.', 'A flask and one cup. The cup is for somebody.'] },
+  { id: 'in-mast', name: 'The relay hut', at: [[29, 17]], rows: ['#####', '#sss#', '#...#', '#...#', '##D##'], says: 'Warm. Racks of valves, all lit. None of it is plugged in.',
+    reads: ['A log book. RECEIVED, RECEIVED, RECEIVED. Nothing under SENT.', 'Headphones on a nail. You can hear them from here.', 'A dial marked in folds, not miles. The needle sits where you last dived.'] },
+];
+/** Top-left tile of interior `i` on the indoor layer. */
+export const interiorOrigin = (i: number): readonly [number, number] => [6 + (i % 5) * 31, 6 + ((i / 5) | 0) * 38];
+const CHARS: Record<string, number> = { '#': T.WALL, '.': T.FLOOR, D: T.DOOR, c: T.COUNTER, s: T.SHELF, b: T.BED, B: T.BOX, w: T.WINDOW, p: T.BENCH };
+let inBuilt: TownMap | null = null;
+/** The indoor layer: every interior laid out on one dark sheet the same size as the town. */
+export const indoorMap = (): TownMap => {
+  if (inBuilt) return inBuilt;
+  const tiles = new Uint8Array(W * H).fill(T.VOID), reach = new Uint8Array(W * H), noise = townMap().noise;
+  INTERIORS.forEach((n, k) => { const o = interiorOrigin(k); n.rows.forEach((row, j) => { for (let i = 0; i < row.length; i++) { const t = CHARS[row[i]!] ?? T.VOID, q = (o[1] + j) * W + o[0] + i; if (q < W * H) { tiles[q] = t; reach[q] = t === T.FLOOR ? 1 : 0; } } }); });
+  return (inBuilt = { w: W, h: H, tiles, district: new Uint8Array(W * H).fill(5), gate: new Uint8Array(W * H), reach, noise, lamps: [], doors: [] });
 };

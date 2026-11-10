@@ -43,3 +43,14 @@
 :root.sallow-text-s .town-say, :root.sallow-text-s .town-choice { font-size: 14px; }
 :root.sallow-reduce-motion .town-banner.go { animation: none; }
 @media (prefers-reduced-motion: reduce) { .town-banner.go { animation: none; } }
+.town-fish { position: relative; height: 44px; border: 2px solid var(--line); background: var(--raised); overflow: hidden; }
+.town-float { position: absolute; left: 50%; top: 10px; width: 8px; height: 16px; margin-left: -4px; background: var(--gold); border-top: 5px solid var(--warn, var(--ink-bright)); transition: transform .12s; }
+.town-float.bite { transform: translateY(18px); background: var(--glow); }
+.town-btn[hidden] { display: none; }
+.town-btn[aria-pressed='true'] { border-color: var(--glow); color: var(--glow); }
+/* Desktop: the buttons and the sheets go in a right-hand column the width of the side panel; the walk keeps the rest. */
+:root.sallow-desktop .town-top { max-width: 320px; }
+:root.sallow-desktop .town-bar { left: auto; right: 8px; top: 64px; bottom: auto; width: calc(var(--panel-w, 320px) - 16px); max-width: 44%; flex-wrap: wrap; }
+:root.sallow-desktop .town-btn { flex: 1 1 40%; min-height: var(--touch); }
+:root.sallow-desktop .town-sheet { left: auto; right: 8px; top: 172px; bottom: 8px; width: calc(var(--panel-w, 320px) - 16px); max-width: 44%; max-height: none; }
+:root.sallow-desktop .town-sheet.tall { max-height: none; }
