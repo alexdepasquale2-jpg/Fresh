@@ -9,6 +9,7 @@ import { seedToHex } from '@/core/hash';
 import { FX_ONE } from '@/core/fixed';
 import { registry as R } from './registry';
 import { createSimClient } from './sim-client';
+import type { Opened } from './sim-client';
 
 /** Serials in the Box on a new game. Never change: saves and share codes rely on them. */
 export const STARTER_SERIALS = [0x3f9a77, 0x0b11e5, 0x5a17ee, 0x7a110e, 0xc401a1, 0x9e11a5, 0x2d0ce4] as const;
@@ -49,7 +50,14 @@ export const createApp = (gl: GlCore, go: (to: ScreenId) => void, persist: () =>
   let glowAcc = 0;
   let seenLaunches = 0;
   let lastOrbitTick = 0;
-  const onFrame = (f: SimFrame) => {
+  const onFrame = (f: SimFrame, opened?: Opened) => {
+    // A world's first frame is where it stands, not time that passed: a restored world must not
+    // pay out the glow of all its years again, nor launch again what it already put in orbit.
+    if (opened) {
+      lastSimTick = f.tick;
+      lastOrbitTick = f.tick;
+      seenLaunches = opened.restored ? f.civ.launches : 0;
+    }
     const dt = Math.max(0, f.tick - lastSimTick);
     lastSimTick = f.tick;
     glowAcc += (f.civ.glowPerMinute * 50 * dt) / 1200;
