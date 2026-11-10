@@ -11,7 +11,7 @@ import type { Plugin } from '../plugins';
 interface Where { screen: ScreenId; serial: number; star: StarRef | null; planetIndex: number; at: number }
 const RESUME_WITHIN_MS = 20 * 60 * 1000;
 /** Where to land for each screen left. */
-const LAND: Partial<Record<ScreenId, ScreenId>> = { box: 'box', system: 'system', planet: 'planet', outside: 'outside', dive: 'box', battle: 'outside', mirror: 'box' };
+const LAND: Partial<Record<ScreenId, ScreenId>> = { box: 'box', system: 'system', planet: 'planet', outside: 'outside', dive: 'box', battle: 'outside', mirror: 'box', town: 'town' };
 
 export const plugin: Plugin = (shell) => {
   const { ctx } = shell;

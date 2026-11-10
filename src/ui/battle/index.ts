@@ -156,6 +156,7 @@ const outside: ScreenFactory = () => {
         };
         root.replaceChildren(
           el('header', { class: 'row' }, backChip('ROOM', () => c.go('bedroom')), lightPips(c.light.view().pips).el),
+          button('Walk out into the street', () => c.go('town'), { id: 'go-town' }),
           el('div', { class: 'row' }, el('h1', { class: 'k-title' }, 'Outside'), el('span', { class: 'k-tag intent', 'data-id': 'ladder-progress' }, `LADDER ${done}/${all.length}`)),
           el('div', { class: 'team' }, ...mine.map((f, i) => {
             const info = levelOf(c, L.xp[f.serialNumber] ?? 0);

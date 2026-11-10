@@ -272,7 +272,7 @@ export const bedroom: ScreenFactory = () => {
         bubble,
         el('div', { class: 'rb-info' }, line, shelf),
         button('Open the box', () => c.go('box'), { primary: true, id: 'open-box' }),
-        el('div', { class: 'row nowrap' }, button('Go outside', () => c.go('outside'), { id: 'go-outside' }), use),
+        el('div', { class: 'row nowrap' }, button('Go outside', () => c.go('outside'), { id: 'go-outside' }), button('The street', () => c.go('town'), { id: 'go-town' }), use),
         el('p', { class: 'k-label hint' }, 'Tap the floor to walk · tap a thing to use it'),
       );
     },
