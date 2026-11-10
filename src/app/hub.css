@@ -14,7 +14,7 @@
 .hub-item span { flex: 1; }
 .hub-item small { display: block; margin-top: 2px; color: var(--ink-muted); font: 400 13px var(--font-voice); letter-spacing: 0; text-transform: none; }
 .hub-item b { color: var(--glow); font-weight: 600; }
-.hub-toasts { position: absolute; left: var(--pad); right: var(--pad); top: 60px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.hub-toasts { position: absolute; z-index: 2; left: var(--pad); right: var(--pad); top: 60px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
 .hub-toast { padding: 8px 12px; background: var(--panel); border: 1px solid var(--gold); color: var(--ink); font: 400 15px var(--font-voice); animation: hub-toast 4.2s ease both; }
 .hub-toast b { display: block; font: 600 11px var(--font-ui); letter-spacing: .1em; text-transform: uppercase; color: var(--glow); margin-bottom: 2px; }
 @keyframes hub-toast { 0% { opacity: 0; transform: translateY(-8px); } 8%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
