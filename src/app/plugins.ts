@@ -48,5 +48,11 @@ export interface Shell {
 }
 export type Plugin = (shell: Shell) => void;
 
-const mods = import.meta.glob<{ plugin?: Plugin }>('./plugins/*.ts', { eager: true });
-export const plugins: Plugin[] = Object.keys(mods).sort().map((k) => mods[k]!.plugin).filter((p): p is Plugin => typeof p === 'function');
+// Each plugin is its own chunk, fetched in parallel at boot, so the entry bundle stays small.
+const mods = import.meta.glob<{ plugin?: Plugin }>('./plugins/*.ts');
+/** Load every plugin, in file-name order. One that fails to load is skipped, never fatal. */
+export const loadPlugins = async (): Promise<Plugin[]> => {
+  const keys = Object.keys(mods).sort();
+  const loaded = await Promise.all(keys.map((k) => mods[k]!().catch((e: unknown) => { console.error('plugin failed to load', k, e); return null; })));
+  return loaded.map((m) => m?.plugin).filter((p): p is Plugin => typeof p === 'function');
+};

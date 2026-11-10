@@ -6,7 +6,7 @@ import { createGlCore, createFrameLoop } from '@/render/gl';
 import { TICKS_PER_SECOND } from '@/contracts/time';
 import { createApp, STARTER_SERIALS } from './context';
 import { createHub } from './hub';
-import { plugins } from './plugins';
+import { loadPlugins } from './plugins';
 import type { Shell } from './plugins';
 import { stage } from './plugins/desktop';
 
@@ -106,7 +106,7 @@ export const boot = async (host: HTMLElement) => {
     onNavigate: (cb) => void navCbs.push(cb),
     setTransition: (fn) => void (transition = fn),
   };
-  for (const p of plugins) {
+  for (const p of await loadPlugins()) {
     try { p(shell); } catch (e) { console.error('plugin failed', e); }
   }
   go('bedroom');
