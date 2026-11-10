@@ -5,6 +5,7 @@ import type { Screen, ScreenId } from '@/contracts/app';
 import { createGlCore, createFrameLoop } from '@/render/gl';
 import { TICKS_PER_SECOND } from '@/contracts/time';
 import { createApp, STARTER_SERIALS } from './context';
+import { createHub } from './hub';
 import { plugins } from './plugins';
 import type { Shell } from './plugins';
 
@@ -97,6 +98,7 @@ export const boot = async (host: HTMLElement) => {
   (window as unknown as { __sallow: unknown }).__sallow = { go, ctx };
   const shell: Shell = {
     ctx, host, layer, canvas, resumed,
+    ...createHub(host, (n) => ctx.audio.sfx(n)),
     current: () => currentId,
     onFrame: (cb) => void frameCbs.push(cb),
     onNavigate: (cb) => void navCbs.push(cb),

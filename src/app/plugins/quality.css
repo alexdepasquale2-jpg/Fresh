@@ -1,15 +1,6 @@
-/* Quality readout. A frame the size of the play area, so the tab hugs the screen's right edge on wide displays too. */
-.q-frame { position: absolute; left: 50%; top: 50%; width: min(100vw, var(--screen-w)); height: min(100dvh, var(--screen-h)); transform: translate(-50%, -50%); pointer-events: none; z-index: 30; font-family: var(--font-ui); }
 
-/* A full 44px touch target in the top corner, the one place no screen puts a control; only the slim mark on the edge is painted. */
-.q-tab { position: absolute; right: 0; top: 8px; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; pointer-events: auto; cursor: pointer; touch-action: manipulation; }
-.q-tab-mark { position: absolute; right: 0; top: 8px; bottom: 8px; width: 6px; background: var(--panel); border: 1px solid var(--line); border-right: 0; opacity: .7; }
-.q-tab-mark::after { content: ''; position: absolute; left: 1px; right: 0; top: 50%; height: 6px; margin-top: -3px; background: var(--ink-off); }
-.q-frame.open .q-tab-mark { opacity: 1; border-color: var(--gold); }
-.q-frame.open .q-tab-mark::after { background: var(--glow); }
 
-.q-panel { position: absolute; right: 10px; top: 56px; width: 216px; display: none; flex-direction: column; gap: 4px; padding: 8px; background: var(--panel); border: 2px solid var(--line); color: var(--ink); pointer-events: auto; }
-.q-frame.open .q-panel { display: flex; }
+.q-panel { display: flex; flex-direction: column; gap: 4px; padding: 8px; background: var(--panel); border: 2px solid var(--line); color: var(--ink); font-family: var(--font-ui); }
 .q-head { display: flex; align-items: baseline; gap: 6px; }
 .q-fps { font: 600 24px/1 var(--font-ui); color: var(--ink-bright); min-width: 2ch; }
 .q-unit { font: 12px var(--font-ui); color: var(--ink-muted); }

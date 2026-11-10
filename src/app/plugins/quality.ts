@@ -1,14 +1,12 @@
 /**
- * Quality readout: a slim tab on the right edge opens a small panel with the frame
- * rate, frame times, the current quality and a manual Auto / Low / Medium / High
- * switch. Closed by default; remembers whether it was left open.
+ * Quality readout: a page in the hub menu with the frame rate, frame times, the
+ * current quality and a manual Auto / Low / Medium / High switch.
  */
 import './quality.css';
 import { perfControl } from '@/platform/perf';
 import type { PerfMode } from '@/platform/perf';
 import type { Plugin } from '../plugins';
 
-const OPEN_KEY = 'sallow-quality-open';
 const REFRESH_MS = 250;
 const BARS = 96;
 /** Top of the sparkline, in ms. Anything slower is drawn full height. */
@@ -26,13 +24,6 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: s
 
 export const plugin: Plugin = (shell) => {
   let open = false;
-  try { open = localStorage.getItem(OPEN_KEY) === '1'; } catch { /* storage blocked */ }
-
-  const frame = el('div', 'q-frame');
-  const tab = el('button', 'q-tab');
-  tab.type = 'button';
-  tab.setAttribute('aria-label', 'Performance and quality');
-  tab.append(el('span', 'q-tab-mark'));
 
   const panel = el('section', 'q-panel');
   panel.setAttribute('aria-label', 'Performance');
@@ -58,8 +49,6 @@ export const plugin: Plugin = (shell) => {
     return [m, b] as const;
   });
   panel.append(head, times, level, spark, seg);
-  frame.append(panel, tab);
-  shell.host.append(frame);
 
   const g = spark.getContext('2d');
   const css = getComputedStyle(document.documentElement);
@@ -107,16 +96,10 @@ export const plugin: Plugin = (shell) => {
     } catch { /* a readout must never break the frame loop */ }
   };
 
-  const show = (on: boolean) => {
-    open = on;
-    frame.classList.toggle('open', on);
-    tab.setAttribute('aria-expanded', on ? 'true' : 'false');
-    try { localStorage.setItem(OPEN_KEY, on ? '1' : '0'); } catch { /* storage blocked */ }
-    if (on) refresh();
-  };
-  tab.addEventListener('click', () => show(!open));
-  // Presses here are not for the screen underneath.
-  frame.addEventListener('pointerdown', (e) => e.stopPropagation());
+  shell.menu.add({
+    id: 'performance', label: 'Performance', hint: 'Frame rate and quality', order: 90,
+    render: (into) => { into.append(panel); open = true; refresh(); return () => { open = false; }; },
+  });
 
   let acc = 0;
   shell.onFrame((dt) => {
@@ -126,5 +109,4 @@ export const plugin: Plugin = (shell) => {
     acc = 0;
     refresh();
   });
-  show(open);
 };

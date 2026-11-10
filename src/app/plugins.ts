@@ -5,6 +5,20 @@
  */
 import type { AppContext, ScreenId } from '@/contracts/app';
 
+/** One page in the hub menu (the ≡ button in the top corner). */
+export interface MenuEntry {
+  readonly id: string;
+  readonly label: string;
+  /** One line under the label in the menu list. */
+  readonly hint?: string;
+  /** Lower comes first. Default 50. */
+  readonly order?: number;
+  /** Short text shown on the entry (and lights the menu button) while non-null, e.g. "2 new". */
+  badge?(): string | null;
+  /** Build the page into `into`. Return a cleanup to run when the page is left. `close` shuts the whole menu. */
+  render(into: HTMLElement, close: () => void): void | (() => void);
+}
+
 export interface Shell {
   readonly ctx: AppContext;
   /** #app: holds the GL canvas and the screen layer. Overlays can be appended here. */
@@ -25,6 +39,12 @@ export interface Shell {
    * called exactly once (synchronously or later). Only one plugin may set this.
    */
   setTransition(fn: (from: ScreenId | null, to: ScreenId, swap: () => void) => void): void;
+  /** The hub menu. Add a page here instead of building a floating button. */
+  readonly menu: { add(entry: MenuEntry): void; open(id?: string): void; close(): void; isOpen(): boolean };
+  /** A short notice at the top of the screen for about four seconds. `sfx: ''` is silent. */
+  toast(text: string, opts?: { title?: string; sfx?: string }): void;
+  /** A small JSON value kept in localStorage under `sallow-<key>`. Survives reloads; never throws. */
+  store<T>(key: string, init: T): { get(): T; set(v: T): void };
 }
 export type Plugin = (shell: Shell) => void;
 
