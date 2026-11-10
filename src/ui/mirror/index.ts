@@ -5,7 +5,7 @@ import type { UniverseSpec } from '@/contracts/universe';
 import type { SkyPieceKind } from '@/contracts/sky';
 import type { RoomRenderView } from '@/contracts/render';
 import { SKY_PIECE_KINDS } from '@/contracts/sky';
-import { el, backChip, button, narration, label, flash, burst, glyphChar } from '@/ui/kit';
+import { el, backChip, button, narration, label, flash, burst, glyphChar, displayName, pieceName, aPiece as aSkyPiece, quote } from '@/ui/kit';
 import {
   load, save, markSeen, giftSerial, aboveSerial, visitSeed, converse, seenLines, shelf, layerOf, needs, canWake, canEnter,
   offered, rank, returnGlow, floorGlow, floorSuns, takesAllowed, FRAGMENTS,
@@ -17,18 +17,11 @@ export { giftSerial };
 const NUMBER = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty', 'twenty-one', 'twenty-two', 'twenty-three', 'twenty-four', 'twenty-five'];
 const count = (n: number, one: string, many: string) => `${NUMBER[n] ?? String(n)} ${n === 1 ? one : many}`;
 const FLIP = 'scaleX(-1)';
-const A_PIECE: Record<string, string> = { comet: 'a comet', moon: 'a moon', belt: 'a belt of stones', sun: 'a small sun', rings: 'a set of rings', dust: 'a veil of dust' };
-const aPiece = (k: string) => A_PIECE[k] ?? `a ${k}`;
-const THE_PIECE: Record<string, string> = { belt: 'belt of stones', rings: 'set of rings', dust: 'veil of dust' };
-const piece1 = (k: string) => THE_PIECE[k] ?? k;
-/** The name the player gave a universe in the Box, if any (the Box keeps them in this store). */
-const nameOf = (u: UniverseSpec): string => {
-  try {
-    const all = JSON.parse(localStorage.getItem('sallow-box-names') ?? '{}') as Record<string, unknown> | null;
-    const n = all?.[String(u.serialNumber)];
-    return typeof n === 'string' && n.trim() ? n : u.name;
-  } catch { return u.name; }
-};
+// On a shelf a sun is a small one; in a sky it is a second one (the kit's wording).
+const aPiece = (k: string) => (k === 'sun' ? 'a small sun' : aSkyPiece(k));
+const piece1 = pieceName;
+/** The name the player gave a universe in the Box, if any. */
+const nameOf = (u: UniverseSpec): string => displayName(u);
 
 interface Beat {
   /** The line, read when it is spoken. */
@@ -101,7 +94,7 @@ const mirror: ScreenFactory = () => {
         says.replaceChildren();
         lines.forEach((t) => put(t, cls));
       };
-      const theirs = (text: string) => say(`“${text}”`, 'mr-child', 'mirror-child');
+      const theirs = (text: string) => say(quote(text), 'mr-child', 'mirror-child');
       const sparks = (n = 10) => { const r = root.getBoundingClientRect(); burst(root, r.width / 2, r.height * 0.42, n, n > 12); };
       const pieces = (n: number) => `${count(n, 'more piece', 'more pieces')} of the answer`;
 
@@ -246,8 +239,8 @@ const mirror: ScreenFactory = () => {
               say(`Your ${piece1(o.kind)} again. It grew in their keeping: there are two now.`);
             } else {
               s.debt++;
-              s.taken = [...s.taken, { serial: u.serialNumber, what: o.kind === 'light' ? 'a pip of light' : aPiece(o.kind) }].slice(-30);
-              say(o.kind === 'light' ? 'You take a pip of their light. Their room is a little darker. The child says nothing.' : `You take their ${piece1(o.kind)}. The child watches it go, and counts what is left.`);
+              s.taken = [...s.taken, { serial: u.serialNumber, what: o.kind === 'light' ? 'a pip of Light' : aPiece(o.kind) }].slice(-30);
+              say(o.kind === 'light' ? 'You take a pip of their Light. Their room is a little darker. The child says nothing.' : `You take their ${piece1(o.kind)}. The child watches it go, and counts what is left.`);
             }
             save();
             c.persist();
@@ -353,7 +346,7 @@ const mirror: ScreenFactory = () => {
         on: () => { flash(root); c.audio.sfx('land'); try { navigator.vibrate?.([40, 80, 40]); } catch { /* not allowed */ } },
       };
       const given: Beat = line('The child holds something out. One of theirs.', 3200, give);
-      const got: Beat = { text: () => (gift ? `${nameOf(gift)} is in your box now. ${floorSuns(s) > 1 ? 'Suns' : 'A sun'} with it, and light for Mote.` : 'Your box is full. Suns instead, and light for Mote.'), hold: 3600 };
+      const got: Beat = { text: () => (gift ? `${nameOf(gift)} is in your box now. ${floorSuns(s) > 1 ? 'Suns' : 'A sun'} with it, and Light for Mote.` : 'Your box is full. Suns instead, and Light for Mote.'), hold: 3600 };
       const answer: Beat = {
         text: () => (piece >= 0 ? FRAGMENTS[piece]! : 'There are no more pieces down here. The answer is whole. The child knows you know.'),
         hold: 0,
@@ -369,7 +362,7 @@ const mirror: ScreenFactory = () => {
           line(`${nameOf(u)} is still lit in their box.`, 2800, showBox),
           ...shelfLine,
           peak,
-          line(s.promised ? 'A little light has been left out for you, as promised. Mote gathers it.' : 'Nothing more is given here. Mote gathers a little light.', 0, () => { c.light.addGlow(returnGlow(s)); c.persist(); menu(); }),
+          line(s.promised ? 'A little Light has been left out for you, as promised. Mote gathers it.' : 'Nothing more is given here. Mote gathers a little Light.', 0, () => { c.light.addGlow(returnGlow(s)); c.persist(); menu(); }),
         ]
         : veryFirst
           ? [

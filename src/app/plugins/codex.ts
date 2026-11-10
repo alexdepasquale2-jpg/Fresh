@@ -15,7 +15,7 @@
 import './codex.css';
 import { child, seedToHex } from '@/core/hash';
 import { formatSerial } from '@/core/serial';
-import { glyphChar } from '@/ui/kit';
+import { glyphChar, displayName, lightShort, pieceCount, aPiece, curly } from '@/ui/kit';
 import { BOX_SLOTS, LIGHT_MAX_PIPS } from '@/contracts/game';
 import type { UniverseStats, Lineage } from '@/contracts/game';
 import { SKY_PIECE_KINDS, SKY_MAX_PIECES } from '@/contracts/sky';
@@ -194,7 +194,7 @@ const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: s
 const tags = (list: readonly string[]) => h('div', 'cx-tags', null, ...list.map((t) => h('span', 'k-tag', t)));
 const section = (title: string, count: string) => h('div', 'cx-sec', null, h('span', 'k-label', title), h('span', 'cx-count', count));
 const line = (text: string) => h('p', 'cx-line', text);
-const say = (text: string) => h('p', 'cx-say', text);
+const say = (text: string) => h('p', 'cx-say', curly(text));
 const block = (title: string, ...kids: (Node | null)[]) => h('div', 'cx-person', null, h('b', '', title), ...kids);
 const barOf = (pct: number) => {
   const bar = h('div', 'cx-bar', null, h('i'));
@@ -346,7 +346,7 @@ const DEEDS: readonly Deed[] = [
   D('merge1', 'bronze', 'A third thing', 'Merge two things.', (q) => q.n.merges >= 1),
   D('merge5', 'silver', 'Never either parent', 'Merge five times.', (q) => q.n.merges >= 5),
   // Light and time
-  D('light10', 'bronze', 'Their glow, your light', 'Earn 10 pips of Light.', (q) => q.n.le >= 10000),
+  D('light10', 'bronze', 'Their glow, your Light', 'Earn 10 pips of Light.', (q) => q.n.le >= 10000),
   D('light100', 'silver', 'A lamp that stays lit', 'Earn 100 pips of Light.', (q) => q.n.le >= 100000),
   D('spend20', 'silver', 'Spent in the dark', 'Spend 20 pips of Light.', (q) => q.n.ls >= 20000),
   D('time10', 'bronze', 'Ten minutes', 'Play for ten minutes.', (q) => q.n.ms >= 600000),
@@ -444,7 +444,7 @@ const rewardOf = (i: number, d: Deed): Reward => {
   if (d.tier === 'silver') return i % 2 ? { piece, count: 1 } : { glow: 800 };
   return { glow: 300 };
 };
-const rewardText = (r: Reward) => ('glow' in r ? `+${r.glow} glow` : `${r.count} ${r.piece}${r.count > 1 && !r.piece.endsWith('s') ? 's' : ''}`);
+const rewardText = (r: Reward) => ('glow' in r ? `${lightShort(r.glow)}` : pieceCount(r.piece, r.count));
 
 // ---------- pages as data ----------
 /** One thing on a codex page. Plain data; DOM is made only for what is shown. */
@@ -520,7 +520,7 @@ export const plugin: Plugin = (shell) => {
   };
   const lawSets = () => ctx.atlas?.lawSets ?? [];
   const lawIndex = (spec: UniverseSpec | null) => (spec ? lawSets().findIndex((l) => l.id === spec.laws.id) : -1);
-  const uniName = (serial: number) => specOf(serial)?.name ?? formatSerial(serial);
+  const uniName = (serial: number) => displayName(serial, specOf(serial)?.name ?? formatSerial(serial));
   const heldMap = (): Map<number, { slot: number; stats: UniverseStats }> => {
     const m = new Map<number, { slot: number; stats: UniverseStats }>();
     safe(() => ctx.box.slots().forEach((e, slot) => { if (e) m.set(e.serialNumber, { slot, stats: e.stats }); }));
@@ -568,7 +568,7 @@ export const plugin: Plugin = (shell) => {
       const spec = specOf(serial);
       const li = lawIndex(spec);
       r = S.u[k] = [0, 0, 0, li];
-      newly('u', serial, spec?.name ?? 'A universe');
+      newly('u', serial, displayName(serial, spec?.name ?? 'A universe'));
       if (li >= 0 && !Object.values(S.u).some((x) => x !== r && x[3] === li)) newly('l', li, spec?.laws.name ?? 'A law set');
     }
     return r;
@@ -653,7 +653,7 @@ export const plugin: Plugin = (shell) => {
         for (let i = 0; i < st.index; i++) list[i] = list[i] ?? 0;
         list[st.index] = m;
         touch();
-        if (!(was & 1)) { bump('strata', 1); newly('d', `${u.serialNumber}:${st.index}`, `${st.name}, in ${u.name}`); }
+        if (!(was & 1)) { bump('strata', 1); newly('d', `${u.serialNumber}:${st.index}`, `${st.name}, in ${displayName(u)}`); }
         const met = (m >> 1) & 127;
         for (let i = 0; i < FT.length; i++) if (met & (1 << i) && !(X.fk & (1 << i))) { X.fk |= 1 << i; newly('d', `ft${i}`, FT_NAME[i] ?? 'Something in the folds'); }
       }
@@ -1327,7 +1327,7 @@ export const plugin: Plugin = (shell) => {
     if ('glow' in r) {
       // A full lamp takes no more: the reward comes as a piece for a sky instead.
       const piece = SKY_PIECE_KINDS[DEEDS.indexOf(d) % SKY_PIECE_KINDS.length] ?? 'dust';
-      if (ctx.light.view().pips >= LIGHT_MAX_PIPS) { ctx.sky.grant(piece, 1); got = `1 ${piece}, for the lamp is full`; }
+      if (ctx.light.view().pips >= LIGHT_MAX_PIPS) { ctx.sky.grant(piece, 1); got = `${pieceCount(piece, 1)}, because Mote is full`; }
       else ctx.light.addGlow(r.glow);
     } else ctx.sky.grant(r.piece, r.count);
     S.a[d.id] = 2;
@@ -1434,7 +1434,7 @@ export const plugin: Plugin = (shell) => {
       const rarity = lin?.rarity ?? spec?.rarity ?? '';
       const state = hv ? 'In the Box' : r[2] & 1 ? 'Let go' : 'Visited';
       return {
-        k, name: spec?.name ?? 'Unnamed', sub: [formatSerial(serial), state, rarity, spec?.temperament ?? ''].filter(Boolean).join(' · '),
+        k, name: displayName(serial, spec?.name ?? 'Unnamed'), sub: [formatSerial(serial), state, rarity, spec?.temperament ?? ''].filter(Boolean).join(' · '),
         say: spec?.motto ?? undefined, chips: spec?.laws.tags, n: r[0], fresh: isNew('u', serial),
         lines: [`Deepest fold ${fmt(r[0])} · worlds tended ${fmt(r[1])}${r[2] & 4 ? ' · floor reached' : ''}${r[2] & 16 ? ' · made' : ''}`],
         pre: () => h('span', 'cx-glyph', spec ? glyphChar(spec.glyph) : '?'),
@@ -1448,7 +1448,7 @@ export const plugin: Plugin = (shell) => {
           if (rar || spec?.temperament) out.push(section('Character', [rar, spec?.temperament].filter(Boolean).join(' · ')));
           if (char?.title) out.push(line(char.title));
           if (spec?.motto) out.push(say(`“${spec.motto}”`));
-          if (spec?.description) out.push(line(spec.description));
+          if (spec?.description) out.push(line(spec.description.split(spec.name).join(displayName(spec))));
           if (spec?.origin) out.push(block('Origin', line(spec.origin)));
           const traits = char?.traits ?? spec?.traits ?? [];
           if (traits.length) out.push(section('Traits', `${traits.length}`));
@@ -1457,7 +1457,7 @@ export const plugin: Plugin = (shell) => {
             out.push(section('Lineage', `generation ${lin.generation}`));
             let told: string[] = [];
             try { told = ctx.merger.describeLineage?.(lin) ?? []; } catch { told = []; }
-            if (!told.length) told = [`Made from ${lin.parents.map((p) => p.name).join(' and ')}${lin.piece ? `, under a ${lin.piece}` : ''}.`, ...(lin.says ? [lin.says] : [])];
+            if (!told.length) told = [`Made from ${lin.parents.map((p) => p.name).join(' and ')}${lin.piece ? `, under ${aPiece(lin.piece)}` : ''}.`, ...(lin.says ? [lin.says] : [])];
             for (const t of told) out.push(line(t));
             if (lin.recipe) out.push(block(lin.recipe.name, say(lin.recipe.says)));
           }

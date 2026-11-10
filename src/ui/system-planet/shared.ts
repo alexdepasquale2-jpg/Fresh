@@ -16,6 +16,8 @@ export const ensureSystem = (c: AppContext) => {
 };
 
 export const keyOf = (p: PlanetSpec) => seedToHex(p.seed);
+/** The key a system's LOG is kept under. */
+export const sysKeyOf = (sys: { readonly seed: PlanetSpec['seed'] }) => seedToHex(sys.seed);
 export const villageName = (c: AppContext, p: PlanetSpec, id: number) => c.names.village(child(p.seed, id + 1));
 
 /** What this device last saw of a world, and what was done to a system. Cosmetic only: never part of what a universe is. */

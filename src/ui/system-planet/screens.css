@@ -27,7 +27,10 @@
 .pl-mark.not { background: var(--glow); border-radius: 50%; }
 .pl-mark.behind { opacity: .45; }
 .pl-compass .k-label { color: var(--ink-bright); text-shadow: 0 0 4px var(--bg); font-size: 10px; letter-spacing: .04em; }
-.pl.photo .surface-slot > :not(.ripple):not(.flash):not(.spark) { display: none !important; }
+.pl.photo .surface-slot > :not(.ripple):not(.flash):not(.spark):not(.pl-photo-note) { display: none !important; }
+.pl-photo-note { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); margin: 0; padding: 4px 10px; background: color-mix(in srgb, var(--bg) 72%, transparent); color: var(--ink-bright); border: 1px solid var(--line); white-space: nowrap; pointer-events: none; z-index: 4; animation: pl-photo-note 4s ease-in forwards; }
+@keyframes pl-photo-note { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .pl-photo-note { animation: none; } }
 .pl.photo .surface-slot { outline: none; }
 
 .pl-ticker { flex: none; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-height: var(--touch); padding: 2px 8px; text-align: left; background: var(--panel); border: 1px solid var(--line-dim); border-left: 2px solid var(--gold); cursor: pointer; min-width: 0; }

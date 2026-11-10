@@ -4,6 +4,25 @@
 @font-face { font-family: 'IM Fell English'; font-style: normal; font-display: swap; src: url('../../public/fonts/im-fell-english-latin-400-normal.woff2') format('woff2'); }
 @font-face { font-family: 'IM Fell English'; font-style: italic; font-display: swap; src: url('../../public/fonts/im-fell-english-latin-400-italic.woff2') format('woff2'); }
 
+/* Figures. Both bundled fonts draw numbers that read as letters: IM Fell English has only old-style
+   figures (its zero is the letter o, and it has no 'lnum' feature to switch), and Pixelify Sans draws
+   5 as S. So the ten digits, and only those, are taken from a plain font already on the device: a
+   lining serif inside the voice font, a monospace inside the label font. These faces are declared
+   after the ones above, so they win for U+30-39; where the device has none of the named fonts the
+   voice font falls back to the label font's digits and the label font to its own. No download. */
+@font-face { font-family: 'IM Fell English'; font-style: normal; font-display: swap; unicode-range: U+30-39;
+  src: local('Noto Serif'), local('NotoSerif'), local('NotoSerif-Regular'), local('Times New Roman'), local('TimesNewRomanPSMT'), local('Liberation Serif'), local('DejaVu Serif'),
+    url('../../public/fonts/pixelify-sans-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'IM Fell English'; font-style: italic; font-display: swap; unicode-range: U+30-39;
+  src: local('Noto Serif Italic'), local('NotoSerif-Italic'), local('Times New Roman Italic'), local('TimesNewRomanPS-ItalicMT'), local('Liberation Serif Italic'), local('DejaVu Serif Italic'),
+    local('Noto Serif'), local('NotoSerif'), local('Times New Roman'), local('Liberation Serif'), local('DejaVu Serif'),
+    url('../../public/fonts/pixelify-sans-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Pixelify Sans'; font-weight: 400; font-display: swap; unicode-range: U+30-39;
+  src: local('Roboto Mono'), local('RobotoMono-Regular'), local('Droid Sans Mono'), local('DroidSansMono'), local('Noto Sans Mono'), local('Menlo'), local('Menlo-Regular'), local('Consolas'), local('DejaVu Sans Mono'), local('Liberation Mono'), local('Courier New'); }
+@font-face { font-family: 'Pixelify Sans'; font-weight: 600; font-display: swap; unicode-range: U+30-39;
+  src: local('Roboto Mono Bold'), local('RobotoMono-Bold'), local('Noto Sans Mono Bold'), local('Menlo Bold'), local('Menlo-Bold'), local('Consolas Bold'), local('DejaVu Sans Mono Bold'), local('Liberation Mono Bold'), local('Courier New Bold'),
+    local('Droid Sans Mono'), local('DroidSansMono'), local('Roboto Mono'), local('Menlo'), local('Consolas'), local('DejaVu Sans Mono'), local('Liberation Mono'); }
+
 :root {
   color-scheme: dark;
   --bg: #17140c;
@@ -31,4 +50,8 @@
 
 * { box-sizing: border-box; border-radius: 0; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--font-ui); overscroll-behavior: none; }
+/* Lining, even-width figures wherever a font can give them (inherited by everything). */
+html { font-variant-numeric: lining-nums tabular-nums; font-feature-settings: 'lnum' 1, 'tnum' 1; }
+/* A bare <small> shrinks by a sixth of whatever it sits in, which takes an 11px label to 9px. It never goes under 11px. */
+small { font-size: max(11px, .85em); }
 body { -webkit-tap-highlight-color: transparent; user-select: none; touch-action: none; }

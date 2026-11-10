@@ -7,6 +7,7 @@ import type { UniverseStats } from '@/contracts/game';
 import type { SkyPieceKind } from '@/contracts/sky';
 import { SKY_PIECE_KINDS } from '@/contracts/sky';
 import { child, seedToU32, makeSeed } from '@/core/hash';
+import { lightWords, pieceName } from '@/ui/kit';
 
 export const END_KEY = 'sallow-endgame';
 /** Written by the mirror room; the campaign plugin reads it. Serials whose floor has been reached, ever. */
@@ -251,7 +252,7 @@ const NODES: readonly Node[] = [
     { label: 'To see what happens.', tag: 'left.see', reply: 'It gets a little bigger. Everything does, in here.' },
     { label: 'I do not know.', tag: 'left.unknown', reply: 'That is why I keep your box, too.' },
   ] },
-  { id: 'recall', ask: (s) => `Last time you said: "${s.last?.words ?? ''}" Is it still true?`, choices: [
+  { id: 'recall', ask: (s) => `Last time you said: ‘${s.last?.words ?? ''}’ Is it still true?`, choices: [
     { label: 'Still true.', tag: 'recall.true', reply: 'Good. I wrote it down. I only had to write it once.', trust: 1 },
     { label: 'Not any more.', tag: 'recall.false', reply: 'I will cross it out. Lightly.' },
     { label: 'I forget what I said.', tag: 'recall.forgot', reply: 'I do not. That is most of what I am for.' },
@@ -328,7 +329,7 @@ export const seenLines = (u: UniverseSpec, stats: UniverseStats, s: EndState, he
   if (stats.souls !== undefined && stats.souls > 0) out.push(`${plural(stats.souls, 'soul', 'souls')} on its most watched world, last they looked.`);
   else if (stats.souls === 0) out.push('Its watched world went quiet. They saw. They did not say anything.');
   if (stats.belief && stats.belief !== 'none') out.push(`The people there have a word for you: ${stats.belief}. The child says it sometimes, to hear it.`);
-  if (stats.lightFromGlow > 0) out.push(`It has given you ${stats.lightFromGlow} light. They saw it leave, a little at a time.`);
+  if (stats.lightFromGlow > 0) out.push(`It has given you ${lightWords(stats.lightFromGlow)}. They saw it leave, a little at a time.`);
   if ((stats.orbiters ?? 0) > 0) out.push(`${plural(stats.orbiters ?? 0, 'thing', 'things')} put into orbit by small hands. They liked that.`);
   if ((stats.enlightenment ?? 0) >= 50) out.push('Someone down there nearly understood. The child leaned in close.');
   if (out.length < 3) out.push(`Laws: ${u.laws.name}. They have read the label more than you have.`);
@@ -345,11 +346,11 @@ export interface Offer { readonly id: string; readonly label: string; readonly k
 export const shelf = (seed: Seed, s: EndState): Offer[] => {
   const kind = SKY_PIECE_KINDS[pick(seed, 'shelf-kind', SKY_PIECE_KINDS.length)]!;
   const offers: Offer[] = [
-    { id: 'piece', label: `Their ${kind}`, kind, n: 1, mine: -1 },
-    { id: 'light', label: 'A pip of their light', kind: 'light', n: 1, mine: -1 },
+    { id: 'piece', label: `Their ${pieceName(kind)}`, kind, n: 1, mine: -1 },
+    { id: 'light', label: 'A pip of their Light', kind: 'light', n: 1, mine: -1 },
   ];
   // Something of yours, left on an earlier visit, has grown in their keeping.
   const i = s.left.findIndex((l) => l.visit < s.visits);
-  if (i >= 0) offers.unshift({ id: 'mine', label: `Your ${s.left[i]!.kind}, grown`, kind: s.left[i]!.kind, n: 2, mine: i });
+  if (i >= 0) offers.unshift({ id: 'mine', label: `Your ${pieceName(s.left[i]!.kind)}, grown`, kind: s.left[i]!.kind, n: 2, mine: i });
   return offers;
 };

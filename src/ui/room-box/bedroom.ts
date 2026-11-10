@@ -2,7 +2,7 @@
 import type { ScreenFactory, AppContext } from '@/contracts/app';
 import { ROOM_SPOTS } from '@/contracts/render';
 import type { RoomDecor } from '@/contracts/render';
-import { el, button, lightPips, narration, label } from '@/ui/kit';
+import { el, button, lightPips, narration, label, lightShort, quote } from '@/ui/kit';
 import { noteStar, names, sync, roomHour, weatherAt, sleepNow, roomState, totals, TROPHIES, mostTended, pick } from './store';
 import type { Totals } from './store';
 import { charOf, bondScore, bondWord } from './character';
@@ -119,7 +119,7 @@ export const bedroom: ScreenFactory = () => {
           dreams.push(`You dream ${name} is open on the desk, and nobody is holding it.`);
         }
         const told = c.sim.latest()?.chronicle[0]?.event;
-        if (told) dreams.push(`You dream a line you read once. "${told}"`);
+        if (told) dreams.push(`You dream a line you read once. ${quote(told)}`);
         if (!dreams.length) dreams.push('You dream of the box. Something inside it turns over.');
         show(`${pick(dreams, n * 7 + 3)} You wake. It is ${hourWord(decor.hour)}.`, 'Sleep again', sleep);
         line.dataset.dream = '1';
@@ -228,7 +228,7 @@ export const bedroom: ScreenFactory = () => {
         lines.push({ text: near.bond >= 55 ? `${nm} knows your hand now. It turns toward the lid when you come in.` : near.bond >= 10 ? `${nm} is ${word || 'known'} to you. The others are still strangers.` : `${nm} has begun to know you. Only begun.`, mood: 1 });
       }
       const bank = c.light.view().bank;
-      if (typeof bank === 'number' && bank >= 500) lines.push({ text: 'I am keeping some glow back for later. It is in the bank until there is room.', mood: 0 });
+      if (typeof bank === 'number' && bank >= 500) lines.push({ text: 'I am keeping some Light back for later. It is in the bank until there is room.', mood: 0 });
       if (glad) lines.push({ text: (glad.p >= 50 ? `${glad.name} is doing well. ${glad.souls} souls, and glad.` : `${glad.souls} souls in ${glad.name}. They are getting by.`), mood: 1 });
       if (tot.tended === 0) lines.push({ text: 'You have not changed a sky yet. They are waiting, though they do not know it.', mood: 1 });
       lines.push({ text: decor.hour >= 21 || decor.hour < 5 ? 'It is late. The box does not sleep.' : decor.hour < 12 ? 'Morning. In there, they have had whole ages since.' : 'The light in here is yours. The light in there is theirs.', mood: 0 });
@@ -283,7 +283,7 @@ export const bedroom: ScreenFactory = () => {
       pips?.update(lv.pips);
       if (bankEl && typeof lv.bank === 'number' && lv.bank !== bankShown) {
         bankShown = lv.bank;
-        bankEl.textContent = `BANK ${(lv.bank / 1000).toFixed(1)} pips`;
+        bankEl.textContent = `BANK ${lightShort(lv.bank)}`;
         bankEl.classList.toggle('on', lv.bank > 0);
       }
       const room = ctx.renderers.room;

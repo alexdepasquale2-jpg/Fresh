@@ -14,6 +14,12 @@
   --panel: color-mix(in srgb, var(--bg) 82%, var(--raised));
 }
 :root.sallow-contrast .k-btn, :root.sallow-contrast .k-back, :root.sallow-contrast .hub-item, :root.sallow-contrast .set-btn { border-color: var(--ink-bright); }
+/* Thin pixel labels on tool buttons and tags stay dim even with brighter tokens: give them full ink and weight. */
+:root.sallow-contrast .k-tag, :root.sallow-contrast .k-label, :root.sallow-contrast .k-stat span { color: var(--ink-bright); }
+:root.sallow-contrast .k-tag.tool, :root.sallow-contrast .pl-tool, :root.sallow-contrast .sy-cosmic .tool { color: var(--ink-bright); border-color: var(--line); font-weight: 600; }
+:root.sallow-contrast .pl-tool.cooling { color: var(--ink-muted); }
+:root.sallow-contrast .pl-tool[aria-pressed='true'], :root.sallow-contrast .k-tag.tool[aria-pressed='true'] { color: var(--glow); border-color: var(--glow); }
+:root.sallow-contrast .pl-group { color: var(--ink-muted); }
 :root.sallow-contrast .hub-btn i { border-color: var(--ink-bright); color: var(--ink-bright); background: var(--bg); }
 
 /* Reduce motion, asked for here rather than by the OS. */

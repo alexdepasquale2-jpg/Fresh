@@ -5,7 +5,7 @@ import type { UniverseSpec, UniverseTrait } from '@/contracts/universe';
 import { RARITIES } from '@/contracts/universe';
 import type { Thing, MergePreview } from '@/contracts/merge';
 import { SKY_PIECE_KINDS } from '@/contracts/sky';
-import { el, button, narration, label, boxSlot, glyphChar, backChip, tag, stat, skyPieceTile, burst, flash, lightPips } from '@/ui/kit';
+import { el, button, narration, label, boxSlot, glyphChar, backChip, tag, stat, skyPieceTile, burst, flash, lightPips, lightShort, lightLabel, aPiece, quote } from '@/ui/kit';
 import { names, sync, saveMeta, touch, ago, EMPTY_STATS, loadCollection, saveCollection, lastStar, noteStar } from './store';
 import { charOf, tierOf, RARITY_MARK, modChips, modList, bondParts, bondScore, bondWord, emblem } from './character';
 import type { Char } from './character';
@@ -167,10 +167,10 @@ export const box: ScreenFactory = () => {
       const statRows = (s: UniverseStats, e: BoxEntry): [string, string][] => [
         ['worlds tended', String(s.worldsTended)],
         ['deepest fold', String(s.deepestFold)],
-        ['light from glow', String(s.lightFromGlow)],
+        ['Light gathered', lightShort(s.lightFromGlow)],
         ['souls', String(s.souls ?? 0)],
-        ['age', s.souls ? (ERAS[s.era ?? 0] ?? `era ${s.era}`) : 'none yet'],
-        ['faith', !s.belief || s.belief === 'none' ? 'none' : s.belief],
+        ['age', s.souls ? (ERAS[s.era ?? 0] ?? `era ${s.era}`) : '—'],
+        ['faith', !s.belief || s.belief === 'none' ? '—' : s.belief],
         ['wonder', `${s.enlightenment ?? 0}`],
         ['thriving', `${s.prosperity ?? 0}`],
         ['in orbit', String(s.orbiters ?? 0)],
@@ -214,7 +214,7 @@ export const box: ScreenFactory = () => {
         return el('div', { class: 'mote-card rb-mote' }, el('span', { class: 'mote-dot' }),
           el('div', { class: 'rb-col' }, el('div', { class: 'k-title small' }, 'Mote'), label('your light · never goes in the box')),
           el('div', { class: 'rb-col rb-light' }, p.el,
-            typeof v.bank === 'number' ? el('span', { class: v.bank > 0 ? 'k-label rb-bank on' : 'k-label rb-bank', 'data-id': 'light-bank', title: 'Glow that came while Light was full. It pays back out when there is room.' }, `BANK ${(v.bank / 1000).toFixed(1)} pips`) : null));
+            typeof v.bank === 'number' ? el('span', { class: v.bank > 0 ? 'k-label rb-bank on' : 'k-label rb-bank', 'data-id': 'light-bank', title: 'Glow that came while Light was full. It pays back out when there is room.' }, `BANK ${lightShort(v.bank)}`) : null));
       };
 
       const lineageCard = (h: Held): HTMLElement | null => {
@@ -234,7 +234,7 @@ export const box: ScreenFactory = () => {
           return b;
         };
         const second = l.piece
-          ? el('div', { class: 'rb-node piece' }, el('span', { class: 'rb-glyph' }, '✶'), el('span', { class: 'rb-col' }, el('b', {}, `a ${l.piece}`), label('sky piece'), label('spent in the making')))
+          ? el('div', { class: 'rb-node piece' }, el('span', { class: 'rb-glyph' }, '✶'), el('span', { class: 'rb-col' }, el('b', {}, aPiece(l.piece)), label('sky piece'), label('spent in the making')))
           : null;
         return el('div', { class: 'rb-block', 'data-id': 'lineage' },
           label(`LINEAGE · generation ${l.generation}${l.ancestors ? ` · ${l.ancestors} folded in` : ''}`),
@@ -305,9 +305,9 @@ export const box: ScreenFactory = () => {
             button('Compare', () => setMode('compare'), { id: 'compare', disabled: c.box.count() < 2 }),
           ),
           spec.description || spec.origin || spec.motto ? el('div', { class: 'rb-block', 'data-id': 'character' },
-            spec.description ? narration(spec.description) : null,
+            spec.description ? narration(spec.description.split(spec.name).join(names.of(spec))) : null,
             spec.origin ? el('p', { class: 'rb-origin', 'data-id': 'origin' }, el('span', { class: 'k-label' }, 'ORIGIN '), spec.origin) : null,
-            spec.motto ? el('p', { class: 'rb-motto', 'data-id': 'motto' }, `“${spec.motto}”`) : null) : null,
+            spec.motto ? el('p', { class: 'rb-motto', 'data-id': 'motto' }, quote(spec.motto)) : null) : null,
           ch.traits.length ? el('div', { class: 'rb-block', 'data-id': 'traits' },
             label(`TRAITS · ${ch.traits.length}`),
             ...ch.traits.map(traitRow),
@@ -316,7 +316,7 @@ export const box: ScreenFactory = () => {
           lineageCard(h),
           el('div', { class: 'rb-block', 'data-id': 'stats' },
             label('ITS LIFE SO FAR'),
-            el('div', { class: 'row' }, stat(entry.stats.worldsTended, 'worlds tended').el, stat(entry.stats.deepestFold, 'deepest fold').el, stat(entry.stats.lightFromGlow, 'light from glow').el),
+            el('div', { class: 'row' }, stat(entry.stats.worldsTended, 'worlds tended').el, stat(entry.stats.deepestFold, 'deepest fold').el, stat(lightShort(entry.stats.lightFromGlow), 'Light gathered').el),
             el('div', { class: 'rb-facts' }, ...statRows(entry.stats, entry).slice(3).filter(([k]) => k !== 'bond').map(([k, v]) => el('span', {}, el('b', {}, v), ` ${k}`)))),
         );
       };
@@ -324,7 +324,7 @@ export const box: ScreenFactory = () => {
       const mergeCard = (): HTMLElement[] => {
         const inv = c.sky.inventory();
         const a = picks[0] ? thingOf(picks[0]) : null, b = picks[1] ? thingOf(picks[1]) : null;
-        const nameOf = (t: Thing | null) => (!t ? '…' : t.kind === 'piece' ? `a ${t.piece}` : names.of(c.universes.fromSerial(t.serialNumber)));
+        const nameOf = (t: Thing | null) => (!t ? '…' : t.kind === 'piece' ? aPiece(t.piece) : names.of(c.universes.fromSerial(t.serialNumber)));
         const res = a && b ? c.merger.merge(a, b) : null;
         const pv = a && b && res?.kind === 'universe' ? previewOf(a, b) ?? res.preview ?? null : null;
         const sa = statsOf(picks[0]), sb = statsOf(picks[1]);
@@ -373,7 +373,7 @@ export const box: ScreenFactory = () => {
             kid && kid.traits.length ? el('div', { class: 'rb-block', 'data-id': 'merge-traits' },
               label('IT WILL CARRY'),
               ...kid.traits.map((t) => el('div', { class: 'rb-trait slim' }, el('div', { class: 'rb-trait-head' }, el('b', {}, t.source === 'recipe' && !known ? '? ? ?' : t.name), label(SOURCE[t.source ?? 'own'] ?? '')), t.source === 'recipe' && !known ? null : modChips(t.mods)))) : null,
-            made ? label(`starts with · ${made.worldsTended} tended · fold ${made.deepestFold} · ${made.lightFromGlow} light · bond ${bondScore(c, made)}`) : null,
+            made ? label(`starts with · ${made.worldsTended} tended · fold ${made.deepestFold} · ${lightLabel(made.lightFromGlow)} · bond ${bondScore(c, made)}`) : null,
             res?.kind === 'piece' ? el('div', { class: 'rb-preview', 'data-id': 'merge-preview' }, el('span', { class: 'rb-glyph' }, '×2'), el('div', { class: 'rb-col' }, el('div', { class: 'k-title small' }, `Two ${res.piece}s`), narration(res.says))) : null,
             taken ? narration('You already hold what this would make. Nothing would come of it.') : null,
             confirming && res

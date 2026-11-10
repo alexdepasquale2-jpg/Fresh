@@ -52,6 +52,28 @@ export const RULES: Rule[] = [
   { id: 'locked', when: ['sun'], born: 'locked', effects: { seasons: -30, warmth: 10 }, says: 'One face is always to the star. There are no seasons.' },
 ];
 
+/** Sea level (0..255) at or under which a world reads as dry: the same line the system screen draws. */
+const DRY_SEA = 45;
+// The same rules, said truthfully on a world with almost no water, or one that never turns.
+// Only the sentence changes; the effects are the numbers above.
+const DRY_SAYS: Record<string, string> = {
+  moon: 'A moon pulls at what little water they have.',
+  'moon-moon': 'Two moons tug at the dry ground. There is little sea to answer.',
+  'moon-three': 'Three moons. What water there is never settles.',
+  'born-moon': 'They were born under a moon. Their dry ground still feels it.',
+  comet: 'A comet passes, and stones and ice fall.',
+};
+const LOCKED_SAYS: Record<string, string> = {
+  rings: 'The rings light their dark side.',
+  'moon-five': 'Five moons crowd the sky and grind against each other.',
+  'born-far-sun': 'A far second sun turns their dark side to dusk.',
+  'moon-dust': 'The moon hangs red in the dust.',
+  'dust-dust': 'The dust is thick. Their endless noon looks like dusk.',
+};
+/** What a matched rule says over this world. */
+const saysFor = (r: Rule, p: PlanetSpec): string =>
+  (p.terrain.locked ? LOCKED_SAYS[r.id] : undefined) ?? (p.terrain.seaLevel <= DRY_SEA ? DRY_SAYS[r.id] : undefined) ?? r.says;
+
 /** Does the planet have this by birth? */
 const bornWith = (p: PlanetSpec, what: Born): boolean => {
   const n = p.sky;
@@ -106,7 +128,7 @@ export const factory: SkyRulesFactory = () => {
       // What it was born with comes first, so the last line is always about the newest thing hung.
       const hit = matching(sky, planet);
       const old = new Set(sky.pieces.length ? matching({ ...sky, pieces: [] }, planet) : hit);
-      const says = [...hit.filter((r) => old.has(r)), ...hit.filter((r) => !old.has(r))].map((r) => r.says);
+      const says = [...hit.filter((r) => old.has(r)), ...hit.filter((r) => !old.has(r))].map((r) => saysFor(r, planet));
       const d = sky.drift ?? 0;
       if (d < 0) says.push(d <= -2 ? 'Their world was pulled close to the star. It burns.' : 'Their world was drawn nearer the star.');
       if (d > 0) says.push(d >= 2 ? 'Their world was pushed out into the cold.' : 'Their world was pushed further from the star.');

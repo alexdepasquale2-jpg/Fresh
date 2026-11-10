@@ -51,7 +51,7 @@ const when = (ms: number | null): string => {
 };
 const size = (n: number | null): string => (n === null ? '?' : n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(1)} GB`);
 const holds = (i: SaveBundleInfo): string =>
-  `${i.universes} ${i.universes === 1 ? 'universe' : 'universes'} · ${i.lightPips ?? 0} Light · saved ${when(i.savedAtMs)} · ${i.keys} small ${i.keys === 1 ? 'record' : 'records'}`;
+  `${i.universes} ${i.universes === 1 ? 'universe' : 'universes'} · ${i.lightPips ?? 0} ${i.lightPips === 1 ? 'pip' : 'pips'} of Light · saved ${when(i.savedAtMs)} · ${i.keys} small ${i.keys === 1 ? 'record' : 'records'}`;
 
 /* ---------- text size: every px font-size in the loaded sheets, scaled through one variable ---------- */
 let scaleSheet: HTMLStyleElement | null = null;
@@ -68,21 +68,73 @@ const splitSelectors = (sel: string): string[] => {
   return out;
 };
 const GATE = ':root[class*="sallow-text-"]';
+/** The smallest a label may be drawn at Normal and Large text, and at Small. The pixel font is not readable under these. */
+const MIN_PX = 11;
+const MIN_PX_SMALL = 10;
+/** The least letter-spacing a small label gets: the pixel font's letters run together without it. */
+const MIN_TRACK_EM = 0.06;
+// A `font:` shorthand holding a var() has no readable longhands, so its text is read instead.
+const pxOf = (rule: CSSStyleRule): number => {
+  const m = /^(-?[\d.]+)px$/.exec(rule.style.fontSize) ?? /(?:^|\s)([\d.]+)px(?=[\s/]|$)/.exec(rule.style.getPropertyValue('font'));
+  const px = m ? Number(m[1]) : 0;
+  return px > 0 ? px : 0;
+};
+const gated = (selectorText: string, gate: string): string =>
+  splitSelectors(selectorText).map((s) => (s.startsWith(':root') ? gate + s.slice(5) : s.startsWith('html') ? gate + s.slice(4) : `${gate} ${s}`)).join(', ');
+const walkSheets = (each: (rule: CSSStyleRule, wrap: (s: string) => string) => void, skip: readonly (HTMLStyleElement | null)[]): void => {
+  const walk = (rules: CSSRuleList, wrap: (s: string) => string) => {
+    for (const rule of Array.from(rules)) {
+      if (rule instanceof CSSStyleRule) each(rule, wrap);
+      else if (rule instanceof CSSMediaRule) walk(rule.cssRules, (s) => wrap(`@media ${rule.conditionText} { ${s} }`));
+      else if (rule instanceof CSSSupportsRule) walk(rule.cssRules, (s) => wrap(`@supports ${rule.conditionText} { ${s} }`));
+    }
+  };
+  for (const sheet of Array.from(document.styleSheets)) {
+    if (skip.includes(sheet.ownerNode as HTMLStyleElement | null)) continue;
+    try { walk(sheet.cssRules, (s) => s); } catch { /* a sheet from elsewhere: leave it */ }
+  }
+};
+/**
+ * Always on, at every text size: no label is set under MIN_PX, and a small label in the pixel font
+ * gets at least MIN_TRACK_EM between its letters. One place, so no unit's CSS has to be chased.
+ */
+let floorSheet: HTMLStyleElement | null = null;
+const buildFloor = (): void => {
+  if (floorSheet) return;
+  const lines: string[] = [];
+  walkSheets((rule, wrap) => {
+    const px = pxOf(rule);
+    if (!px || px > 12) return;
+    const out: string[] = [];
+    if (px < MIN_PX) out.push(`font-size: ${MIN_PX}px`);
+    // Only where the rule itself sets the label font or its tracking: never the serif voice.
+    const font = rule.style.getPropertyValue('font') + rule.style.fontFamily;
+    const track = /^(-?[\d.]+)em$/.exec(rule.style.letterSpacing);
+    const isLabel = /font-ui|Pixelify/.test(font) || !!track;
+    if (isLabel && !/font-voice|Fell|monospace/.test(font.replace('var(--font-ui)', '')) && (!track || Number(track[1]) < MIN_TRACK_EM)) out.push(`letter-spacing: ${MIN_TRACK_EM}em`);
+    if (out.length) lines.push(wrap(`${gated(rule.selectorText, ':root')} { ${out.join('; ')}; }`));
+  }, [scaleSheet]);
+  if (!lines.length) return;
+  floorSheet = mk('style');
+  floorSheet.dataset.sallow = 'text-floor';
+  floorSheet.textContent = lines.join('\n');
+  document.head.append(floorSheet);
+};
 const buildScale = (): void => {
   if (scaleSheet) return;
+  buildFloor();
   const lines: string[] = [];
   const walk = (rules: CSSRuleList, wrap: (s: string) => string) => {
     for (const rule of Array.from(rules)) {
       if (rule instanceof CSSStyleRule) {
-        // A `font:` shorthand holding a var() has no readable longhands, so its text is read instead.
-        const m = /^(-?[\d.]+)px$/.exec(rule.style.fontSize) ?? /(?:^|\s)([\d.]+)px(?=[\s/]|$)/.exec(rule.style.getPropertyValue('font'));
-        if (!m) continue;
-        const px = Number(m[1]);
-        if (!(px > 0)) continue;
+        const raw = pxOf(rule);
+        if (!raw) continue;
+        // The floor sheet's own rules are scaled too (they come later, so they win): start from the floor.
+        const px = Math.max(raw, MIN_PX);
         // Headline sizes grow less: they are the ones that would push a row off a 390 px screen.
         const k = px >= 20 ? 0.4 : px >= 16 ? 0.75 : 1;
-        const sel = splitSelectors(rule.selectorText).map((s) => (s.startsWith(':root') ? GATE + s.slice(5) : s.startsWith('html') ? GATE + s.slice(4) : `${GATE} ${s}`)).join(', ');
-        lines.push(wrap(`${sel} { font-size: calc(${px}px * (1 + (var(--sallow-text, 1) - 1) * ${k})); }`));
+        const sel = gated(rule.selectorText, GATE);
+        lines.push(wrap(`${sel} { font-size: max(${MIN_PX_SMALL}px, calc(${px}px * (1 + (var(--sallow-text, 1) - 1) * ${k}))); }`));
       } else if (rule instanceof CSSMediaRule) {
         walk(rule.cssRules, (s) => wrap(`@media ${rule.conditionText} { ${s} }`));
       } else if (rule instanceof CSSSupportsRule) {
@@ -111,6 +163,7 @@ export const plugin: Plugin = (shell: Shell) => {
     root.classList.toggle('sallow-text-l', st.text === 2);
     root.classList.toggle('sallow-contrast', st.contrast);
     root.classList.toggle('sallow-reduce-motion', st.reduceMotion);
+    try { buildFloor(); } catch (e) { console.error(e); }
     if (st.text !== 1) { try { buildScale(); } catch (e) { console.error(e); } }
   };
 
@@ -349,7 +402,7 @@ export const plugin: Plugin = (shell: Shell) => {
     // The tutorial keeps its state in the 'sallow-guide' store; only its `hints` flag is ours to flip.
     const guideState = (): Record<string, unknown> => { try { return (JSON.parse(localStorage.getItem(GUIDE_KEY) ?? 'null') as Record<string, unknown> | null) ?? {}; } catch { return {}; } };
     const hintsOn = () => guideState().hints !== false;
-    disp.append(row('Show hints', 'Mote tells you things as you come to them. Changing this reloads the game.', toggle('set-hints', hintsOn, (v) => {
+    disp.append(row('Show hints', hintsOn() ? 'Mote tells you things as you come to them. Skip in the tutorial turns this off. Changing this reloads the game.' : 'Off: Skip in the tutorial turned it off, or you did here. Mote keeps quiet until you turn it on. Changing this reloads the game.', toggle('set-hints', hintsOn, (v) => {
       const next = { ...guideState(), hints: v };
       ctx.persist();
       void sleep(500).then(() => {
@@ -531,7 +584,8 @@ export const plugin: Plugin = (shell: Shell) => {
     try { const d = new Date(document.lastModified); if (Number.isFinite(d.getTime())) built = when(d.getTime()); } catch { built = ''; }
     about.append(
       mk('p', 'set-voice', 'SALLOW. A box of pocket universes on a kid’s computer, and a small light to see them by.'),
-      mk('p', 'set-note', 'Open the Box and pick a universe. Fall through its folds; hold to fall, let go to hover, steer into a ring, stop at a star. On a world you never touch the ground: you hang moons, rings and comets in its sky, then watch what the people below make of them. Their glow comes back to you as Light.'),
+      mk('p', 'set-note', 'Open the Box and pick a universe. Fall through its folds; hold to fall, let go to hover, steer into a ring, stop at a star. On a world the sky is your first and gentlest lever: hang moons, rings and comets over it, then watch what the people below make of them. Your hands are the blunt one: the tools pour water, throw stones and sow people, and the ground remembers. Their glow comes back to you as Light.'),
+      mk('p', 'set-note', 'Light is counted in pips, and a pip is a thousand light. Glow is what a world gives off before it reaches you.'),
       mk('p', 'set-note dim', `${import.meta.env.DEV ? 'Development build' : 'Release build'}${built ? ` of ${built}` : ''}. Save format 1.`),
       mk('p', 'set-note dim', 'Made by hand and by Mote. No universe was harmed that did not have it coming.'),
     );

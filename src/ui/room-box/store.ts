@@ -143,7 +143,7 @@ export const TROPHIES = [
   { key: 'tended', label: 'tended', level: (t: Totals) => level(t.tended, 1, 5, 15) },
   { key: 'battles', label: 'won', level: (t: Totals) => level(t.battles, 1, 3, 6) },
   { key: 'held', label: 'held', level: (t: Totals) => level(t.held, 8, 14, 22) },
-  { key: 'light', label: 'light', level: (t: Totals) => level(Math.floor(t.light / 1000), 1, 8, 30) },
+  { key: 'light', label: 'pips', level: (t: Totals) => level(Math.floor(t.light / 1000), 1, 8, 30) },
 ] as const;
 
 /** The universe tended most, or null when none has been tended. */
