@@ -37,7 +37,7 @@ export interface Relic { readonly id: string; readonly name: string; readonly de
 export type Weather = 'heat' | 'frost' | 'tide' | 'dust' | 'spring' | 'dark';
 export interface WeatherInfo { readonly id: Weather; readonly name: string; readonly up: Element; readonly down: Element | null; readonly desc: string }
 /** What a creature has earned across battles. Kept by the UI, applied with Battles.grow. */
-export interface Growth { readonly xp: number; readonly relic?: string }
+export interface Growth { readonly xp: number; readonly relic?: string; /** 0..100, from Box.bondOf: a small lift to every stat. */ readonly bond?: number }
 export interface LevelInfo { readonly level: number; readonly into: number; readonly need: number }
 export interface BattleReward { readonly glow: number; readonly xp: number; readonly piece?: { readonly kind: string; readonly n: number }; readonly relic?: Relic }
 export interface Trait { readonly id: string; readonly name: string; readonly desc: string }
@@ -72,6 +72,12 @@ export interface Fighter {
   /** Harm soaked before life is touched. */
   readonly shield?: number;
   readonly relic?: Relic;
+  /** The universe's rarity (a merged child's raised rarity when it has one). */
+  readonly rarity?: string;
+  /** The universe's temperament: gives one passive (a trait whose id starts `t-`) and its manner. */
+  readonly temperament?: string;
+  /** 0..100 bond with the player, when grown with one. 25 and over shows as bonded. */
+  readonly bond?: number;
 }
 
 export interface Rival {
@@ -98,6 +104,8 @@ export interface Rival {
   readonly beaten?: string;
   /** Times already beaten; each makes the rematch harder. */
   readonly rematch?: number;
+  /** A fight off the ladder: no ladder win is counted. Absent = a ladder fight. */
+  readonly mode?: 'daily' | 'gauntlet' | 'practice';
 }
 
 export type BattleAction =
@@ -108,7 +116,7 @@ export type BattleAction =
 
 export interface BattleLogLine { readonly side: 'you' | 'them' | 'world'; readonly text: string }
 /** What happened this turn, for numbers and shakes. */
-export interface Hit { readonly to: 'you' | 'them'; readonly amount: number; readonly crit: boolean; readonly heal: boolean; readonly tag: string; readonly eff?: 'strong' | 'weak' }
+export interface Hit { readonly to: 'you' | 'them'; readonly amount: number; readonly crit: boolean; readonly heal: boolean; readonly tag: string; readonly eff?: 'strong' | 'weak'; /** True for end-of-turn ticks (burns, regrowth, relics): nobody struck. */ readonly tick?: boolean }
 
 export interface BattleState {
   readonly rival: Rival;
@@ -161,5 +169,11 @@ export interface Battles {
   weatherInfo?(w: Weather): WeatherInfo;
   /** Every skill an element can learn, in order. */
   skillsOf?(element: Element): readonly Skill[];
+  /** A move a scripted player of that skill would make now. 'sensible' is what auto-battle plays. */
+  suggest?(state: BattleState, skill?: 'naive' | 'sensible' | 'expert'): BattleAction;
+  /** The stranger of the day: a rival seeded by a day number, about as strong as a team of `level`. */
+  daily?(day: number, level: number): Rival;
+  /** How big the rival's shown move is against your active fighter: 0 harmless, 1 a blow, 2 worth guarding. */
+  threat?(state: BattleState): number;
 }
 export type BattlesFactory = (deps: { seed: import('./seed').Seed }) => Battles;
