@@ -6,7 +6,7 @@
 
 **Must not touch.** Anything outside `src/ui/system-planet/`. In particular: `src/contracts`, `src/core`, `src/render/gl`, `src/ui/kit`, `src/ui/tokens.css`, `src/app`, `package.json`, the lockfile, other units. No new dependencies. If the contract blocks you, write `CONTRACT_REQUEST.md` here and work around it.
 
-**Current state.** A trivial deterministic stub that satisfies the contract so the app boots. Replace it.
+**Current state.** `system.ts` (orbits, a card per world, cosmic picker, log, orrery scrub), `planet.ts` (surface, chronicle ticker, time bar, six tabs as pages of one scroller so every control keeps a real box), `tools.ts` (god tools and patterns built only from the sim's Tool union), `shared.ts` (selection and a small localStorage memory, key `sallow.screens.v1`, cosmetic only).
 
 ## Acceptance criteria
 
