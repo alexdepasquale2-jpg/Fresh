@@ -1,5 +1,5 @@
 import type { SerialNumber, FoldAddress } from './seed';
-import type { UniverseSpec } from './universe';
+import type { UniverseSpec, UniverseTrait, Rarity } from './universe';
 import type { FoldNode, StarRef, Stratum, FoldThingKind } from './fold';
 
 export const LIGHT_MAX_PIPS = 8;
@@ -14,6 +14,8 @@ export interface LightView {
   readonly pips: number;
   readonly partial: number;
   readonly low: boolean;
+  /** Points in the overflow bank (0..LIGHT_BANK_MAX), if the Light keeps one. */
+  readonly bank?: number;
 }
 export interface Light {
   view(): LightView;
@@ -23,8 +25,32 @@ export interface Light {
   addGlow(points: number): void;
   canSpend(pips: number): boolean;
   spend(pips: number): boolean;
-  snapshot(): { pips: number; partial: number };
-  restore(s: { pips: number; partial: number }): void;
+  snapshot(): { pips: number; partial: number; bank?: number; earned?: number; spent?: number; drained?: number };
+  /** Older snapshots (pips and partial only) are accepted. */
+  restore(s: { pips: number; partial: number; bank?: number; earned?: number; spent?: number; drained?: number }): void;
+  /**
+   * Optional: the overflow bank. Glow that arrives while Light is full is not all lost: half of it is
+   * kept, up to LIGHT_BANK_MAX points. After Light has been spent or drained, the bank pays back out
+   * alongside new glow. The 8-pip invariant is untouched.
+   */
+  bank?(): number;
+  /** Lifetime totals, in glow points (1000 = one pip). */
+  totals?(): LightTotals;
+  /** Put points straight into the bank (a gift). Returns how many fitted. */
+  bankGlow?(points: number): number;
+  /** Take up to `points` out of the bank at once, into Light. Returns how many moved. */
+  releaseBank?(points?: number): number;
+}
+export const LIGHT_BANK_MAX = 2000;
+export interface LightTotals {
+  /** Glow points ever added. */
+  readonly earned: number;
+  /** Pips ever spent with spend(), as points. */
+  readonly spent: number;
+  /** Pips ever lost to falling, as points. */
+  readonly drained: number;
+  /** Points now in the bank. */
+  readonly banked: number;
 }
 export type LightFactory = () => Light;
 
@@ -43,6 +69,52 @@ export interface UniverseStats {
   readonly prosperity?: number;
   /** Things its worlds have put into orbit. */
   readonly orbiters?: number;
+  /* ---- Optional lifetime stats (Box.recordBattle and friends). Missing = 0. ---- */
+  readonly battles?: number;
+  readonly battlesWon?: number;
+  /** Sky pieces hung on its orbits. */
+  readonly piecesHung?: number;
+  /** Times a dive in it reached the floor. */
+  readonly floorsReached?: number;
+  /** Sim ticks spent watching its worlds. */
+  readonly ticksTended?: number;
+  /** Where it came from, when it was made by merging. */
+  readonly lineage?: Lineage;
+}
+/** One parent in a lineage. */
+export interface LineageParent {
+  readonly serialNumber: SerialNumber;
+  readonly name: string;
+  readonly laws: string;
+  readonly rarity?: Rarity;
+  /** How many merges stand behind this parent (0 = found, not made). */
+  readonly generation?: number;
+}
+/**
+ * What a merged universe carries beside its serial. Plain JSON so it can live in a Box snapshot.
+ * The universe's own spec stays a pure function of its serial; this is what it was GIVEN.
+ */
+export interface Lineage {
+  readonly parents: readonly LineageParent[];
+  /** The sky piece it was reborn under, for universe + piece. */
+  readonly piece?: string;
+  /** 1 for a child of two found universes; one more than its deepest parent after that. */
+  readonly generation: number;
+  /** Every found universe folded into it, all the way down. */
+  readonly ancestors?: number;
+  readonly recipe?: { readonly id: string; readonly name: string; readonly says: string };
+  /** Traits passed down from the parents (the child's own traits are on its spec). */
+  readonly gifts?: readonly UniverseTrait[];
+  /** A trait neither parent had. */
+  readonly mutation?: UniverseTrait;
+  /** The child's rarity after the merge (never below its own). */
+  readonly rarity?: Rarity;
+  /** Four colours kept from the parents: two from each, "#rrggbb". */
+  readonly colours?: readonly string[];
+  /** Glyph elements kept: the first parent's glyph row and the second's column (0..7 each). */
+  readonly sigil?: readonly [number, number];
+  /** One line to show under its name. */
+  readonly says?: string;
 }
 export interface BoxEntry {
   readonly serialNumber: SerialNumber;
@@ -65,7 +137,23 @@ export interface Box {
   setStats(slot: number, stats: UniverseStats): void;
   recordLife(slot: number, life: { souls: number; era: number; belief: string; enlightenment: number; prosperity?: number; orbiters?: number }): void;
   snapshot(): (BoxEntry | null)[];
+  /** Older snapshots (without the optional stats) are accepted. */
   restore(slots: readonly (BoxEntry | null)[]): void;
+  /* ---- Optional lifetime records. Every one is a no-op on an empty slot. ---- */
+  recordBattle?(slot: number, won: boolean): void;
+  recordPieceHung?(slot: number, count?: number): void;
+  /** A dive in it reached the floor. */
+  recordFloor?(slot: number): void;
+  recordTicks?(slot: number, ticks: number): void;
+  setLineage?(slot: number, lineage: Lineage | null): void;
+  lineage?(slot: number): Lineage | null;
+  /** 0..100: how close the player and this universe have become, from real use. */
+  bond?(slot: number): number;
+  /** The same, from stats alone (for a universe not in a slot). */
+  bondOf?(stats: UniverseStats): number;
+  /** A word for a bond score: "stranger", "known", "kept", "dear", "kin". */
+  bondName?(bond: number): string;
+  slotOf?(serialNumber: SerialNumber): number;
 }
 export type BoxFactory = () => Box;
 

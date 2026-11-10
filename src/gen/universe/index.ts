@@ -3,6 +3,9 @@
 import type { UniverseGenFactory, UniverseSpec } from '@/contracts/universe';
 import { child, rng } from '@/core/hash';
 import { formatSerial, serialToSeed } from '@/core/serial';
+import { character } from './character';
+
+export { RARITY_ODDS, TRAITS, rarityOf, sumMods } from './character';
 
 const BASE = ['#17140c', '#231f12', '#2e2a18', '#6f6535', '#8a7f4e', '#5a4a2a', '#c9bb62', '#c9a04a', '#e9dd9a', '#f6f0c8', '#bfeedd', '#4f7f86', '#2c4a52', '#d8743a', '#8c3b22', '#7f9a52'];
 // Indices tinted by the law set hue (water, deep, life, glow stay readable).
@@ -26,17 +29,20 @@ export const factory: UniverseGenFactory = ({ atlas, names }) => {
     const law = r.pick(atlas.lawSets);
     const hue = ((law.hue ?? 40) + r.range(-25, 25) + 360) % 360;
     const palette = BASE.map((c, i) => (TINT.includes(i) ? hsl((hue + (i === 15 ? 60 : i >= 11 ? 150 : 0)) % 360, 0.25 + r.int(20) / 100, Math.min(0.75, Math.max(0.15, lum(c)))) : c));
+    const name = names.universe(seed);
     return {
       seed,
       serialNumber,
       serial: formatSerial(serialNumber),
-      name: names.universe(seed),
+      name,
       glyph: r.int(64),
       laws: { id: law.id, name: law.name, tags: [...law.tags] },
       palette,
       materialTable: law.materials.map((m) => ({ ...m })),
       reactionTable: law.reactions.map((x) => ({ ...x })),
       pulseMilliHz: law.pulseMilliHz,
+      // Character comes from its own seed streams; it cannot touch the fields above.
+      ...character(seed, name, law.tags, names),
     };
   };
   return { fromSeed, fromSerial: (n) => fromSeed(serialToSeed(n), n) };
