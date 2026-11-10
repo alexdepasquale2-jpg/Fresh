@@ -44,6 +44,10 @@ export interface DiveRenderView {
   readonly pulse: Fx;
   /** 0..8, drives the vignette. */
   readonly lightPips: number;
+  /** A reliquary throw being timed: the closing ring around child `index`; scale 1 is the catch. */
+  readonly catchRing?: { readonly index: number; readonly scale: number } | null;
+  /** 0.5..1 from Perf.resolutionScale(); below ~0.7 the renderer drops detail. */
+  readonly quality?: number;
 }
 export type DiveRenderer = Renderer<DiveRenderView>;
 
