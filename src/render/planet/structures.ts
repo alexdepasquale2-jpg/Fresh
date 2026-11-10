@@ -3,12 +3,12 @@
 // first, then doors and windows, then bricks and planks, then goods and tools.
 import type { GlCore } from '@/contracts/render';
 import type { CivView } from '@/contracts/sim';
-import { BUILDING_KINDS } from '@/contracts/sim';
+import { BELIEFS, BUILDING_KINDS } from '@/contracts/sim';
 
 const VS = `#version 300 es
 layout(location=0) in vec2 a_pos;
 layout(location=1) in vec4 a_a;   // x, ground y, kind, seed
-layout(location=2) in vec4 a_b;   // launch 0..1 (pads), faith, _, _
+layout(location=2) in vec4 a_b;   // launch 0..1 (pads), faith, prosperity 0..1, era 0..5
 uniform vec3 u_cam; uniform vec2 u_grid;
 out vec2 v_p; out vec4 v_a; out vec4 v_b;
 void main(){
@@ -23,7 +23,7 @@ void main(){
 const FS = `#version 300 es
 precision highp float; precision highp int;
 in vec2 v_p; in vec4 v_a; in vec4 v_b; out vec4 o;
-uniform float u_time, u_amb, u_night, u_zoom, u_pulse; uniform sampler2D u_pal;
+uniform float u_time, u_amb, u_night, u_zoom, u_pulse, u_wind, u_season, u_snow; uniform sampler2D u_pal;
 vec3 pal(int i){ return texelFetch(u_pal, ivec2(i & 15, 0), 0).rgb; }
 float h1(float n){ return fract(sin(n * 91.345) * 47453.5453); }
 float bx(vec2 p, vec2 c, vec2 h){ vec2 d = abs(p - c) - h; return max(d.x, d.y); }
@@ -32,23 +32,41 @@ vec4 col = vec4(0.0); float emis = 0.0;
 void put(float d, vec3 c){ float a = smoothstep(0.03, -0.03, d); col = mix(col, vec4(c, 1.0), a); if (a > 0.5) emis = 0.0; }
 void glow(float d, vec3 c, float k){ float a = smoothstep(0.03, -0.03, d); col = mix(col, vec4(c, 1.0), a); if (a > 0.5) emis = k; }
 void smoke(vec2 p, vec2 from){
-  for (int i = 0; i < 4; i++) { float t = fract(u_time * 0.25 + float(i) * 0.25); vec2 c = from + vec2(sin(t * 5.0 + float(i)) * 0.3 + t * 0.6, t * 2.6);
+  for (int i = 0; i < 4; i++) { float t = fract(u_time * 0.25 + float(i) * 0.25); vec2 c = from + vec2(sin(t * 5.0 + float(i)) * 0.3 + t * 0.3 + u_wind * t * t * 4.0, t * (2.6 - abs(u_wind) * 0.8));
     float a = smoothstep(0.25 + t * 0.35, 0.0, length(p - c)) * (1.0 - t) * 0.5; col = mix(col, vec4(pal(9) * 0.8, 1.0), a * max(col.a, 1.0)); col.a = max(col.a, a); }
 }
 void main(){
   int kind = int(v_a.z + 0.5); float seed = v_a.w; vec2 p = v_p;
   vec3 wall = pal(5) * 1.1, roof = pal(14) * 1.15, wood = pal(3), stone = pal(4), dark = pal(1), lit = pal(13) * 1.4, paper = pal(8), gold = pal(7);
   float lamp = smoothstep(0.2, 0.7, u_night);
+  float prosp = v_b.z, era = v_b.w;
+  vec3 snowc = pal(9) * 0.95;
+  // How many windows are lit: more in later ages and in good years. The last go dark late at night.
+  float lights = lamp * step(h1(seed + 3.0), 0.3 + 0.1 * era + 0.5 * prosp);
   if (kind == 0) {                                   // house
     float tall = 1.0 + 0.3 * step(0.5, h1(seed));
     put(bx(p, vec2(0.0, tall), vec2(1.4, tall)), wall * (1.0 - L(11.0) * 0.22 * max(step(0.86, fract(p.y * 2.2)), step(0.9, fract(p.x * 1.6 + floor(p.y * 2.2) * 0.5)))));
     float ry = (p.y - 2.0 * tall) / 1.4;
     put(max(abs(p.x) - 1.85 * (1.0 - ry), -ry), roof * (1.0 - L(11.0) * 0.25 * step(0.6, fract(p.y * 4.0 + p.x * 0.7))));
+    float rd = abs(p.x) - 1.85 * (1.0 - ry);
+    if (u_snow > 0.03) put(max(max(rd, -rd - 0.34 * u_snow), -ry), snowc);          // snow lying on the slopes
     put(bx(p, vec2(1.0, 2.0 * tall + 0.9), vec2(0.2, 0.6)), stone);
     put(bx(p, vec2(-0.55, 0.6), vec2(0.32, 0.6)), mix(wood, wood * 0.7, L(20.0) * step(0.8, fract(p.x * 8.0))));
     float win = bx(p, vec2(0.6, 1.25), vec2(0.34, 0.34));
-    glow(win, mix(dark, lit, lamp), lamp);
+    glow(win, mix(dark, lit * (0.8 + 0.08 * era), lights), lights);
     if (L(15.0) > 0.5) put(max(win, -min(abs(p.x - 0.6), abs(p.y - 1.25)) + 0.05), wood);
+    if (tall > 1.1 && era > 1.5) { float w2 = bx(p, vec2(-0.5, 1.95), vec2(0.26, 0.26)); glow(w2, mix(dark, lit, lamp * step(h1(seed + 5.0), 0.2 + 0.7 * prosp)), lamp * step(h1(seed + 5.0), 0.2 + 0.7 * prosp)); }
+    if (prosp > 0.64) {
+      // A festival: bunting strung from the ridge, and small lights along it after dark.
+      float ax = abs(p.x), yl = 2.0 * tall + 1.25 - 0.9 * sin(3.14159 * clamp((ax - 0.2) / 4.8, 0.0, 1.0));
+      float fx = fract(ax * 1.5), dn = yl - p.y;
+      if (ax > 0.2 && ax < 5.0) {
+        put(abs(dn) - 0.035, wood * 0.8);
+        float fi = floor(ax * 1.5) + step(0.0, p.x) * 7.0;
+        put(max(-dn, dn - 0.5 * (1.0 - 2.0 * abs(fx - 0.5))) + 0.03, mod(fi, 3.0) < 0.5 ? pal(13) : mod(fi, 3.0) < 1.5 ? pal(10) : pal(15));
+        if (lamp > 0.1) glow(length(vec2(fx - 0.5, dn + 0.02) / vec2(1.5, 1.0)) - 0.07, mix(pal(13), pal(10), mod(fi, 2.0)) * 1.3, lamp * 1.5);
+      }
+    }
     if (L(8.0) > 0.5) smoke(p, vec2(1.0, 2.0 * tall + 1.5));
   } else if (kind == 1) {                            // fire
     put(bx(p, vec2(0.0, 0.12), vec2(0.55, 0.12)), wood * 0.7);
@@ -57,10 +75,13 @@ void main(){
   } else if (kind == 2) {                            // farm
     put(bx(p, vec2(0.0, 0.06), vec2(3.4, 0.08)), pal(5) * 0.7);
     float row = floor(p.x * 1.6), fx = fract(p.x * 1.6) - 0.5;
-    float hgt = 0.45 + 0.5 * h1(row + seed);
-    float sway = sin(u_time * 1.4 + row) * 0.08 * p.y;
-    if (abs(p.x) < 3.3) put(max(abs(fx + sway) - 0.16 * (1.0 - p.y / hgt) - 0.03, p.y - hgt), mix(pal(15), gold, 0.3 * h1(row)));
-    if (L(15.0) > 0.5 && abs(p.x) < 3.3) put(length(vec2(fx + sway, p.y - hgt)) - 0.11, gold);
+    // Sown in spring, tall by summer, gold at harvest, stubble through the winter.
+    float grown = smoothstep(0.02, 0.3, u_season) * (1.0 - 0.82 * smoothstep(0.56, 0.64, u_season)), ripe = smoothstep(0.3, 0.52, u_season);
+    float hgt = (0.45 + 0.5 * h1(row + seed)) * (0.18 + 0.95 * grown);
+    float sway = (sin(u_time * (1.4 + abs(u_wind) * 2.0) + row) * (0.08 + abs(u_wind) * 0.12) - u_wind * 0.25) * p.y;
+    if (abs(p.x) < 3.3) put(max(abs(fx + sway) - 0.16 * (1.0 - p.y / hgt) - 0.03, p.y - hgt), mix(pal(15), gold, 0.2 * h1(row) + 0.7 * ripe));
+    if (L(15.0) > 0.5 && abs(p.x) < 3.3 && grown > 0.6) put(length(vec2(fx + sway, p.y - hgt)) - 0.11, gold);
+    if (u_snow > 0.03) put(bx(p, vec2(0.0, 0.14), vec2(3.4, 0.07 * u_snow)), snowc);
     put(bx(p, vec2(3.5, 0.5), vec2(0.07, 0.5)), wood); put(bx(p, vec2(-3.5, 0.5), vec2(0.07, 0.5)), wood);
     if (L(11.0) > 0.5) { put(bx(p, vec2(2.6, 0.9), vec2(0.05, 0.9)), wood); put(bx(p, vec2(2.6, 1.4), vec2(0.5, 0.06)), wood); put(length(p - vec2(2.6, 1.95)) - 0.22, paper); }
   } else if (kind == 3) {                            // dock
@@ -82,6 +103,7 @@ void main(){
   } else if (kind == 5) {                            // workshop
     put(bx(p, vec2(0.0, 1.15), vec2(2.0, 1.15)), wall * 0.9 * (1.0 - L(11.0) * 0.2 * step(0.88, fract(p.y * 2.2))));
     put(max(bx(p, vec2(0.0, 2.55), vec2(2.25, 0.3)), p.y - 2.75 + p.x * 0.08), roof * 0.8);
+    if (u_snow > 0.03) put(max(bx(p, vec2(0.0, 2.78), vec2(2.25, 0.16 * u_snow)), p.y - 2.75 - 0.3 * u_snow + p.x * 0.08), snowc);
     put(bx(p, vec2(-1.4, 3.6), vec2(0.3, 1.1)), stone);
     float forge = bx(p, vec2(0.6, 0.75), vec2(0.6, 0.6));
     glow(forge, mix(pal(14), pal(9), 0.5 + 0.5 * sin(u_pulse * 6.2831 + p.y * 3.0)), 1.5);
@@ -99,7 +121,9 @@ void main(){
     if (L(20.0) > 0.5) put(bx(p, vec2(2.5, 0.25), vec2(0.3, 0.25)), wood * 0.9);
   } else if (kind == 7) {                            // storehouse
     put(bx(p, vec2(0.0, 0.95), vec2(1.8, 0.95)), wood * 1.25 * (1.0 - L(11.0) * 0.25 * step(0.85, fract(p.x * 2.5))));
-    put(max(length(vec2(p.x, (p.y - 1.9) * 1.9)) - 1.95, -(p.y - 1.9)), roof * 0.75);
+    float dome = length(vec2(p.x, (p.y - 1.9) * 1.9)) - 1.95;
+    put(max(dome, -(p.y - 1.9)), roof * 0.75);
+    if (u_snow > 0.03) put(max(max(dome, -dome - 0.3 * u_snow), -(p.y - 2.2)), snowc);
     put(bx(p, vec2(0.0, 0.65), vec2(0.6, 0.65)), dark);
     if (L(11.0) > 0.5) { put(length((p - vec2(2.5, 0.3)) * vec2(1.0, 1.3)) - 0.36, paper * 0.85); put(length((p - vec2(3.0, 0.28)) * vec2(1.0, 1.3)) - 0.32, paper * 0.75); put(length((p - vec2(2.75, 0.75)) * vec2(1.0, 1.3)) - 0.3, paper * 0.8); }
   } else if (kind == 8) {                            // shrine
@@ -111,8 +135,9 @@ void main(){
   } else if (kind == 9) {                            // bell tower
     put(bx(p, vec2(0.0, 3.6), vec2(0.6, 3.6)), stone * (1.1 - L(11.0) * 0.2 * step(0.86, fract(p.y * 2.0))));
     put(bx(p, vec2(0.0, 7.4), vec2(0.85, 0.2)), stone * 1.25);
-    float ry = (p.y - 7.6) / 1.2; put(max(abs(p.x) - 0.9 * (1.0 - ry), -ry), roof);
-    glow(bx(p, vec2(0.0, 6.4), vec2(0.3, 0.45)), mix(dark, lit, lamp), lamp * 1.4);
+    float ry = (p.y - 7.6) / 1.2; float rt = abs(p.x) - 0.9 * (1.0 - ry); put(max(rt, -ry), roof);
+    if (u_snow > 0.03) put(max(max(rt, -rt - 0.3 * u_snow), -ry), snowc);
+    glow(bx(p, vec2(0.0, 6.4), vec2(0.3, 0.45)), mix(dark, lit, lamp), lamp * (1.0 + 0.6 * prosp));
     if (L(15.0) > 0.5) put(length(p - vec2(sin(u_time * 2.0) * 0.12, 6.25)) - 0.16, gold);
   } else {                                           // launch pad
     put(bx(p, vec2(0.0, 0.1), vec2(2.4, 0.1)), stone);
@@ -134,7 +159,7 @@ void main(){
 export const createStructures = (core: GlCore) => {
   const gl = core.gl;
   const prog = core.program(VS, FS);
-  const names = ['u_cam', 'u_grid', 'u_time', 'u_amb', 'u_night', 'u_zoom', 'u_pulse', 'u_pal'];
+  const names = ['u_cam', 'u_grid', 'u_time', 'u_amb', 'u_night', 'u_zoom', 'u_pulse', 'u_wind', 'u_season', 'u_snow', 'u_pal'];
   const loc = Object.fromEntries(names.map((n) => [n, gl.getUniformLocation(prog, n)])) as Record<string, WebGLUniformLocation | null>;
   const MAXN = 160;
   const data = new Float32Array(MAXN * 8);
@@ -160,6 +185,8 @@ export const createStructures = (core: GlCore) => {
       civ: CivView; top: Uint8Array; view: { cx: number; cy: number; zoom: number };
       rect: { x: number; y: number; w: number; h: number }; W: number; H: number;
       time: number; amb: number; night: number; pulse: number; pal: WebGLTexture;
+      /** -1..1, 0..1 through the year, 0..1 snow lying. */
+      wind: number; season: number; snow: number;
     }) => {
       let n = 0;
       const launch = o.civ.launchAge < 100 ? Math.max(0.001, o.civ.launchAge / 100) : 0;
@@ -171,7 +198,7 @@ export const createStructures = (core: GlCore) => {
           const gy = Math.max(o.top[x - 1]!, o.top[x]!, o.top[x + 1]!);
           const k = n * 8;
           data[k] = x + 0.5; data[k + 1] = gy; data[k + 2] = BUILDING_KINDS.indexOf(b.kind); data[k + 3] = b.seed + v.id * 7;
-          data[k + 4] = b.kind === 'pad' ? launch : 0; data[k + 5] = ['none', 'sun', 'moon', 'sea', 'stone', 'fire', 'sky'].indexOf(v.belief); data[k + 6] = 0; data[k + 7] = 0;
+          data[k + 4] = b.kind === 'pad' ? launch : 0; data[k + 5] = BELIEFS.indexOf(v.belief); data[k + 6] = Math.max(0, Math.min(1, v.prosperity / 100)); data[k + 7] = v.tech;
           n++;
         }
       }
@@ -192,12 +219,15 @@ export const createStructures = (core: GlCore) => {
       gl.uniform1f(loc.u_night!, o.night);
       gl.uniform1f(loc.u_zoom!, o.view.zoom);
       gl.uniform1f(loc.u_pulse!, o.pulse);
+      gl.uniform1f(loc.u_wind!, o.wind);
+      gl.uniform1f(loc.u_season!, o.season);
+      gl.uniform1f(loc.u_snow!, o.snow);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, o.pal);
       gl.uniform1i(loc.u_pal!, 0);
       gl.bindVertexArray(vao);
       gl.bindBuffer(gl.ARRAY_BUFFER, inst);
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, data.subarray(0, n * 8));
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, data, 0, n * 8);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n);
       gl.bindVertexArray(null);
       gl.disable(gl.BLEND);

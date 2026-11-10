@@ -239,7 +239,7 @@ export const createPeople = (core: GlCore) => {
       gl.uniform1i(loc.u_depth!, 1);
       gl.bindVertexArray(vao);
       gl.bindBuffer(gl.ARRAY_BUFFER, inst);
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, data.subarray(0, n * 8));
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, data, 0, n * 8);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n);
       gl.bindVertexArray(null);
       gl.disable(gl.BLEND);
