@@ -75,8 +75,57 @@ export interface Audio {
   /** One-shot sound effect by name (tool names, 'tap', 'fold', 'catch', 'strike', 'merge', ...). amount 0..1 scales it. Unknown names play a soft tick. */
   sfx(name: string, amount?: number): void;
   dispose(): void;
+  /**
+   * Optional: what the game is doing right now, so the score and ambience can follow it.
+   * Every field is optional; a field left out goes back to its neutral value.
+   */
+  setMood?(mood: AudioMood): void;
+  /** Optional: bus volumes, each 0..1. A field left out keeps its level. */
+  setMix?(mix: AudioMix): void;
+  /** Optional: level after the limiter over the last few ms (0..1). The same object is returned every call. */
+  meter?(): { readonly peak: number; readonly rms: number };
+  /** Optional: every sfx name this synth knows (see src/platform/audio/README.md). */
+  sfxNames?(): readonly string[];
 }
 export type AudioFactory = () => Audio;
+/** Context for the adaptive score. All optional; ratios are 0..1. */
+export interface AudioMood {
+  /** Universe identity as a u32 (seedToU32 of its seed): picks mode, root, progression and motif. */
+  readonly seed?: number;
+  /** Dive: folds fallen. */
+  readonly depth?: number;
+  /** Dive: 1 while falling, 0 hovering or stopped. */
+  readonly speed?: number;
+  /** Planet: time of day 0..999 (0 midnight, 500 noon). */
+  readonly day?: number;
+  readonly wind?: number;
+  readonly rain?: number;
+  /** Planet: share of the surface that is liquid. */
+  readonly sea?: number;
+  /** Planet: how much is burning. */
+  readonly fire?: number;
+  /** Planet: how frozen it is. */
+  readonly cold?: number;
+  /** Planet: tech era 0..5. */
+  readonly era?: number;
+  readonly prosperity?: number;
+  readonly souls?: number;
+  /** Planet: the player is in a body (first person layer). */
+  readonly body?: boolean;
+  /** Battle or body: how close the player is to falling. */
+  readonly danger?: number;
+  /** Battle: how far the fight has gone. */
+  readonly intensity?: number;
+  readonly boss?: boolean;
+  /** Mote's light, 1 full, 0 out. */
+  readonly light?: number;
+}
+export interface AudioMix {
+  readonly master?: number;
+  readonly music?: number;
+  readonly effects?: number;
+  readonly ambience?: number;
+}
 
 /* ---------- Edge voice ---------- */
 export type VoiceKind = 'universe' | 'system' | 'planet' | 'village' | 'chronicle' | 'narration';
