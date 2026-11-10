@@ -1,0 +1,23 @@
+/* Screen transitions (see transition.ts). Colours come from the design tokens only. */
+#app.tr-busy { overflow: hidden; }
+#app.tr-busy > .gl, #app.tr-busy > .screen { will-change: transform, opacity; }
+#app.tr-lock > .screen { pointer-events: none; }
+
+.tr-fx { position: absolute; inset: 0; z-index: 50; pointer-events: none; overflow: hidden; contain: strict; }
+.tr-fx i { position: absolute; left: var(--tr-x, 50%); top: var(--tr-y, 50%); width: 240vmax; height: 240vmax; margin: -120vmax 0 0 -120vmax; opacity: 0; will-change: transform, opacity; }
+
+/* Falling in: thin light streaks rushing outward from the touched point, hollow in the middle. */
+.tr-fx--in i {
+  background: repeating-conic-gradient(from 7deg,
+    transparent 0deg 5deg,
+    color-mix(in srgb, var(--glow) 55%, transparent) 5.4deg 5.9deg,
+    transparent 6.3deg 13deg,
+    color-mix(in srgb, var(--ink-bright) 35%, transparent) 13.3deg 13.6deg,
+    transparent 14deg 20deg);
+  -webkit-mask-image: radial-gradient(circle closest-side, transparent 0 5%, #000 22%, transparent 62%);
+  mask-image: radial-gradient(circle closest-side, transparent 0 5%, #000 22%, transparent 62%);
+}
+.tr-fx--in::after { content: ''; position: absolute; inset: 0; opacity: 0; background: radial-gradient(circle at var(--tr-x, 50%) var(--tr-y, 50%), transparent 30%, var(--bg) 95%); animation: tr-vignette var(--tr-ms, 540ms) ease-in-out both; }
+/* Rising out: a soft bloom that swells and lets go. */
+.tr-fx--out i { background: radial-gradient(circle closest-side, color-mix(in srgb, var(--ink-bright) 55%, transparent) 0, color-mix(in srgb, var(--glow) 28%, transparent) 14%, transparent 42%); }
+@keyframes tr-vignette { 0%, 100% { opacity: 0; } 45% { opacity: .8; } }
