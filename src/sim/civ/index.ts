@@ -7,9 +7,10 @@ import type { CivFactory, CivEvent, Village, GridView, Belief, SurfaceEnv, Surfa
 import { BELIEFS, ENGINE, FIELD, ROLE, SURFACE_TOOLS, PERSON_STRIDE, YEAR_TICKS } from '@/contracts/sim';
 import type { BodyAction, Building, BuildingKind } from '@/contracts/sim';
 import type { SurfaceModifiers } from '@/contracts/sky';
-import { child, mix, rng, seedToU32 } from '@/core/hash';
+import { child, mix, seedToU32 } from '@/core/hash';
 import type { Seed } from '@/contracts/seed';
-import type { Rng } from '@/core/hash';
+import { savedRng } from './rng';
+import type { SavedRng } from './rng';
 import type { Figure, Relation } from '@/contracts/sim';
 import { figName, creedName, WORKS } from './lore';
 import { makeBody, newBodyWorld } from './body';
@@ -151,7 +152,7 @@ export const factory: CivFactory = () => {
   let nextId = 1;
   let glow = 0;
   let era = 0;
-  let r: Rng = rng({ hi: 1, lo: 1 });
+  let r: SavedRng = savedRng({ hi: 1, lo: 1 });
   let ground = new Int16Array(0);
   let surfQ: SurfaceEvent[] = [];
   let avatar: A | null = null;
@@ -170,6 +171,10 @@ export const factory: CivFactory = () => {
   let nTrade = 0;
 
   const at = (g: GridView, x: number, y: number) => (x < 0 || y < 0 || x >= g.width || y >= g.height ? -1 : g.cells[y * g.width + x]!);
+  // What counts as water to stand in or build on: every liquid of this universe that falls (water alone until init is told the universe).
+  const liquid = new Uint8Array(256);
+  liquid[WATER] = 1;
+  const isLiquid = (m: number) => m >= 0 && liquid[m] === 1;
   const solidish = (m: number) => m === STONE || m === SAND || m === ENGINE.ice.id || m === ENGINE.snow.id || m === ENGINE.ash.id || m === ENGINE.ore.id;
   const scanGround = (g: GridView) => {
     if (ground.length !== g.width) ground = new Int16Array(g.width);
@@ -282,7 +287,7 @@ export const factory: CivFactory = () => {
     if (avatar.x !== avatar.tx && tick % 2 === 0) {
       const nx = avatar.x + (avatar.tx > avatar.x ? 1 : -1);
       const ny = ground[nx]! - 1;
-      if (Math.abs(ny - avatar.y) <= 5 && at(g, nx, ny + 1) !== WATER) { avatar.x = nx; avatar.y = ny; }
+      if (Math.abs(ny - avatar.y) <= 5 && !isLiquid(at(g, nx, ny + 1))) { avatar.x = nx; avatar.y = ny; }
       else avatar.tx = avatar.x;
     }
     if (ground.length && at(g, avatar.x, avatar.y) !== 0) avatar.y = ground[avatar.x]! - 1;
@@ -366,7 +371,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       const ny = ground[nx]! - 1;
       const c = at(g, nx, ny + 1);
       // People wade in shallows but do not walk into deep water or up cliffs.
-      if (c === WATER && at(g, nx, ny + 3) === WATER) { p.tx = p.x; continue; }
+      if (isLiquid(c) && isLiquid(at(g, nx, ny + 3))) { p.tx = p.x; continue; }
       if (Math.abs(ny - p.y) > 4) { p.tx = p.x; continue; }
       p.x = nx;
       p.y = ny;
@@ -389,8 +394,8 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       for (let k = 0; k < 30; k++) {
         const x = r.range(8, g.width - 9);
         const ru = k === 0 ? w.ruins[0] : undefined;
-        if (ru && at(g, ru.x, ground[ru.x]!) !== WATER) { w.ruins.shift(); pending.push({ x: ru.x, belief: 'none', tech: Math.max(0, Math.min(5, era) - 2), ruin: ru.id }); break; }
-        if (at(g, x, ground[x]!) !== WATER && Math.abs(ground[x - 2]! - ground[x + 2]!) <= 2) { pending.push({ x, belief: 'none', tech: Math.max(0, Math.min(5, era) - 2) }); break; }
+        if (ru && !isLiquid(at(g, ru.x, ground[ru.x]!))) { w.ruins.shift(); pending.push({ x: ru.x, belief: 'none', tech: Math.max(0, Math.min(5, era) - 2), ruin: ru.id }); break; }
+        if (!isLiquid(at(g, x, ground[x]!)) && Math.abs(ground[x - 2]! - ground[x + 2]!) <= 2) { pending.push({ x, belief: 'none', tech: Math.max(0, Math.min(5, era) - 2) }); break; }
       }
     }
     // Found waiting sites.
@@ -398,7 +403,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       const s = pending.shift()!;
       const x = Math.max(2, Math.min(g.width - 3, s.x));
       const y = ground[x]! - 1;
-      if (y > 0 && at(g, x, y + 1) !== WATER && vs.length < 12) {
+      if (y > 0 && !isLiquid(at(g, x, y + 1)) && !isLiquid(at(g, x, y)) && vs.length < 12) {
         const v: V = { id: nextId++, x, y, souls: 10, name: `#${nextId - 1}`, tech: s.tech, belief: s.belief, food: 120, mood: 20, age: 0, scores: BELIEFS.map(() => 0), progress: 0, wet: 0, starving: false, cold: false, lastBurn: -9999, lastLaunch: -99999, enl: 0 };
         if (s.belief !== 'none') v.scores[BELIEFS.indexOf(s.belief)] = 50;
         if (s.creed && w.creeds.some((c) => c.id === s.creed && c.belief === s.belief)) v.creed = s.creed;
@@ -421,14 +426,15 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
         const ny = ground[v.x]! - 1;
         if (ny > 0 && Math.abs(ny - v.y) < 8) v.y = ny;
       }
-      if (at(g, v.x, v.y) === WATER) v.wet++;
+      // Water at the doors, or under them: a village does not stand on a lake.
+      if (isLiquid(at(g, v.x, v.y)) || isLiquid(at(g, v.x, v.y + 1))) v.wet++;
       else v.wet = 0;
       // A sea wall keeps shallow water out of the doors.
       if (v.wet >= (work(v, 1) ? 6 : 2)) {
         // Climb to the nearest dry high ground if there is any; otherwise the water wins.
         let best = -1;
         for (let d = 1; d < 30 && best < 0; d++) for (const sx of [v.x - d, v.x + d]) {
-          if (sx > 2 && sx < g.width - 3 && at(g, sx, ground[sx]!) !== WATER && ground[sx]! < v.y) { best = sx; break; }
+          if (sx > 2 && sx < g.width - 3 && !isLiquid(at(g, sx, ground[sx]!)) && ground[sx]! <= v.y) { best = sx; break; }
         }
         if (best >= 0 && v.wet < 8) { v.x = best; v.y = ground[best]! - 1; v.souls = Math.max(1, v.souls - 2); v.mood -= 10; hardship(v, 2); v.songOf = 6; if (v.wet === 2 || v.wet === 6) ev(events, 'migrate', v, { detail: v.id }); }
         else if (v.wet >= 8 || best < 0) { ev(events, 'flooded', v); remove(v); flee(v, v.souls >> 2, events); continue; }
@@ -966,7 +972,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
     if (!w.ruins.length) return;
     const ru = w.ruins[dice(36, w.ruins.length)]!;
     if (vs.some((v) => Math.abs(v.x - ru.x) <= 12) || pending.some((s) => Math.abs(s.x - ru.x) <= 12) || tick - ru.t > 40000) { w.ruins = w.ruins.filter((o) => o !== ru); return; }
-    if (tick - ru.t <= 3200 || vs.length + pending.length >= 10 || !ground.length || at(g, ru.x, ground[ru.x]!) === WATER) return;
+    if (tick - ru.t <= 3200 || vs.length + pending.length >= 10 || !ground.length || isLiquid(at(g, ru.x, ground[ru.x]!))) return;
     const from = vs.filter((v) => v.souls >= 26 && v.mood > 0 && !sick(v) && Math.abs(v.x - ru.x) < 170).sort((a, b) => Math.abs(a.x - ru.x) - Math.abs(b.x - ru.x) || a.id - b.id)[0];
     if (from && dv(from, 37, 10) === 0) {
       from.souls -= 8;
@@ -1220,6 +1226,8 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
     return v;
   };
   let wetGrid: GridView | null = null;
+  /** Wet columns as a snapshot knew them, until the first step after a restore shows the grid again. */
+  let wetSaved: Set<number> | null = null;
   const body = makeBody<V, P>({
     vs: () => vs, people: () => people, bw: () => (w.body ??= newBodyWorld()), tick: () => tick, era: () => era, dice,
     relOf, warOf: (v) => warOf(v), has, trait, startPlague, newCreed,
@@ -1229,7 +1237,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
     resettle: (ru) => { w.ruins = w.ruins.filter((q) => q.id !== ru.id); pending.push({ x: ru.x, belief: 'none', tech: Math.max(0, Math.min(5, era) - 2), ruin: ru.id }); },
     worldInv: () => w.inv,
     ground: () => ground,
-    wet: (x) => !!wetGrid && ground.length > 0 && at(wetGrid, x, ground[Math.max(0, Math.min(ground.length - 1, x))]!) === WATER,
+    wet: (x) => (wetGrid ? ground.length > 0 && at(wetGrid, x, ground[Math.max(0, Math.min(ground.length - 1, x))]!) === WATER : !!wetSaved && wetSaved.has(x)),
     attackers: () => attackers,
     emit: (e) => { pendingEv.push(e); },
     roles: { attack: ROLE.attack, kneel: ROLE.kneel, watch: ROLE.watch, idle: ROLE.idle },
@@ -1311,8 +1319,11 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
   };
 
   return {
-    init: (p, surface) => {
-      r = rng(child(p.seed, 'civ'));
+    init: (p, surface, universe) => {
+      liquid.fill(0);
+      liquid[WATER] = 1;
+      if (universe) for (const mt of universe.materialTable) if (mt.kind === 'liquid' && !mt.rises) liquid[mt.id] = 1;
+      r = savedRng(child(p.seed, 'civ'));
       pseed = p.seed;
       nseed = child(p.seed, 'notable');
       wseed = child(p.seed, 'civ-world');
@@ -1326,6 +1337,12 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       pending = surface.villageSites.map((s) => ({ x: s.x, belief: 'none' as Belief, tech: 0 }));
       avatar = null;
       pendingEv = [];
+      surfQ = [];
+      ground = new Int16Array(0);
+      wetGrid = null;
+      wetSaved = null;
+      attackers = 0;
+      worshippers = 0;
       tick = 0;
       nextId = 1;
       glow = 0;
@@ -1336,6 +1353,8 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
     step: (ticks, g, m, env, surface) => {
       const events: CivEvent[] = [];
       evSeen = 0;
+      // The grid the body reads between evaluations (the same live view an evaluation would hand it).
+      if (ground.length) { wetGrid = g; wetSaved = null; }
       for (const e of surface) if (surfQ.length < 64) surfQ.push(e);
       for (const e of pendingEv) events.push(e);
       pendingEv = [];
@@ -1479,7 +1498,19 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       avatar = null;
       for (const p of people) if (p.role === ROLE.attack || p.role === ROLE.kneel || p.role === ROLE.watch || p.role === ROLE.listen || p.role === ROLE.flee) { p.role = ROLE.idle; p.wait = 0; }
     },
-    snapshot: () => new TextEncoder().encode(JSON.stringify({ vs, people, pending, tick, nextId, glow, era, nextPid, notable, line, w, launches, lastLaunchT })),
+    // Format 2 carries everything a step reads: the rng stream where it stood, the ground as last
+    // scanned, surface events not yet weighed, events not yet handed out, and the body with its life.
+    snapshot: () => {
+      let wet: number[] | undefined;
+      if (wetGrid || wetSaved) {
+        wet = [];
+        for (let x = 0; x < ground.length; x++) if (wetGrid ? at(wetGrid, x, ground[x]!) === WATER : wetSaved!.has(x)) wet.push(x);
+      }
+      return new TextEncoder().encode(JSON.stringify({
+        v: 2, vs, people, pending, tick, nextId, glow, era, nextPid, notable, line, w, launches, lastLaunchT,
+        rs: r.state(), ground: Array.from(ground), surfQ, pendingEv, avatar, attackers, worshippers, nTrade, ...(wet ? { wet } : {}),
+      }));
+    },
     restore: (s) => {
       const o = JSON.parse(new TextDecoder().decode(s)) as { vs: V[]; people: P[]; pending: typeof pending; tick: number; nextId: number; glow: number; era: number };
       ({ vs, people, pending, tick, nextId, glow, era } = o);
@@ -1492,6 +1523,21 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       w = { ...newWorld(), ...(y.w ?? {}) };
       if (y.launches !== undefined) launches = y.launches;
       if (y.lastLaunchT !== undefined) lastLaunchT = y.lastLaunchT;
+      // Format 2. An older snapshot has none of this: it wakes with no body, its stream begun
+      // again from the planet seed, and learns the ground at its next evaluation, as it always did.
+      const z = o as { v?: number; rs?: unknown; ground?: number[]; surfQ?: SurfaceEvent[]; pendingEv?: CivEvent[]; avatar?: A | null; attackers?: number; worshippers?: number; nTrade?: number; wet?: number[] };
+      const two = z.v === 2;
+      if (two) r.setState(z.rs);
+      ground = two && Array.isArray(z.ground) ? Int16Array.from(z.ground) : new Int16Array(0);
+      surfQ = two && Array.isArray(z.surfQ) ? z.surfQ : [];
+      pendingEv = two && Array.isArray(z.pendingEv) ? z.pendingEv : [];
+      avatar = two && z.avatar && typeof z.avatar === 'object' ? z.avatar : null;
+      attackers = two ? z.attackers ?? 0 : 0;
+      worshippers = two ? z.worshippers ?? 0 : 0;
+      nTrade = two ? z.nTrade ?? 0 : 0;
+      wetGrid = null;
+      wetSaved = two && Array.isArray(z.wet) ? new Set(z.wet) : null;
+      evSeen = 0;
     },
   };
 };

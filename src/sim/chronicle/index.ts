@@ -498,10 +498,58 @@ export const factory: ChronicleFactory = ({ names }) => {
     },
     entries: (limit = 50) => entries.slice(-limit).reverse().map(publish),
     snapshot: () => entries.map(publish),
-    restore: (list) => {
+    // What the published lines leave out, and a restore needs to go on exactly: when each line
+    // was written, the event behind it (minus what the line already says), and the phrasing memory.
+    memory: () => JSON.stringify({
+      v: 1, nextId, lastText, recentT, heard, lastYear, recentSurface,
+      x: entries.map((en) => {
+        let rest: Record<string, unknown> | 0 = 0;
+        if (en.e) {
+          const { kind: k, tick: t, villageId: _v, x: _x, y: _y, ...more } = en.e;
+          rest = { ...(k !== en.kind ? { kind: k } : {}), ...(t !== en.tick ? { tick: t } : {}), ...more };
+        }
+        return [en.tick, en.belief ?? 0, en.who ?? 0, rest, en.reason === undefined ? 0 : 1];
+      }),
+    }),
+    restore: (list, memory) => {
       heard = [];
       lastYear = -1;
       recentT = [];
+      lastText = '';
+      recentSurface = [];
+      type Mem = { v: number; nextId: number; lastText: string; recentT: string[]; heard: number[]; lastYear: number; recentSurface: typeof recentSurface; x: [number, Belief | 0, Who | 0, (Partial<CivEvent> & Record<string, unknown>) | 0, number][] };
+      let mem: Mem | null = null;
+      if (memory) {
+        try {
+          const m = JSON.parse(memory) as Mem;
+          if (m && m.v === 1 && Array.isArray(m.x) && m.x.length === list.length && Array.isArray(m.recentT) && Array.isArray(m.heard) && Array.isArray(m.recentSurface) && Number.isFinite(m.nextId) && Number.isFinite(m.lastYear)) mem = m;
+        } catch { /* it wakes the old way */ }
+      }
+      if (mem) {
+        const xs = mem.x;
+        entries = list.map((en, i): Entry => {
+          const [tick, belief, who, rest, reasoned] = xs[i]!;
+          const kind = (en.kind ?? 'light') as Kind;
+          // Built key by key in the order the line was first written, so it reads back the same.
+          const line: { -readonly [K in keyof Entry]: Entry[K] } = { ...en, kind, tick };
+          if (rest) {
+            // The place and village came from the event; they go back into it.
+            line.e = { kind, tick, villageId: en.villageId ?? 0, x: en.x ?? 0, y: en.y ?? 0, ...rest } as CivEvent;
+            delete line.x; delete line.y; delete line.villageId;
+          }
+          if (who) line.who = who;
+          if (belief) line.belief = belief;
+          if (!reasoned) delete line.reason;
+          return line;
+        });
+        nextId = mem.nextId;
+        lastText = String(mem.lastText ?? '');
+        recentT = mem.recentT.slice();
+        heard = mem.heard.slice();
+        lastYear = mem.lastYear;
+        recentSurface = mem.recentSurface.slice();
+        return;
+      }
       // Lines saved before entries carried a kind wake as plain lines; a reason once set is kept.
       entries = list.map((e) => ({ ...e, kind: (e.kind ?? 'light') as Kind, tick: 0, ...(e.reason === undefined ? { reason: '' } : {}) }));
       nextId = entries.reduce((m, e) => Math.max(m, e.id), 0) + 1;

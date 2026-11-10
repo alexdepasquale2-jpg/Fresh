@@ -71,7 +71,9 @@ export interface GridView {
  * Falling-sand surface. Runs in the sim Worker at a fixed 20 ticks/s.
  * Invariants: deterministic in (planet, universe, surface, sequence of
  * step calls); step steps dirty chunks only; snapshot/restore round-trips
- * byte-identically, including the tick counter and RNG state.
+ * byte-identically, including the tick counter and RNG state. A restored sim
+ * continues exactly as the one snapshotted would have; restore() never throws,
+ * and reads the snapshots of older formats as well as it can.
  */
 export interface SurfaceSim {
   init(planet: PlanetSpec, universe: UniverseSpec, surface: PlanetSurface): void;
@@ -332,7 +334,8 @@ export const SURFACE_TOOLS: readonly SurfaceTool[] = ['water', 'sand', 'stone', 
 export const SOUL_TOOLS: readonly SoulTool[] = ['bless', 'smite', 'sow', 'whisper', 'merge'];
 /** Villages on the grid. Deterministic like SurfaceSim. Reads the grid, never writes it. */
 export interface Civ {
-  init(planet: PlanetSpec, surface: PlanetSurface): void;
+  /** With the universe, the civ knows every liquid of its law set: it does not found on one, and a village one rises over floods. */
+  init(planet: PlanetSpec, surface: PlanetSurface, universe?: UniverseSpec): void;
   step(ticks: number, grid: GridView, modifiers: SurfaceModifiers, env: SurfaceEnv, surface: readonly SurfaceEvent[]): readonly CivEvent[];
   view(): CivView;
   /** A soul tool, or the omen of a surface tool, at x. */
@@ -345,6 +348,7 @@ export interface Civ {
   ascend(): void;
   /** The body acts: strike attackers, preach, give, shine, or rest. */
   act(action: BodyAction): void;
+  /** Everything, the living body included: a restored civ continues exactly as the one snapshotted would have. */
   snapshot(): Uint8Array;
   restore(snapshot: Uint8Array): void;
 }
@@ -377,6 +381,12 @@ export interface Chronicle {
   /** Newest first. */
   entries(limit?: number): readonly ChronicleEntry[];
   snapshot(): ChronicleEntry[];
-  restore(entries: readonly ChronicleEntry[]): void;
+  /**
+   * What snapshot() leaves out and an exact restore needs (when each line was written, the event
+   * behind it, the phrasing memory), as an opaque string to store beside the entries.
+   */
+  memory?(): string;
+  /** With the memory taken beside these entries, the chronicle goes on exactly as it would have. Without, it goes on plausibly. */
+  restore(entries: readonly ChronicleEntry[], memory?: string): void;
 }
 export type ChronicleFactory = (deps: { names: import('./universe').NameGen }) => Chronicle;
