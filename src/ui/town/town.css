@@ -1,0 +1,45 @@
+/* The town screen. Tokens only; the pixel world itself is drawn on the canvas. */
+.screen[data-screen='town'] { padding: 0; gap: 0; }
+.town-root { position: absolute; inset: 0; overflow: hidden; user-select: none; -webkit-user-select: none; font-family: var(--font-ui); }
+.town-canvas { position: absolute; left: 0; top: 0; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; transform-origin: 0 0; background: var(--bg); }
+.town-top { position: absolute; left: 8px; top: 8px; max-width: 250px; padding: 6px 10px; background: color-mix(in srgb, var(--panel) 86%, transparent); border: 1px solid var(--line-dim); display: flex; flex-direction: column; gap: 2px; pointer-events: none; }
+.town-top-row { display: flex; align-items: baseline; gap: 10px; }
+.town-place { font: 400 17px var(--font-voice); color: var(--ink-bright); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.town-coins { color: var(--gold); }
+.town-hint { margin: 2px 0 0; padding-top: 4px; border-top: 1px solid var(--line-dim); font: italic 13px/1.3 var(--font-voice); color: var(--ink); }
+.town-bar { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; gap: 6px; }
+.town-btn { flex: 1; padding: 0 4px; font-size: 13px; background: color-mix(in srgb, var(--panel) 88%, transparent); }
+.town-banner { position: absolute; left: 0; right: 0; top: 150px; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; pointer-events: none; padding: 10px 24px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--bg) 80%, transparent) 25%, color-mix(in srgb, var(--bg) 80%, transparent) 75%, transparent); }
+.town-banner b { font: 400 26px var(--font-voice); color: var(--ink-bright); }
+.town-banner span { font: italic 14px var(--font-voice); color: var(--ink-muted); }
+.town-banner.go { animation: town-banner 3.2s ease both; }
+@keyframes town-banner { 0% { opacity: 0; } 12%, 78% { opacity: 1; } 100% { opacity: 0; } }
+.town-stick, .town-knob { position: absolute; left: 0; top: 0; border-radius: 50%; pointer-events: none; }
+.town-stick { width: 88px; height: 88px; border: 2px solid var(--line); background: color-mix(in srgb, var(--panel) 40%, transparent); }
+.town-knob { width: 32px; height: 32px; background: var(--glow); opacity: .7; }
+.town-sheet { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 5; max-height: 62%; overflow-y: auto; padding: 12px; background: var(--panel); border: 2px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.town-sheet[hidden] { display: none; }
+.town-sheet.tall { max-height: 86%; }
+.town-sheet-head { display: flex; align-items: center; gap: 8px; }
+.town-face { width: 48px; height: 42px; image-rendering: pixelated; background: var(--raised); border: 1px solid var(--line-dim); flex: none; }
+.town-say { margin: 0; white-space: pre-line; }
+.town-more { align-self: flex-end; color: var(--glow); }
+.town-choices { display: flex; flex-direction: column; gap: 6px; }
+.town-choice { width: 100%; min-height: var(--touch); padding: 6px 12px; text-align: left; font: 400 16px/1.25 var(--font-voice); letter-spacing: 0; text-transform: none; }
+.town-choice.off { color: var(--ink-off); border-color: var(--line-dim); }
+.town-skim { position: relative; height: 22px; border: 2px solid var(--line); background: var(--raised); }
+.town-skim b { position: absolute; top: 0; bottom: 0; left: 40%; width: 20%; background: var(--gold); opacity: .55; }
+.town-skim.wide b { left: 35%; width: 30%; }
+.town-skim-mark { position: absolute; top: -4px; bottom: -4px; width: 4px; margin-left: -2px; background: var(--glow); }
+.town-list { display: flex; flex-direction: column; gap: 6px; }
+.town-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line-dim); }
+.town-row > div { flex: 1; min-width: 0; }
+.town-row b { display: block; font: 600 13px var(--font-ui); color: var(--ink-bright); letter-spacing: .04em; }
+.town-row small { display: block; font: italic 13px/1.3 var(--font-voice); color: var(--ink-muted); }
+.town-map { width: 320px; height: 320px; max-width: 100%; align-self: center; image-rendering: pixelated; border: 1px solid var(--line-dim); }
+.town-legend { margin: 0; text-align: center; }
+:root.sallow-text-l .town-say, :root.sallow-text-l .town-choice { font-size: 18px; }
+:root.sallow-text-l .town-hint { font-size: 15px; }
+:root.sallow-text-s .town-say, :root.sallow-text-s .town-choice { font-size: 14px; }
+:root.sallow-reduce-motion .town-banner.go { animation: none; }
+@media (prefers-reduced-motion: reduce) { .town-banner.go { animation: none; } }
