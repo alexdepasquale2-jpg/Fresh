@@ -40,17 +40,24 @@ export const createHub = (host: HTMLElement, sfx: (name: string) => void): Pick<
 
   let isOpen = false;
   const pending: { text: string; opts?: { title?: string; sfx?: string } }[] = [];
+  /** Things a notice must never land on: results, reveals, reports and story cards. */
+  const MODAL = '[data-id=merge-reveal], [data-id=dive-summary], [data-id=summary], [data-id=goals-page], [data-id=recipe-book], .away, [data-id=campaign-card]:not([hidden])';
+  const bootedAt = Date.now();
+  let showing = false;
+  let waiter = 0;
+  // One notice at a time, never over a result or a story card. What cannot show yet waits.
   const pump = () => {
-    while (pending.length && toasts.childElementCount < 2) {
-      const { text, opts } = pending.shift()!;
-      const t = mk('div', 'hub-toast');
-      if (opts?.title) t.append(mk('b', '', opts.title));
-      t.append(text);
-      toasts.append(t);
-      if (opts?.sfx !== '') sfx(opts?.sfx ?? 'gain');
-      window.setTimeout(() => { t.remove(); pump(); }, 4300);
-    }
-    if (pending.length > 12) pending.splice(0, pending.length - 12);
+    window.clearTimeout(waiter);
+    if (showing || !pending.length) return;
+    if (document.querySelector(MODAL)) { waiter = window.setTimeout(pump, 800); return; }
+    const { text, opts } = pending.shift()!;
+    const t = mk('div', 'hub-toast');
+    if (opts?.title) t.append(mk('b', '', opts.title));
+    t.append(text);
+    toasts.append(t);
+    showing = true;
+    if (opts?.sfx !== '') sfx(opts?.sfx ?? 'gain');
+    window.setTimeout(() => { t.remove(); showing = false; waiter = window.setTimeout(pump, 500); }, 4300);
   };
   let cleanup: (() => void) | null = null;
   const leave = () => { try { cleanup?.(); } catch (e) { console.error(e); } cleanup = null; };
@@ -97,9 +104,11 @@ export const createHub = (host: HTMLElement, sfx: (name: string) => void): Pick<
       close,
       isOpen: () => isOpen,
     },
-    // At most two notices show at once; the rest wait their turn so they never pile over the screen.
     toast: (text, opts) => {
+      // What was already true when the game opened is not news: it shows on the menu's badges instead.
+      if (Date.now() - bootedAt < 6000) return;
       pending.push({ text, opts });
+      if (pending.length > 8) pending.splice(0, pending.length - 8);
       pump();
     },
     store: (key, init) => {

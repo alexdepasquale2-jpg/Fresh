@@ -932,7 +932,7 @@ export const plugin: Plugin = (shell) => {
     if (was >= CHAPTERS.length) { tab = 'story'; try { shell.menu.open('journal'); } catch { /* the page is in the menu either way */ } }
   });
   /** Anything else that is talking: the hub, Mote's guide, the away report, any toast (the Almanac's happenings come as toasts). */
-  const busy = () => shell.menu.isOpen() || !!document.querySelector('.guide .guide-card.on, .away, .away-note, .hub-toast');
+  const busy = () => shell.menu.isOpen() || !!document.querySelector('.guide .guide-card.on, .away, .away-note, .hub-toast, [data-id=merge-reveal], [data-id=goals-page], [data-id=recipe-book], [data-id=merge-confirm]');
   const cards = () => {
     const screen = shell.current();
     const quiet = (screen === 'bedroom' || screen === 'box') && !busy();

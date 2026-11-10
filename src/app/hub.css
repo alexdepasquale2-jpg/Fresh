@@ -3,7 +3,7 @@
 .hub-btn { position: absolute; right: 0; top: 8px; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; pointer-events: auto; cursor: pointer; touch-action: manipulation; display: grid; place-items: center; }
 .hub-btn i { width: 22px; height: 22px; border: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 85%, transparent); display: grid; place-items: center; color: var(--ink-muted); font: 600 13px/1 var(--font-ui); font-style: normal; }
 .hub-btn.has-badge i { border-color: var(--glow); color: var(--glow); }
-.hub-sheet { position: absolute; inset: 0; display: none; flex-direction: column; background: color-mix(in srgb, var(--bg) 96%, transparent); pointer-events: auto; }
+.hub-sheet { position: absolute; inset: 0; display: none; flex-direction: column; background: var(--bg); pointer-events: auto; }
 .hub-frame.open .hub-sheet { display: flex; }
 .hub-frame.open .hub-btn { display: none; }
 .hub-head { display: flex; align-items: center; gap: var(--gap); padding: var(--pad); border-bottom: 1px solid var(--line-dim); }
