@@ -34,8 +34,8 @@ interface Def extends Skill {
   gain?: number; drain?: number; quick?: boolean; pierce?: boolean; selfBurn?: number; hpCost?: number; leech?: number;
   fin?: StatusKind; finSelf?: boolean; line?: string;
 }
-const STRIKE: Def = { id: 'strike', name: 'Strike', cost: 0, kind: 'HARM', desc: 'A plain blow by Might. Gathers 1 extra Light. Shatters the chilled for half again.' };
-const FOLD: Def = { id: 'fold', name: 'Fold', cost: 2, kind: 'HARM', desc: 'Strikes from inside, by Depth. Can crit; always crits the exposed.' };
+const STRIKE: Def = { id: 'strike', name: 'Strike', cost: 0, kind: 'HARM', desc: 'A plain blow, a little under your Might. Gathers 1 extra Light. Shatters the chilled for half again. The same Strike twice running is seen coming: it lands at half, and the Light goes to them.' };
+const FOLD: Def = { id: 'fold', name: 'Fold', cost: 2, kind: 'HARM', desc: 'Strikes from inside, by Depth: the deeper, the harder. Lands double on the exposed.' };
 const SHINE: Def = { id: 'shine', name: 'Shine', cost: 2, kind: 'MEND', desc: 'Heals by Radiance, wards for 2 turns, clears burn and chill.' };
 const ALIGN: Def = { id: 'align', name: 'Alignment', cost: 5, kind: 'FINISHER', desc: 'Everything in one line: a huge blow that empties their Light.' };
 const LEARN = [1, 2, 3, 5, 7, 10];
@@ -143,7 +143,7 @@ const T = {
   legion: { id: 'legion', name: 'Legion', desc: 'A hundred souls: more Might.' },
   fused: { id: 'fused', name: 'Fused', desc: 'Two universes in one.' },
 } satisfies Record<string, Trait>;
-const lucky: Trait = { id: 'lucky', name: 'Lucky', desc: 'Its blows never land soft, and its Fold crits more often.' };
+const lucky: Trait = { id: 'lucky', name: 'Lucky', desc: 'Its blows never land soft, and its Fold goes deeper.' };
 /** A universe's temperament gives its creature one passive and a manner. Ids start `t-`. */
 const TEMPER: Record<string, { trait: Trait; enter: string; low: string; win: string }> = {
   placid: { trait: { id: 't-placid', name: 'Placid', desc: 'Burns bite it half as hard.' }, enter: '{me} settles where it is put.', low: '{me} does not seem to mind much.', win: '{me} sits down again.' },
@@ -157,7 +157,7 @@ const TEMPER: Record<string, { trait: Trait; enter: string; low: string; win: st
   feral: { trait: { id: 't-feral', name: 'Feral', desc: 'Hits an eighth harder below half its life.' }, enter: '{me} bites at the edge of the lid.', low: '{me} shows what teeth it has.', win: '{me} does not let go at once.' },
   kind: { trait: { id: 't-kind', name: 'Kind', desc: 'Heals a fifth more.' }, enter: '{me} is gentle about it.', low: '{me} is still gentle. It costs more now.', win: '{me} gives something back.' },
   cold: { trait: { id: 't-cold', name: 'Cold', desc: '3 more Guard.' }, enter: '{me} does not warm to them.', low: 'Frost comes off {me} in a thin breath.', win: '{me} keeps its own counsel.' },
-  dreaming: { trait: { id: 't-dreaming', name: 'Dreaming', desc: 'Its Fold crits more often.' }, enter: '{me} is asleep, mostly.', low: '{me} mutters in its sleep.', win: '{me} may only have dreamed it.' },
+  dreaming: { trait: { id: 't-dreaming', name: 'Dreaming', desc: 'Its Fold goes deeper.' }, enter: '{me} is asleep, mostly.', low: '{me} mutters in its sleep.', win: '{me} may only have dreamed it.' },
 };
 const RARITY_LIFT: Record<string, number> = { common: 0, uncommon: 3, rare: 6, epic: 10, mythic: 14 };
 const pc = (n: number | undefined, cap = 25) => 1 + Math.max(-cap, Math.min(cap, n ?? 0)) / 100;
@@ -173,7 +173,9 @@ const DAILY: { name: string; where: string; taunt: string; beaten: string }[] = 
 const NO_STATUS: Status = { burn: 0, chill: 0, ward: 0, regen: 0, expose: 0 };
 const KINDS = ['burn', 'chill', 'ward', 'regen', 'expose'] as const;
 
-const EASE = [0.62, 1, 0.92, 1.28, 1.4, 0.8, 1.28, 0.82, 1.4, 0.84, 0.86, 0.86, 1.08, 1, 0.76, 0.6];
+// How hard each door is, as a scale on its creatures' Might and life. Set by the balance harness so that pressing
+// Strike alone wins less and less up the ladder while reading the fight keeps winning; bosses and the last door stand apart.
+const EASE = [0.4, 0.55, 0.36, 1.58, 0.9, 0.7, 1, 1.45, 1.2, 0.8, 0.8, 1.4, 1, 1, 0.9, 0.44];
 const TIERS = ['The street', 'The water', 'The dark houses', 'The lamp'];
 type RivalSeed = Omit<Rival, 'id' | 'serials' | 'level'>;
 const RIVALS: RivalSeed[] = [
@@ -184,15 +186,15 @@ const RIVALS: RivalSeed[] = [
   { name: 'Someone in the garden shed', where: 'past the wet grass', taunt: 'Shut the door. They get out.', again: 'One got out. It came back bigger.', beaten: 'Leave the door. It does not matter now.', persona: 'sly', theme: 'bloom' },
   { name: 'A kid by the canal', where: 'down the towpath', taunt: 'Mine came out of the water.', again: 'The water gave me another.', beaten: 'It wants them back, you know.', persona: 'bold', theme: 'tide' },
   { name: 'The paper girl', where: 'at the end of her round', taunt: 'I see every house before it wakes.', again: 'Your light was on at four.', beaten: 'I will skip your door tomorrow.', persona: 'sly', theme: 'void' },
-  { name: 'The child in the hall mirror', where: 'in the glass on the landing', taunt: 'Whatever you do, I did first.', again: 'You came back. So did I.', beaten: 'Do not look in here again.', persona: 'cruel', boss: 'mirror', mechanic: 'Gives you back your own last move. Repeat yourself and it comes back double.' },
+  { name: 'The child in the hall mirror', where: 'in the glass on the landing', taunt: 'Whatever you do, I did first.', again: 'You came back. So did I.', beaten: 'Do not look in here again.', persona: 'cruel', boss: 'mirror', mechanic: 'Gives you back your own last blow, a little late and a little soft. Strike the same way twice and it comes back double.' },
   { name: 'The old man at the window', where: 'across the street', taunt: 'I had a box like yours once.', again: 'I remember more of it now.', beaten: 'Yes. That is how I lost mine.', persona: 'wary', theme: 'cold' },
   { name: 'The child in the cellar', where: 'down where it is cold', taunt: 'Mine are hungry.', again: 'They still are.', beaten: 'Now there is nothing down here but me.', persona: 'cruel', theme: 'void' },
   { name: 'The night-bus sisters', where: 'at the last stop', taunt: 'Last stop. Everyone off.', again: 'You missed your stop again.', beaten: 'We will walk home.', persona: 'bold', theme: 'tide' },
-  { name: 'The seamstress', where: 'in the house with no door', taunt: 'I can make two of anything into one.', again: 'I unpicked them. I will sew them tighter.', beaten: 'The stitches are coming out.', persona: 'wary', boss: 'fuse', mechanic: 'Sews two of her own into one.' },
+  { name: 'The seamstress', where: 'in the house with no door', taunt: 'I can make two of anything into one.', again: 'I unpicked them. I will sew them tighter.', beaten: 'The stitches are coming out.', persona: 'wary', boss: 'fuse', mechanic: 'Sews two of her own into one, if her hand is let alone. A hard blow while she sews snaps the thread.' },
   { name: 'The choir on the hill', where: 'where the road stops', taunt: 'We only know one song.', again: 'We learned the second verse.', beaten: 'We have forgotten the words.', persona: 'wary', theme: 'bloom' },
   { name: "The lighthouse keeper's boy", where: 'a long way from any sea', taunt: 'I keep it lit so they can find you.', again: 'They found you. Did you notice?', beaten: 'It is dark now. Are you glad?', persona: 'sly', theme: 'fire' },
   { name: 'Whoever lives in the lamp', where: 'inside the streetlight', taunt: 'Whose box do you think you are in?', again: 'Look up.', beaten: 'The lamp is yours. Mind it.', persona: 'cruel', theme: 'void' },
-  { name: 'The first owner of the Box', where: 'in your room, behind you', taunt: 'I left it on the shelf for you. I want it back.', again: 'It still smells of my hands.', beaten: 'Keep it, then. Leave it on a shelf, one day.', persona: 'cruel', boss: 'champion', mechanic: 'Fights in the dark with four, and wipes itself clean every third turn.' },
+  { name: 'The first owner of the Box', where: 'in your room, behind you', taunt: 'I left it on the shelf for you. I want it back.', again: 'It still smells of my hands.', beaten: 'Keep it, then. Leave it on a shelf, one day.', persona: 'cruel', boss: 'champion', mechanic: 'Fights in the dark with four. Every third turn it wipes the board: its own made clean, yours smeared and left open unless it is guarding.' },
 ];
 
 export const factory: BattlesFactory = ({ seed }) => {
@@ -262,18 +264,36 @@ export const factory: BattlesFactory = ({ seed }) => {
   const alive = (fs: readonly Fighter[]) => fs.findIndex((f) => f.hp > 0);
   const spd = (f: Fighter) => f.speed - (f.status.chill > 0 ? 5 : 0);
 
+  /** The dice are a pure function of the seed, the rival, the turn and the field as it stands: no two tries throw alike. */
+  const salt = (st: Pick<BattleState, 'mine' | 'theirs' | 'turn'>): number => {
+    let h = st.turn + 1;
+    for (const f of st.mine) h = (Math.imul(h, 31) + f.hp * 7 + f.maxHp + f.energy) | 0;
+    for (const f of st.theirs) h = (Math.imul(h, 37) + f.hp * 5 + f.energy) | 0;
+    return (h >>> 0) % 0x3fffffff;
+  };
+  /** Deeper folds strike harder. No dice: the same fold always lands the same. */
+  const foldDeep = (f: Fighter) => 1 + Math.min(0.9, f.depth / (f.depth + 30) + (has(f, 't-dreaming') ? 0.15 : 0) + (has(f, 'lucky') ? 0.1 : 0));
+  /** A fight that drags cannot be sat out: after four turns for each creature they brought, mending, shields, wards and guarding all thin, a fifth more each turn. Blows stay as they were, so waiting buys nothing. */
+  const lateAt = (st: Pick<BattleState, 'theirs'>) => 4 * Math.max(2, st.theirs.length + (st.theirs.some((f) => f.fused) ? 1 : 0));
+  const late = (st: Pick<BattleState, 'theirs' | 'turn'>) => (st.turn >= lateAt(st) ? 1 + (st.turn - lateAt(st) + 1) / 5 : 1);
+  const BLOWS = ['strike', 'kindle', 'rime', 'undertow', 'avalanche', 'overgrow', 'unmake', 'fold', 'align'];
+  /** A move that does harm. The glass only gives back blows. */
+  const isBlow = (k: Def | undefined) => !!k && (!!k.pow || BLOWS.includes(k.id));
+  const SNAP = 0.13, WIPE = 0.25, PLAIN = 0.85, STALE = 0.55, GLASS = 0.7, ECHO = 2;
+  const sewsNow = (st: Pick<BattleState, 'rival' | 'turn' | 'theirFused'>) => st.rival.boss === 'fuse' && !st.theirFused && st.turn >= 1 && st.turn % 3 === 1;
+  const wipesNow = (st: Pick<BattleState, 'rival' | 'turn'>) => st.rival.boss === 'champion' && (st.turn + 1) % 3 === 0;
   /** The rival decides its next move from what it can see. */
   type PlanIn = Pick<BattleState, 'rival' | 'mine' | 'theirs' | 'myActive' | 'theirActive' | 'turn' | 'last' | 'theirFused'>;
   const plan = (st: PlanIn): BattleState['intent'] => {
     const me = st.theirs[st.theirActive]!, foe = st.mine[st.myActive]!;
-    const g = rng(child(child(seed, `plan-${st.rival.id}-${st.rival.rematch ?? 0}`), st.turn));
+    const g = rng(child(child(seed, `plan-${st.rival.id}-${st.rival.rematch ?? 0}`), salt(st)));
     const R = st.rival;
     const skill = (s: Skill, hint: string): BattleState['intent'] => ({ action: { type: 'skill', id: s.id }, label: `${s.name}${hint ? ` (${hint})` : ''}` });
-    if (R.boss === 'fuse' && !st.theirFused && st.turn >= 1) {
+    if (sewsNow(st)) {
       const t = st.theirs.findIndex((f, i) => i !== st.theirActive && f.hp > 0);
-      if (t >= 0) return { action: { type: 'fuse', target: t }, label: `Sew ${me.name} to ${st.theirs[t]!.name}` };
+      if (t >= 0) return { action: { type: 'fuse', target: t }, label: `Sew ${me.name} to ${st.theirs[t]!.name} (a hard blow snaps it)` };
     }
-    const mirrored = R.boss === 'mirror' && st.last?.you ? DEFS[st.last.you] : undefined;
+    const mirrored = R.boss === 'mirror' && st.last?.you && isBlow(DEFS[st.last.you]) ? DEFS[st.last.you] : undefined;
     if (mirrored) return skill(mirrored, 'your own move');
     if (me.energy >= costOf(me, ALIGN)) return skill(ALIGN, 'a huge blow');
     const afford = me.skills.filter((s) => s.id !== 'strike' && s.id !== 'align' && me.energy >= costOf(me, s)).map((s) => DEFS[s.id]!);
@@ -287,7 +307,7 @@ export const factory: BattlesFactory = ({ seed }) => {
     if (foe.energy >= 4 && R.persona !== 'bold' && g.chance(wary ? 3 : 2, 5)) return { action: { type: 'guard' }, label: 'Guard' };
     const fin = afford.find((k) => k.fin && (k.finSelf ? me : foe).status[k.fin] > 0);
     if (fin) return skill(fin, 'finisher');
-    const harm = afford.filter((k) => k.pow || ['kindle', 'rime', 'undertow', 'avalanche', 'overgrow', 'unmake', 'fold'].includes(k.id));
+    const harm = afford.filter(isBlow);
     if (harm.length && g.chance(R.persona === 'bold' ? 16 : 13, 20)) {
       const tricks = afford.filter((k) => k.drain || k.expose || k.chill || k.burn || k.kind === 'BURN' || k.kind === 'CHILL');
       const pick = R.persona === 'sly' && tricks.length ? g.pick(tricks)
@@ -310,7 +330,7 @@ export const factory: BattlesFactory = ({ seed }) => {
     const log: BattleLogLine[] = [];
     const hits: Hit[] = [];
     const R = st0.rival;
-    const g = rng(child(child(seed, `battle-${R.id}-${R.rematch ?? 0}`), st0.turn));
+    const g = rng(child(child(seed, `battle-${R.id}-${R.rematch ?? 0}`), salt(st0)));
     const team = (side: Side) => (side === 'you' ? mine : theirs);
     const activeOf = (side: Side) => team(side)[side === 'you' ? myActive : theirActive]!;
     const other = (side: Side): Side => (side === 'you' ? 'them' : 'you');
@@ -318,7 +338,7 @@ export const factory: BattlesFactory = ({ seed }) => {
 
     const hurt = (side: Side, a: F, d: F, base: number, o: { pierce?: boolean; noGuard?: boolean; crit?: boolean; tag?: string } = {}) => {
       const adv = advantage(a.element, d.element);
-      let dmg = base * (side === 'them' ? boost : 1) * adv * ((has(a, 'lucky') ? 98 : 90) + g.int(has(a, 'lucky') ? 13 : 21)) / 100;
+      let dmg = base * (side === 'them' ? boost : 1) * adv * ((has(a, 'lucky') ? 100 : 95) + g.int(has(a, 'lucky') ? 7 : 11)) / 100;
       if (has(a, 't-proud') && a.hp * 2 > a.maxHp) dmg *= 1.1;
       if (has(a, 't-feral') && a.hp * 2 < a.maxHp) dmg *= 1.125;
       if (has(a, 't-mournful') && team(side).some((f) => f.hp <= 0)) dmg *= 1.17;
@@ -329,8 +349,9 @@ export const factory: BattlesFactory = ({ seed }) => {
       if (holds(a, 'marble') && (d.status.burn > 0 || d.status.chill > 0 || d.status.expose > 0)) dmg *= 1.2;
       if (a.status.chill > 0) dmg *= 0.75;
       if (d.status.expose > 0) dmg *= 1.4;
-      if (d.status.ward > 0 && !o.pierce) dmg *= 0.5;
-      if (d.guarding) dmg *= has(d, 't-patient') ? 0.34 : 0.5;
+      const tired = late(st0);
+      if (d.status.ward > 0 && !o.pierce) dmg *= 1 - 0.5 / tired;
+      if (d.guarding) dmg *= 1 - (has(d, 't-patient') ? 0.66 : 0.5) / tired;
       if (has(d, 'bedrock') && !d.spent.includes('bedrock')) { dmg *= 0.5; d.spent.push('bedrock'); }
       if (!o.noGuard) dmg -= d.guard / 4;
       const n = Math.max(1, Math.round(dmg));
@@ -338,6 +359,7 @@ export const factory: BattlesFactory = ({ seed }) => {
       d.shield = (d.shield ?? 0) - soak;
       d.hp = Math.max(0, d.hp - (n - soak));
       if (side === 'you') tally.dealt += n; else tally.taken += n;
+      struck[other(side)] += n;
       hits.push({ to: other(side), amount: n, crit: !!o.crit, heal: false, tag: o.tag ?? (soak >= n ? 'SHIELDED' : ''), ...(adv > 1 ? { eff: 'strong' as const } : adv < 1 ? { eff: 'weak' as const } : {}) });
       // Once a fight, a creature that is badly hurt shows its temperament.
       const tm = d.temperament ? TEMPER[d.temperament] : undefined;
@@ -345,9 +367,10 @@ export const factory: BattlesFactory = ({ seed }) => {
       return n;
     };
     let ticking = false, boost = 1;
+    const struck = { you: 0, them: 0 }, fell = { you: false, them: false };
     const lows: string[] = [];
     const heal = (side: Side, f: F, amount: number, tag = '') => {
-      const n = Math.max(0, Math.min(f.maxHp - f.hp, Math.round(amount * (has(f, 'lamplit') ? 1.25 : 1) * (has(f, 't-kind') ? 1.2 : 1))));
+      const n = Math.max(0, Math.min(f.maxHp - f.hp, Math.round((amount * (has(f, 'lamplit') ? 1.25 : 1) * (has(f, 't-kind') ? 1.2 : 1)) / late(st0))));
       f.hp += n;
       if (n > 0) hits.push({ to: side, amount: n, crit: false, heal: true, tag, ...(ticking ? { tick: true } : {}) });
       return n;
@@ -375,6 +398,11 @@ export const factory: BattlesFactory = ({ seed }) => {
         const b = us[a0.target];
         const used = side === 'you' ? fusedUsed : theirFused || R.boss !== 'fuse';
         if (!b || b.hp <= 0 || b === me || used) return;
+        if (side === 'them' && struck.them >= me.maxHp * SNAP) {
+          chain[side] = 0; last[side] = '';
+          say(`${R.name} pulls a thread, but ${me.name} was struck too hard to hold still (${struck.them}). The thread snaps. She will thread the needle again.`);
+          return;
+        }
         const [w1, w2] = [me.name.split(' ')[0]!, b.name.split(' ').slice(-1)[0]!];
         const name = w1 === w2 ? `${w1} Twice` : `${w1} ${w2}`;
         const extra = b.skills.filter((s) => s.learnAt && !me.skills.some((x) => x.id === s.id)).slice(0, 2);
@@ -397,7 +425,7 @@ export const factory: BattlesFactory = ({ seed }) => {
         hits.push({ to: side, amount: fusedF.hp, crit: true, heal: true, tag: 'FUSED' });
         return;
       }
-      const mirror = side === 'them' && R.boss === 'mirror' && a0.id === st0.last?.you;
+      const mirror = side === 'them' && R.boss === 'mirror' && a0.id === st0.last?.you && isBlow(DEFS[a0.id]);
       const skill = me.skills.find((s) => s.id === a0.id) ?? (mirror ? DEFS[a0.id] : undefined) ?? STRIKE;
       const cost = mirror ? 0 : costOf(me, skill);
       const use = DEFS[me.energy >= cost ? skill.id : 'strike'] ?? STRIKE;
@@ -407,8 +435,9 @@ export const factory: BattlesFactory = ({ seed }) => {
       const tail = adv > 1 ? ' It burns through.' : adv < 1 ? ' It barely lands.' : '';
       me = activeOf(side);
       const echo = mirror && action.type === 'skill' && action.id === a0.id;
-      if (mirror) world(echo ? `You repeated yourself. The glass was ready: ${d.name} gets its own ${use.name} back, double.` : `The glass shows ${d.name} its own ${use.name}.`);
-      boost = echo ? 2 : 1;
+      if (mirror) world(echo ? `You repeated yourself. The glass was ready: ${d.name} gets its own ${use.name} back, double.` : `The glass shows ${d.name} its own ${use.name}, a moment late. It lands soft.`);
+      boost = echo ? ECHO : mirror ? GLASS : 1;
+      const stale = use.id === 'strike' && last[side] === 'strike' && !mirror;
       // Chain: a different move from the one before hits harder, up to three in a row.
       if (last[side] && last[side] !== use.id) {
         chain[side] = Math.min(3, chain[side] + 1);
@@ -419,11 +448,12 @@ export const factory: BattlesFactory = ({ seed }) => {
       switch (use.id) {
         case 'strike': {
           const sh = d.status.chill > 0;
-          const n = hurt(side, me, d, me.might * (sh ? 1.5 : 1), { noGuard: has(me, 'hollow'), ...(sh ? { tag: 'SHATTER', crit: true } : {}) });
-          light(me, 1);
+          const n = hurt(side, me, d, me.might * PLAIN * (sh ? 1.5 : 1) * (stale ? STALE : 1), { noGuard: has(me, 'hollow'), ...(sh ? { tag: 'SHATTER', crit: true } : stale ? { tag: 'SEEN COMING' } : {}) });
+          // A Strike seen coming gathers nothing, and gives the other one time to gather itself.
+          if (stale) light(d, 1); else light(me, 1);
           if (has(me, 't-hungry')) heal(side, me, n / 5);
           if (sh) { d.status.chill = 0; say(`${me.name} strikes ${d.name} for ${n}.`); combo(side, `Shatter: ${d.name} was chilled, and frozen things break when struck. Half again.`); }
-          else say(`${me.name} strikes ${d.name} for ${n}.${tail}`);
+          else say(stale ? `${me.name} strikes the same way again. ${d.name} saw it coming: ${n}, and it gathers Light while it waits.` : `${me.name} strikes ${d.name} for ${n}.${tail}`);
           break;
         }
         case 'kindle': { const sh = d.status.chill > 0; const n = hurt(side, me, d, me.might * 0.9 * (sh ? 1.5 : 1), { tag: sh ? 'SHATTER' : 'BURN', crit: sh }); if (sh) d.status.chill = 0; d.status.burn = (has(me, 'smoulder') ? 4 : 3) + longer; say(sh ? `${me.name} sets the frost alight. ${d.name} shatters for ${n} and burns.` : `${me.name} kindles ${d.name} for ${n}. It burns.`); if (sh) combo(side, 'Shatter: fire on frost cracks it. Half again.'); break; }
@@ -432,9 +462,9 @@ export const factory: BattlesFactory = ({ seed }) => {
         case 'avalanche': { const broke = d.status.ward > 0, sh = d.status.chill > 0; const n = hurt(side, me, d, me.might * 1.3 * (sh ? 1.5 : 1), { pierce: true, tag: sh ? 'SHATTER' : broke ? 'BREAK' : '', crit: sh }); if (sh) d.status.chill = 0; say(`${me.name} comes down on ${d.name} for ${n}${broke ? ', straight through its ward' : ''}.${tail}`); if (sh) combo(side, `Shatter: ${d.name} was chilled, and frozen things break under weight. Half again.`); break; }
         case 'overgrow': { const wild = d.status.burn > 0; const n = hurt(side, me, d, me.might * 0.6, { tag: wild ? 'WILDFIRE' : '' }); me.status.regen = has(me, 'rooted') ? 4 : 3; if (wild) d.status.burn += 2; say(`${me.name} grows over ${d.name} for ${n} and takes root.`); if (wild) combo(side, `Wildfire: green things feed a fire. ${d.name} burns 2 turns longer.`); break; }
         case 'unmake': { const n = hurt(side, me, d, me.might, { tag: 'EXPOSE' }); d.status.expose = 2; say(`${me.name} unmakes part of ${d.name} for ${n}. It stands exposed.`); break; }
-        case 'fold': { const open = d.status.expose > 0; const crit = open || g.int(100) < Math.round((me.depth * 100) / (me.depth + 30)) + (has(me, 't-dreaming') ? 15 : 0) + (has(me, 'lucky') ? 10 : 0); const n = hurt(side, me, d, me.depth * 1.5 * (crit ? 2 : 1), { crit, tag: crit ? 'CRIT' : '' }); say(crit ? `${me.name} folds and strikes from ${me.depth} layers down. ${n}!` : `${me.name} folds and strikes from inside for ${n}.`); if (open) combo(side, `Open wound: ${d.name} was exposed, so the fold could not miss. Double.`); break; }
+        case 'fold': { const open = d.status.expose > 0; const crit = open; const n = hurt(side, me, d, me.depth * 1.5 * (open ? 2 : foldDeep(me)), { crit, tag: crit ? 'CRIT' : '' }); say(crit ? `${me.name} folds and strikes from ${me.depth} layers down. ${n}!` : `${me.name} folds and strikes from inside for ${n}.`); if (open) combo(side, `Open wound: ${d.name} was exposed, so the fold could not miss. Double.`); break; }
         case 'shine': { const n = heal(side, me, me.radiance * 1.8 + 6, 'SHINE'); me.status.ward = 2; me.status.burn = 0; me.status.chill = 0; say(`${me.name} shines. Its worlds sing it whole (+${n}), and it is warded.`); break; }
-        case 'align': { const n = hurt(side, me, d, (me.might + me.depth + me.radiance) * 0.85 + me.speed, { crit: true, tag: 'ALIGNMENT' }); d.energy = 0; say(`Every world in ${me.name} falls into one line. ${n}! ${d.name} loses its Light.`); break; }
+        case 'align': { const n = hurt(side, me, d, (me.might + me.depth + me.radiance) * 0.75 + me.speed, { crit: true, tag: 'ALIGNMENT' }); d.energy = 0; say(`Every world in ${me.name} falls into one line. ${n}! ${d.name} loses its Light.`); break; }
         default: {
           const k = use;
           let n = 0;
@@ -454,7 +484,7 @@ export const factory: BattlesFactory = ({ seed }) => {
           if (k.selfBurn) me.status.burn = Math.max(me.status.burn, k.selfBurn);
           if (k.ward) me.status.ward = Math.max(me.status.ward, k.ward);
           if (k.regen) me.status.regen = Math.max(me.status.regen, k.regen + (has(me, 'rooted') ? 1 : 0));
-          if (k.shield) { const s = Math.round(me.maxHp * k.shield); me.shield = Math.max(me.shield ?? 0, s); hits.push({ to: side, amount: s, crit: false, heal: true, tag: 'SHIELD' }); }
+          if (k.shield) { const s = Math.round((me.maxHp * k.shield) / late(st0)); me.shield = Math.max(me.shield ?? 0, s); hits.push({ to: side, amount: s, crit: false, heal: true, tag: 'SHIELD' }); }
           if (k.heal) heal(side, me, me.radiance * k.heal + 4, 'MEND');
           if (k.drain) light(d, -k.drain);
           if (k.gain) light(me, k.gain);
@@ -472,6 +502,7 @@ export const factory: BattlesFactory = ({ seed }) => {
         const idx = side === 'you' ? myActive : theirActive;
         if (fs[idx]!.hp > 0) return;
         world(`${fs[idx]!.name} goes dark.`);
+        fell[side] = true;
         const n = alive(fs);
         if (n < 0) { outcome = side === 'you' ? 'lost' : 'won'; return; }
         if (side === 'you') myActive = n; else theirActive = n;
@@ -486,7 +517,8 @@ export const factory: BattlesFactory = ({ seed }) => {
     const quick = (a: BattleAction) => a.type !== 'skill' || !!DEFS[a.id]?.quick;
     const theirA = st0.intent.action;
     const qy = quick(action), qt = quick(theirA);
-    const first: Side = qy !== qt ? (qy ? 'you' : 'them') : spd(activeOf('you')) >= spd(activeOf('them')) ? 'you' : 'them';
+    const sewing = theirA.type === 'fuse';
+    const first: Side = sewing ? 'you' : qy !== qt ? (qy ? 'you' : 'them') : spd(activeOf('you')) >= spd(activeOf('them')) ? 'you' : 'them';
     for (const side of [first, other(first)] as const) { perform(side, side === 'you' ? action : theirA); for (const l of lows.splice(0)) world(l); settle(); }
     // End of turn: burns bite, roots mend, statuses fade, Light gathers, the weather moves.
     if (outcome === 'ongoing') {
@@ -509,12 +541,30 @@ export const factory: BattlesFactory = ({ seed }) => {
     }
     if (outcome === 'ongoing') {
       const turn = st0.turn + 1;
+      if (turn === lateAt(st0)) world('It is getting late. Everyone is tired: from here mending, shields, wards and guarding all thin a little more each turn.');
       if (R.boss === 'weather') {
         const next = g.pick(WEATHERS.filter((w) => w !== weather));
         weather = next;
         log.push({ side: 'them', text: `${R.name} turns the glass. ${WEATHER[next].name}: ${WEATHER[next].desc}` });
       } else if (R.boss === 'champion') {
-        if (turn % 3 === 0) { const f = activeOf('them'); f.status.burn = 0; f.status.chill = 0; f.status.expose = 0; light(f, 2); log.push({ side: 'them', text: `${R.name} wipes ${f.name} clean with a thumb, and hands it Light.` }); }
+        if (turn % 3 === 0) {
+          const f = activeOf('them'), y = activeOf('you');
+          if (fell.them) log.push({ side: 'them', text: `${R.name} reaches for the board, but ${f.name} has only just risen. Nothing is wiped this time.` });
+          else {
+            f.status.burn = 0; f.status.chill = 0; f.status.expose = 0;
+            // The wipe cannot put a creature out; it leaves it open for what comes next.
+            let n = Math.round(y.maxHp * WIPE * (y.guarding ? 0.3 : 1) * (y.status.ward > 0 ? 0.5 : 1));
+            const soak = Math.min(y.shield ?? 0, n);
+            y.shield = (y.shield ?? 0) - soak;
+            n = Math.min(n - soak, Math.max(0, y.hp - 1));
+            y.hp -= n; tally.taken += n;
+            if (n + soak > 0) hits.push({ to: 'you', amount: n + soak, crit: false, heal: false, tag: soak > 0 && n === 0 ? 'SHIELDED' : 'WIPE', tick: true });
+            if (!y.guarding) y.status.expose = Math.max(y.status.expose, 2);
+            log.push({ side: 'them', text: y.guarding
+              ? `${R.name} wipes the board with a thumb. ${f.name} is clean again. ${y.name} was braced: ${n}, and nothing sticks.`
+              : `${R.name} wipes the board with a thumb. ${f.name} is clean again. ${y.name} is smeared for ${n} and stands exposed.` });
+          }
+        }
       } else if (turn % 4 === 0) {
         const els = [...mine, ...theirs].filter((f) => f.hp > 0).map((f) => WEATHER_OF[f.element]);
         const next = g.pick(els);
@@ -566,8 +616,8 @@ export const factory: BattlesFactory = ({ seed }) => {
         worldsTended: wi - 1, deepestFold: wi * 4 + g.int(4 + wi), lightFromGlow: Math.round(w * 40) + g.int(40), souls: Math.round(w * 8) + g.int(4 + wi),
         era: Math.min(4, Math.floor(w / 3)), enlightenment: Math.min(100, Math.round(w * 9) + (l >= 9 ? 30 : 0)), prosperity: Math.min(100, Math.round(w * 8)), orbiters: l > 6 ? Math.floor((l - 5) / 2) : 0,
       }, -1);
-      // The first doors on the street are easy ones: a new box must be able to win there.
-      const ease = (rival.rematch ?? 0) === 0 && (!rival.mode || rival.mode === 'practice') && rival.id < EASE.length ? EASE[rival.id]! : 1;
+      // The first doors on the street are easy ones: a new box must be able to win there. A rematch keeps the door's scale and adds levels.
+      const ease = rival.id < EASE.length ? EASE[rival.id]! : 1;
       if (ease !== 1) { const hp = Math.round(base.maxHp * ease); Object.assign(base, { might: Math.max(4, Math.round(base.might * ease)), maxHp: hp, hp }); }
       const relic = (rival.tier ?? 1) >= 2 && (i === 0 || rival.boss) ? RELICS[g.int(RELICS.length)]!.id : undefined;
       return grow(base, { xp: xpForLevel(Math.max(1, l + (rival.boss ? 1 : 0) - (i === 2 ? 1 : 0))), ...(relic ? { relic } : {}) });
@@ -576,22 +626,22 @@ export const factory: BattlesFactory = ({ seed }) => {
     return out;
   };
 
-  /** About what a move would do, before the dice. Used by threat() and the scripted players. */
-  const est = (st: Pick<BattleState, 'weather'>, a: Fighter, d: Fighter, k: Def, free = false): number => {
+  /** About what a move would do, before the dice. Used by threat() and the scripted players. `stale`: it would be the same Strike twice running. */
+  const est = (st: Pick<BattleState, 'weather'>, a: Fighter, d: Fighter, k: Def, free = false, stale = false): number => {
     if (!free && a.energy < costOf(a, k)) k = STRIKE;
     const fin = !!(k.fin && (k.finSelf ? a : d).status[k.fin] > 0);
     const sh = d.status.chill > 0 ? 1.5 : 1;
     let base = 0, pierce = !!k.pierce;
     switch (k.id) {
-      case 'strike': base = a.might * sh; break;
+      case 'strike': base = a.might * PLAIN * sh * (stale ? STALE : 1); break;
       case 'kindle': base = a.might * 0.9 * sh; break;
       case 'rime': base = a.might * 0.8 * (d.status.burn > 0 ? 1.5 : 1); break;
       case 'undertow': base = a.might * 1.1; break;
       case 'avalanche': base = a.might * 1.3 * sh; pierce = true; break;
       case 'overgrow': base = a.might * 0.6; break;
       case 'unmake': base = a.might; break;
-      case 'fold': base = a.depth * 1.5 * (d.status.expose > 0 ? 2 : 1 + a.depth / (a.depth + 30)); break;
-      case 'align': base = (a.might + a.depth + a.radiance) * 0.85 + a.speed; break;
+      case 'fold': base = a.depth * 1.5 * (d.status.expose > 0 ? 2 : foldDeep(a)); break;
+      case 'align': base = (a.might + a.depth + a.radiance) * 0.75 + a.speed; break;
       default: base = k.pow ? a[k.stat ?? 'might'] * k.pow * (fin ? 2 : 1) : 0;
     }
     if (base <= 0) return 0;
@@ -603,39 +653,86 @@ export const factory: BattlesFactory = ({ seed }) => {
     if (d.status.expose > 0) dmg *= 1.4;
     if (d.status.ward > 0 && !pierce) dmg *= 0.5;
     if (has(d, 'bedrock') && !d.spent.includes('bedrock')) dmg *= 0.5;
-    return Math.max(1, dmg - d.guard / 4);
+    return Math.max(1, dmg - (k.id === 'strike' && has(a, 'hollow') ? 0 : d.guard / 4));
   };
-  const threat = (st: BattleState): number => {
-    if (st.outcome !== 'ongoing') return 0;
+  /** What the rival's shown move would do to your active fighter, mirror and repetition counted. */
+  const incoming = (st: BattleState, echoOf?: string): number => {
     const a = st.intent.action;
     if (a.type !== 'skill') return 0;
     const me = st.mine[st.myActive]!, foe = st.theirs[st.theirActive]!;
     const k = DEFS[a.id] ?? STRIKE;
-    const n = est(st, foe, me, k, st.rival.boss === 'mirror');
-    if (n <= 0) return 0;
-    return k.id === 'align' || n >= me.maxHp * 0.3 || (n >= me.hp + (me.shield ?? 0) && n >= me.maxHp * 0.15) ? 2 : 1;
+    const glass = st.rival.boss === 'mirror' && a.id === st.last?.you && isBlow(k);
+    const n = est(st, foe, me, k, glass, !glass && k.id === 'strike' && st.last?.them === 'strike');
+    return n <= 0 ? 0 : n * (glass ? (echoOf === a.id ? ECHO : GLASS) : 1) * (1 + (st.chain?.them ?? 0) * 0.1);
   };
-  /** Scripted players. Naive: the first move, always. Sensible: reads the intent, guards the big one, uses what hits hardest. Expert: chains, finishers, fusing. */
+  const threat = (st: BattleState): number => {
+    if (st.outcome !== 'ongoing') return 0;
+    const a = st.intent.action;
+    const me = st.mine[st.myActive]!;
+    // The champion's wipe is always worth bracing for.
+    if (wipesNow(st) && !me.guarding) return 2;
+    if (a.type !== 'skill') return 0;
+    const n = incoming(st);
+    if (n <= 0) return 0;
+    return a.id === 'align' || n >= me.maxHp * 0.3 || (n >= me.hp + (me.shield ?? 0) && n >= me.maxHp * 0.15) ? 2 : 1;
+  };
+  /** How a field looks to your side: life kept against life left, with a little for Light, statuses and the chain. */
+  const worth = (st: BattleState): number => {
+    if (st.outcome === 'won') return 1000 - st.turn;
+    if (st.outcome !== 'ongoing') return -1000 + st.turn;
+    const sum = (fs: readonly Fighter[]) => fs.reduce((a, f) => a + (f.hp > 0 ? f.hp + (f.shield ?? 0) * 0.6 : 0), 0) / Math.max(1, fs.reduce((a, f) => a + f.maxHp, 0));
+    const me = st.mine[st.myActive]!, foe = st.theirs[st.theirActive]!;
+    let v = 100 * (sum(st.mine) * 0.5 - sum(st.theirs) * 1.5) + 3 * st.mine.filter((f) => f.hp > 0).length - 8 * st.theirs.filter((f) => f.hp > 0).length;
+    v += me.energy * 0.5 - foe.energy * 0.5 + (st.chain?.you ?? 0) * 1.2;
+    v += Math.min(3, foe.status.burn) * 1.5 + Math.min(2, foe.status.expose) * 2.5 + Math.min(2, foe.status.chill) * 1.5 - (foe.status.ward > 0 ? 2 : 0);
+    v += Math.min(3, me.status.regen) * 1.2 + (me.status.ward > 0 ? 1.5 : 0) - Math.min(3, me.status.burn) * 1.5 - Math.min(2, me.status.expose) * 2.5 - Math.min(2, me.status.chill);
+    if (st.rival.boss === 'fuse' && st.theirFused) v -= 12;
+    return v;
+  };
+  const moves = (st: BattleState): BattleAction[] => {
+    const me = st.mine[st.myActive]!;
+    const out: BattleAction[] = me.skills.map((s): BattleAction => ({ type: 'skill', id: s.id }));
+    out.push({ type: 'guard' });
+    st.mine.forEach((_, i) => { out.push({ type: 'swap', target: i }); out.push({ type: 'fuse', target: i }); });
+    return out.filter((a) => can(st, a));
+  };
+  /** Scripted players. Naive: the first move, always. Sensible: reads the intent, guards the big one, uses what hits hardest, does not repeat a Strike. Expert: thinks two turns ahead, so chains, finishers, fusing and each boss's counter fall out of it. */
   const suggest = (st: BattleState, skill: 'naive' | 'sensible' | 'expert' = 'sensible'): BattleAction => {
     const me = st.mine[st.myActive]!, foe = st.theirs[st.theirActive]!;
     const strike: BattleAction = { type: 'skill', id: me.skills[0]?.id ?? 'strike' };
-    if (skill === 'naive') return strike;
-    const expert = skill === 'expert';
+    if (skill === 'naive' || st.outcome !== 'ongoing') return strike;
+    if (skill === 'expert') {
+      let bestA: BattleAction = strike, bestV = -Infinity;
+      // A turn spent not hitting has to earn its keep: sitting still never wins a fight.
+      const idle = (a: BattleAction) => (a.type !== 'skill' || !isBlow(DEFS[a.id]) ? 3 + Math.max(0, st.turn - 8) * 0.8 : 0);
+      for (const a of moves(st)) {
+        if (a.type === 'fuse' && me.hp > me.maxHp * 0.5) continue;
+        const s1 = act(st, a);
+        let v = worth(s1);
+        if (s1.outcome === 'ongoing') { let m = -Infinity; for (const b of moves(s1)) if (b.type !== 'swap' && b.type !== 'fuse') m = Math.max(m, worth(act(s1, b)) - idle(b)); v = m + v * 0.25; }
+        v -= idle(a);
+        if (v > bestV) { bestV = v; bestA = a; }
+      }
+      return bestA;
+    }
     const t = threat(st);
     const life = foe.hp + (foe.shield ?? 0);
     const mine = me.skills.map((s) => DEFS[s.id]!).filter((k) => k && me.energy >= costOf(me, k));
-    const myFins = new Set(me.skills.map((s) => DEFS[s.id]?.fin).filter(Boolean));
     const youFirst = st.first !== 'them';
     const hurt = (me.maxHp - me.hp) / me.maxHp;
-    let best: Def = STRIKE, bestV = -1, kill: Def | undefined;
+    const sew = st.intent.action.type === 'fuse';
+    const glass = st.rival.boss === 'mirror';
+    const link = 1 + (st.chain?.you ?? 0) * 0.1;
+    let best: Def = STRIKE, bestV = -Infinity, kill: Def | undefined;
     for (const k of mine) {
-      const n = est(st, me, foe, k);
-      if (n >= life * 1.12 && (!kill || costOf(me, k) < costOf(me, kill))) kill = k;
+      const again = !!st.last?.you && st.last.you === k.id;
+      const n = est(st, me, foe, k, false, again) * (again ? 1 : link);
+      if (n >= life * 1.08 && (!kill || costOf(me, k) < costOf(me, kill))) kill = k;
       let v = n;
-      if (k.id === 'strike') v += me.might * 0.25; // the Light it gathers
+      if (k.id === 'strike') v += again ? -foe.might * 0.2 : me.might * 0.2; // the Light it gathers, or hands over
       if ((k.id === 'kindle' || k.burn) && foe.status.burn === 0) v += 2 * (3 + foe.maxHp * 0.05);
       if ((k.id === 'rime' || k.chill) && foe.status.chill === 0) v += foe.might * 0.3;
-      if ((k.id === 'unmake' || k.expose) && foe.status.expose === 0) v += me.might * (expert && myFins.has('expose') ? 0.9 : 0.4);
+      if ((k.id === 'unmake' || k.expose) && foe.status.expose === 0) v += me.might * 0.4;
       if (k.id === 'undertow' || k.leech) v += n * 0.33 * Math.min(1, hurt * 3);
       if (k.id === 'overgrow') v += me.maxHp * 0.18 * Math.min(1, hurt * 3) * (me.status.regen > 0 ? 0.2 : 1);
       if (k.drain) v += Math.min(foe.energy, k.drain) * foe.might * 0.2;
@@ -643,26 +740,24 @@ export const factory: BattlesFactory = ({ seed }) => {
       if (k.shield && !k.pow) v += (me.shield ?? 0) > 0 ? 0 : me.maxHp * k.shield * (t >= 1 ? 0.9 : 0.4);
       if (k.id === 'shine') v = hurt > 0.5 && me.status.ward === 0 ? me.radiance * 1.8 + 6 + me.might * 0.6 : 0;
       if (k.id === 'align') v *= 0.9;
-      if (k.cleanse && !k.pow) v += (me.status.burn > 0 ? me.maxHp * 0.1 : 0) + (me.status.expose > 0 ? me.maxHp * 0.1 : 0) + (me.status.chill > 0 ? me.might * 0.3 : 0);
-      if (expert && st.last?.you && st.last.you !== k.id) v *= 1.1;
-      if (expert && st.rival.boss === 'champion' && (st.turn + 1) % 3 === 0 && (k.kind === 'BURN' || k.kind === 'CHILL' || k.id === 'unmake')) v *= 0.7;
-      if (expert && st.rival.boss === 'mirror') v -= est(st, foe, me, k, true) * 0.6; // it comes straight back
+      if (k.cleanse && !k.pow) v += (me.status.burn > 0 ? me.maxHp * 0.1 : 0) + (me.status.expose > 0 ? me.maxHp * 0.12 : 0) + (me.status.chill > 0 ? me.might * 0.3 : 0);
+      // Their hand is busy sewing: only a hard blow matters now.
+      if (sew) v = n >= foe.maxHp * SNAP ? n + 1000 : n;
+      // The glass gives it back double if you say the same thing twice.
+      if (glass && again) v -= est(st, foe, me, k, true) * (ECHO - GLASS);
       v -= costOf(me, k) * me.might * 0.06;
       if (v > bestV) { bestV = v; best = k; }
     }
     // It can be finished now, before it lands its blow.
     if (kill && (youFirst || kill.quick || t < 2)) return { type: 'skill', id: kill.id };
-    if (t === 2 && !me.guarding) return { type: 'guard' };
-    if (t === 2 && me.guarding && st.intent.action.type === 'skill' && DEFS[st.intent.action.id]?.id === 'align') return { type: 'guard' };
+    // Brace for what is worth bracing for: the wipe, an Alignment, a blow that would end it or take most of what is left.
+    const blow = incoming(st), ia = st.intent.action;
+    // The wipe is braced for when there is something to lose by it: a creature already worn, or a blow coming with it.
+    const dire = (wipesNow(st) && (me.hp < me.maxHp * 0.6 || blow >= me.maxHp * 0.2)) || (ia.type === 'skill' && ia.id === 'align') || blow >= me.maxHp * 0.4 || (blow >= me.hp + (me.shield ?? 0) && blow >= me.maxHp * 0.15);
+    if (t === 2 && dire && (!me.guarding || (ia.type === 'skill' && ia.id === 'align'))) return { type: 'guard' };
     const adv = advantage(me.element, foe.element);
     const better = st.mine.findIndex((f, i) => i !== st.myActive && f.hp > f.maxHp * 0.5 && advantage(f.element, foe.element) > adv && advantage(foe.element, f.element) <= advantage(foe.element, me.element));
-    if (adv < 1 && better >= 0 && foe.hp > foe.maxHp * 0.4) return { type: 'swap', target: better };
-    if (expert && !st.fusedUsed && me.hp < me.maxHp * 0.45 && !me.fused) {
-      const ally = st.mine.findIndex((f, i) => i !== st.myActive && f.hp > 0);
-      if (ally >= 0 && st.mine.filter((f) => f.hp > 0).length >= 2 && (st.theirs.filter((f) => f.hp > 0).length <= 2 || st.rival.boss)) return { type: 'fuse', target: ally };
-    }
-    // Dying anyway and someone fresher is behind: let them take it.
-    if (me.hp < me.maxHp * 0.2 && t >= 1 && !youFirst) { const fresh = st.mine.findIndex((f, i) => i !== st.myActive && f.hp > f.maxHp * 0.6); if (fresh >= 0 && expert) return { type: 'swap', target: fresh }; }
+    if (adv < 1 && better >= 0 && foe.hp > foe.maxHp * 0.4 && !sew) return { type: 'swap', target: better };
     return { type: 'skill', id: best.id };
   };
   const daily = (day: number, level0: number): Rival => {
@@ -693,7 +788,7 @@ export const factory: BattlesFactory = ({ seed }) => {
       const g = rng(child(seed, `reward-${R.id}-${wins}`));
       const xp = Math.round((16 + R.level * 8 + Math.min(6, wins) * 4) * (R.boss ? 1.5 : 1));
       if (R.mode === 'practice') return { glow: 0, xp: 0 };
-      if (st.outcome !== 'won') return { glow: 0, xp: Math.ceil(xp / 2) };
+      if (st.outcome !== 'won') return { glow: 0, xp: Math.ceil(xp / 3) }; // a lost fight teaches a little; grinding losses is slow
       const pieceRoll = g.chance(1, 2), relicRoll = g.chance(1, wins === 0 ? 2 : 4);
       const left = RELICS.filter((r) => !owned.includes(r.id));
       const relic = left.length && (R.boss || (wins === 0 && R.id === 0) || relicRoll) ? left[g.int(left.length)]! : undefined;
