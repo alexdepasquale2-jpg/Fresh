@@ -91,3 +91,16 @@ GATES.push({ id: 'well-gate', at: [20, 32], open: { has: 'torch' }, shut: 'Board
 
 `localStorage['sallow-town']`, `TownState` v2 (`state.ts`): position, minutes, coins, bag, quests, flags (NPC memory),
 talks, found, seen cells, places, districts, bought, run, fromTown, skim, stats, log. `migrate()` accepts any older shape.
+
+## Added by the engine pass (all optional, nothing renamed)
+
+- **Interiors** (`INTERIORS` in `map.ts`, type `InteriorDef`): small rooms on a second "indoor" layer, entered through a street door
+  (`door` = the door's label, or `at` = its tile). Ids: `in-dray`, `in-post`, `in-brisk`, `in-sull`, `in-lantern`, `in-school`, `in-no4`,
+  `in-no8`, `in-rival`, `in-church`, `in-signal`, `in-mast`. Each is also a `PLACES` entry with the same id (`at` = the street door), and
+  entering sets the flag of the same name, so `{ flag: 'in-church' }` works as a `Cond`. Add one with `INTERIORS.push({...})` from `places/`.
+- An NPC with `inside: '<interior id>'` lives in that room; its posts are tiles relative to the room's top-left corner.
+- A `reach` step with `inside: '<interior id>'` fires only in that room, `at` relative likewise. Reach steps without it fire only out of doors.
+- `PlaceDef.photo` (a photo spot), `EncounterDef.beatenAt` / `notice`, `CATCHES` (`items.ts`, fishing), items `rod`, `bike`, `conker`, `photo`.
+- The bike: give it from a quest with `reward: { items: [['bike', 1]] }` (it is also lying at the hidden place `bike-spot`); test with `{ has: 'bike' }`.
+- Flags written by play: `caught` (fish landed), `casts`, `conker-wins`, `jobs-done` (noticeboard), `in-*`.
+- NPCs walk to their new post when the phase changes; the crossing gates shut while a train is due (every 3 game hours, 05:00 to 23:00).

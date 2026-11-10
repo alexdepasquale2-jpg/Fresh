@@ -12,6 +12,7 @@ export const T = {
   ROOF: 12, DOOR: 13, FLOWER: 14, SOIL: 15, RAIL: 16, BALLAST: 17, PLANK: 18, ROCK: 19, GRAVEL: 20, GRAVE: 21,
   LAMP: 22, BENCH: 23, SIGN: 24, STOP: 25, GATE: 26, YARD: 27, WINDOW: 28, CLIFF: 29, REED: 30, STONE: 31,
   MAST: 32, SHED: 33, CROP: 34, TUNNEL: 35, HEDGE: 36, CROSSING: 37, PIT: 38, PINE: 39, STUMP: 40, CHURCH: 41,
+  VOID: 42, FLOOR: 43, COUNTER: 44, BOX: 45, SHELF: 46, BED: 47,
 } as const;
 
 /** What the rest of the game looks like right now. Built by the screen/plugin from the real AppContext. */
@@ -118,11 +119,13 @@ export interface NpcDef {
   shop?: string;
   /** Only present while this holds. */
   when?: Cond;
+  /** Lives inside this interior (an INTERIORS id). Posts are then tiles relative to the room's top-left corner. */
+  inside?: string;
 }
 
 export type StepOn =
   | { type: 'talk'; npc: string; need?: Cond; say: string; wait?: string; choices?: readonly Choice[] }
-  | { type: 'reach'; at: readonly [number, number]; r?: number; need?: Cond; say?: string }
+  | { type: 'reach'; at: readonly [number, number]; r?: number; need?: Cond; say?: string; /** Interior id: `at` is then relative to that room, and the step only fires inside it. */ inside?: string }
   | { type: 'cond'; need: Cond; say?: string }
   | { type: 'wait'; days: number; say?: string };
 export interface Step {
@@ -170,6 +173,10 @@ export interface PlaceDef {
   bench?: boolean;
   /** A place to skim stones. */
   skim?: boolean;
+  /** A photo spot: what the picture shows, said once. */
+  photo?: string;
+  /** The id of an interior this place stands for (`at` is its street door). Set by the interiors table. */
+  inside?: string;
   /** Draw extra tiles into the map (runs after the base map is built). */
   build?: (b: Builder) => void;
 }
@@ -191,6 +198,10 @@ export interface EncounterDef {
   /** Extra lines by state. `beat` conditions use the rival id. */
   before: string;
   after: string;
+  /** Where they go once beaten (defaults to a couple of tiles off their old spot). */
+  beatenAt?: Partial<Record<Phase, Post>>;
+  /** A line said as they notice you, before the taunt. */
+  notice?: string;
   when?: Cond;
 }
 
@@ -220,6 +231,10 @@ export interface TownState {
   stats: { steps: number; talks: number; rides: number; sits: number };
   /** Finished-quest log lines, newest last. */
   log: string[];
+  /** Interior id while indoors, and the street spot to come back out to. */
+  inside?: string; bx?: number; by?: number;
+  /** On the bike. */
+  riding?: boolean;
 }
 
 /** One line of the bottom sheet. */
@@ -229,6 +244,8 @@ export interface Scene {
   choices?: readonly { text: string; pick: () => Scene | null; off?: boolean }[];
   /** A special sheet: the skimming game. */
   skim?: string;
+  /** A special sheet: fishing ('mere', 'creek' or 'pond'). */
+  fish?: string;
   /** Speaker look for the portrait. */
   look?: Look;
 }
@@ -262,6 +279,12 @@ export interface Actor {
   roam: number;
   next: number;
   rival: number;
+  /** A route being walked to a new post. */
+  rx?: Int16Array; ry?: Int16Array; rn?: number; ri?: number;
+  /** Wants a route worked out. */
+  want?: boolean;
+  /** Clock time they last noticed the kid; 0 = not yet. */
+  alert?: number;
 }
 
 export interface TownDeps {
@@ -272,3 +295,23 @@ export interface TownDeps {
   addUniverse(label: string): string | null;
   rivals(): readonly { id: number; name: string; taunt: string; again?: string; beaten?: string; boss?: string; where: string }[];
 }
+
+/** A small room behind a street door. Rows are drawn with: # wall, . floor, D the way out (bottom row), c counter,
+ *  s shelf or board (reads, in turn), b bed, B a box on the floor, w window, p pew or bench, space nothing. */
+export interface InteriorDef {
+  id: string; name: string;
+  /** Label of the street door (see map doors), or its tile(s). */
+  door?: string; at?: readonly (readonly [number, number])[];
+  rows: readonly string[];
+  reads?: readonly string[];
+  /** Shop served at the counter. */
+  shop?: string;
+  /** Said the first time you step in. */
+  says?: string;
+  /** Shut at night. */
+  day?: boolean;
+  /** What the box on the floor is. */
+  box?: string;
+}
+/** Something that can be pulled out of the water. Heavier `weight` = commoner. */
+export interface CatchDef { id: string; name: string; desc: string; weight: number; where?: 'mere' | 'creek' | 'pond'; night?: boolean; coins?: number }

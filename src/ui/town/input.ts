@@ -10,13 +10,15 @@ export interface Pad {
   /** Stick origin and knob, for drawing; active while dragging. */
   stick: boolean; ox: number; oy: number; kx: number; ky: number;
   confirm: boolean; back: boolean;
+  /** Zoom keys this frame: -1 out (opens the map), 1 in (closes it), 0 none. */
+  zoom: number;
   dispose(): void;
 }
 
 export const createPad = (el: HTMLElement, input: Input): Pad => {
   const keys = { left: false, right: false, up: false, down: false };
   let id = -1, sx = 0, sy = 0, st = 0, sdx = 0, sdy = 0;
-  const pad: Pad = { x: 0, y: 0, tapX: -1, tapY: -1, stick: false, ox: 0, oy: 0, kx: 0, ky: 0, confirm: false, back: false, dispose: () => {} };
+  const pad: Pad = { x: 0, y: 0, tapX: -1, tapY: -1, stick: false, ox: 0, oy: 0, kx: 0, ky: 0, confirm: false, back: false, zoom: 0, dispose: () => {} };
   const sync = (): void => {
     const kx = (keys.right ? 1 : 0) - (keys.left ? 1 : 0), ky = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
     pad.x = pad.stick ? sdx : kx; pad.y = pad.stick ? sdy : ky;
@@ -42,6 +44,8 @@ export const createPad = (el: HTMLElement, input: Input): Pad => {
     if (setKey(e.action, e.phase === 'down')) return;
     if (e.phase === 'down' && (e.action === 'confirm' || e.action === 'hold')) pad.confirm = true;
     if (e.phase === 'down' && e.action === 'back') pad.back = true;
+    const act = e.action as string;
+    if (e.phase === 'down' && (act === 'zoomOut' || act === 'zoomIn')) pad.zoom = act === 'zoomOut' ? -1 : 1;
   });
   const CODES: Record<string, string> = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down' };
   const kd = (e: KeyboardEvent): void => { const k = CODES[e.code]; if (k) setKey(k, true); else if (e.code === 'KeyE') pad.confirm = true; };

@@ -41,6 +41,14 @@ export const drawTile = (g: G, m: TownMap, tx: number, ty: number, x: number, y:
   const t = at(m, tx, ty), n = m.noise[ty * m.w + tx] ?? 0;
   const up = at(m, tx, ty - 1), down = at(m, tx, ty + 1), left = at(m, tx - 1, ty), right = at(m, tx + 1, ty);
   switch (t) {
+    case T.VOID: r(g, 15, x, y, 16, 16); break;
+    case T.FLOOR: case T.COUNTER: case T.BOX: case T.SHELF: case T.BED:
+      r(g, 11, x, y, 16, 16); r(g, 1, x, y + 15, 16, 1); r(g, 1, x + ((ty & 1) ? 7 : 15), y, 1, 16);
+      if (t === T.COUNTER) { r(g, 1, x, y + 2, 16, 13); r(g, 5, x, y + 3, 16, 10); r(g, 8, x, y + 3, 16, 2); }
+      else if (t === T.BOX) { r(g, 1, x + 2, y + 4, 12, 10); r(g, 7, x + 3, y + 5, 10, 8); r(g, 8, x + 3, y + 5, 10, 2); r(g, 10, x + 7, y + 8, 2, 2); }
+      else if (t === T.SHELF) { r(g, 1, x, y, 16, 16); r(g, 3, x + 1, y + 1, 14, 6); r(g, 3, x + 1, y + 8, 14, 6); for (let k = 0; k < 6; k++) { r(g, 4 + ((n >> k) & 3) * 3, x + 2 + k * 2, y + 2, 1, 5); r(g, 5 + ((n >> (k + 1)) & 3) * 2, x + 2 + k * 2, y + 9, 1, 5); } }
+      else if (t === T.BED) { r(g, 1, x, y + 1, 16, 14); r(g, 13, x + 1, y + 2, 14, 12); r(g, 9, x + 2, y + 3, 6, 4); }
+      break;
     case T.WATER: case T.DEEP: water(g, x, y, n, t === T.DEEP);
       if (up !== T.WATER && up !== T.DEEP && up !== T.REED && up !== T.STONE && up !== T.PLANK) { r(g, 3, x, y, 16, 2); r(g, 14, x, y + 2, 16, 1); } break;
     case T.REED: water(g, x, y, n, false); for (let k = 0; k < 4; k++) { const bx = x + 2 + k * 4 + ((n >> k) & 1); r(g, 4, bx, y + 3, 1, 11); r(g, 11, bx, y + 2 + (k & 1), 1, 3); } break;

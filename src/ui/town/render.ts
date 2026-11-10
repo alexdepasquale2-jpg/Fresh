@@ -4,6 +4,7 @@
 import { T, TILE, GATES, PLACES, DISTRICTS, CELL, type Town, type Actor } from '@/game/town';
 import { isSeen } from '@/game/town';
 import { PAL, drawTile, drawOver, sheet, glow, KID_LOOK, CELL_W, CELL_H, MAP_COL } from './sprites';
+import { createLife } from './life';
 
 const CH = 16, CPX = CH * TILE;
 export interface View {
@@ -15,6 +16,8 @@ export interface View {
   goX: number; goY: number;
   markX: number; markY: number;
   still: boolean;
+  /** Riding the bike. */
+  bike?: boolean;
 }
 export interface Renderer { resize(w: number, h: number): void; draw(v: View): void; readonly vw: number; readonly vh: number; readonly scale: number; dispose(): void }
 
@@ -23,7 +26,8 @@ interface Chunk { ground: HTMLCanvasElement; over: HTMLCanvasElement; key: numbe
 export const createRenderer = (canvas: HTMLCanvasElement, town: Town): Renderer => {
   const g = canvas.getContext('2d', { alpha: false })!;
   const light = document.createElement('canvas'), lg = light.getContext('2d')!;
-  const map = town.map, cw = Math.ceil(map.w / CH);
+  let map = town.map;
+  const cw = Math.ceil(map.w / CH), life = createLife(town);
   const chunks = new Map<number, Chunk>();
   const lampGlow = glow(112, '#ffffff'), moteGlow = glow(96, '#ffffff'), warm = glow(64, PAL[7]), moteSprite = glow(18, PAL[10]);
   const kidSheet = sheet(KID_LOOK, true);
@@ -50,7 +54,8 @@ export const createRenderer = (canvas: HTMLCanvasElement, town: Town): Renderer 
   const chunk = (cx: number, cy: number): Chunk => chunks.get(cy * cw + cx) ?? build(cx, cy);
 
   const resize = (w: number, h: number): void => {
-    scale = Math.max(1, Math.round(w / 195));
+    // Whole pixels, never beyond 4x: a wide window shows more of the world, not bigger squares.
+    scale = Math.max(1, Math.min(4, Math.round(Math.min(w / 195, h / 211))));
     vw = Math.ceil(w / scale); vh = Math.ceil(h / scale);
     canvas.width = vw; canvas.height = vh; light.width = vw; light.height = vh;
     canvas.style.width = `${vw * scale}px`; canvas.style.height = `${vh * scale}px`;
@@ -62,16 +67,18 @@ export const createRenderer = (canvas: HTMLCanvasElement, town: Town): Renderer 
   };
 
   const draw = (v: View): void => {
-    const cx = Math.round(v.camX), cy = Math.round(v.camY), dt = v.t - lastT; lastT = v.t;
+    if (town.map !== map) { map = town.map; chunks.clear(); }
+    const cx = Math.round(v.camX), cy = Math.round(v.camY), dt = v.t - lastT, indoors = town.inside() !== ''; lastT = v.t;
     const x0 = Math.floor(cx / CPX), y0 = Math.floor(cy / CPX), x1 = Math.floor((cx + vw - 1) / CPX), y1 = Math.floor((cy + vh - 1) / CPX);
     g.fillStyle = PAL[1]; g.fillRect(0, 0, vw, vh);
     for (let j = y0; j <= y1; j++) for (let i = x0; i <= x1; i++) { if (i < 0 || j < 0 || i >= cw || j >= cw) continue; g.drawImage(chunk(i, j).ground, i * CPX - cx, j * CPX - cy); }
     const dark = town.dark(), weather = town.weather(), night = dark > 0.45;
 
     // Shut gates.
+    if (!indoors) life.under(g, v, cx, cy, vw, vh);
     for (let k = 0; k < GATES.length; k++) {
       const gt = GATES[k]!;
-      if (town.gateOpen(k) || gt.look === 'dog') continue;
+      if (indoors || town.gateOpen(k) || gt.look === 'dog') continue;
       for (let j = 0; j < (gt.h ?? 1); j++) for (let i = 0; i < (gt.w ?? 1); i++) {
         const x = (gt.at[0] + i) * TILE - cx, y = (gt.at[1] + j) * TILE - cy;
         if (x < -16 || y < -16 || x > vw || y > vh) continue;
@@ -83,7 +90,7 @@ export const createRenderer = (canvas: HTMLCanvasElement, town: Town): Renderer 
     // Things lying on the ground.
     for (let k = 0; k < town.finds.length; k++) {
       const f = town.finds[k]!;
-      if (f.taken) continue;
+      if (f.taken || indoors) continue;
       const x = f.x * TILE - cx, y = f.y * TILE - cy;
       if (x < -16 || y < -16 || x > vw || y > vh) continue;
       const c = f.kind === 'cap' ? 7 : f.kind === 'feather' ? 9 : f.kind === 'glass' ? 14 : 12;
@@ -107,19 +114,25 @@ export const createRenderer = (canvas: HTMLCanvasElement, town: Town): Renderer 
     const step = ((v.t / 220) | 0) & 1;
     for (let k = 0; k <= n; k++) {
       const a = k < n ? order[k]! : null;
-      if (!kidDone && (a === null || a.y > v.kidY)) { sprite(kidSheet, v.kidDir, v.kidFrame, Math.round(v.kidX) - cx, Math.round(v.kidY) - cy); kidDone = true; }
+      if (!kidDone && (a === null || a.y > v.kidY)) {
+        const kx = Math.round(v.kidX) - cx, ky = Math.round(v.kidY) - cy;
+        if (v.bike) { const side = v.kidDir >= 2; g.fillStyle = PAL[0]; if (side) { g.fillRect(kx - 9, ky - 3, 6, 6); g.fillRect(kx + 3, ky - 3, 6, 6); g.fillRect(kx - 6, ky - 5, 12, 2); g.fillStyle = PAL[5]; g.fillRect(kx - 7, ky - 1, 2, 2); g.fillRect(kx + 5, ky - 1, 2, 2); } else { g.fillRect(kx - 2, ky - 4, 4, 8); g.fillRect(kx - 6, ky - 8, 12, 2); } }
+        sprite(kidSheet, v.kidDir, v.bike ? 0 : v.kidFrame, kx, ky - (v.bike ? 3 : 0)); kidDone = true;
+      }
       if (a) {
         let img = sheets.get(a.id)!;
         if (a.kind === 'quest') { if (a.look !== qLook) { qLook = a.look; qSheet = sheet(a.look, false); } img = qSheet ?? img; }
         sprite(img, a.dir, a.moving ? step : 0, Math.round(a.x) - cx, Math.round(a.y) - cy);
+        if (a.alert && v.t - a.alert < 1600 && a.alert <= v.t) { const ax = Math.round(a.x) - cx, ay = Math.round(a.y) - cy - 30; g.fillStyle = PAL[0]; g.fillRect(ax - 3, ay - 1, 6, 12); g.fillStyle = PAL[12]; g.fillRect(ax - 1, ay, 2, 6); g.fillRect(ax - 1, ay + 8, 2, 2); }
       }
     }
     // Over layer: canopies, lamp heads, the mast. A wind leans them one pixel.
     const lean = weather === 'wind' && !v.still ? Math.round(Math.sin(v.t / 380)) : 0;
     for (let j = y0; j <= y1 + 1; j++) for (let i = x0; i <= x1; i++) { if (i < 0 || j < 0 || i >= cw || j >= cw) continue; g.drawImage(chunk(i, j).over, i * CPX - cx + lean, j * CPX - cy - 96); }
 
+    if (!indoors) life.over(g, v, cx, cy, vw, vh);
     // Quest marker.
-    if (v.markX >= 0) {
+    if (v.markX >= 0 && !indoors) {
       const mx = v.markX * TILE + 8 - cx, my = v.markY * TILE - cy - 22;
       const inside = mx > 6 && mx < vw - 6 && my > 60 && my < vh - 70;
       const px = inside ? mx : Math.max(8, Math.min(vw - 8, mx)), py = inside ? my + (v.still ? 0 : Math.round(Math.sin(v.t / 260) * 2)) : Math.max(64, Math.min(vh - 74, my));
@@ -151,15 +164,16 @@ export const createRenderer = (canvas: HTMLCanvasElement, town: Town): Renderer 
       const ms = 0.45 + v.moteLevel * 0.75;
       lg.globalAlpha = 0.35 + v.moteLevel * 0.6; lg.drawImage(moteGlow, mx - 48 * ms, my - 48 * ms, 96 * ms, 96 * ms); lg.globalAlpha = 1;
       g.drawImage(light, 0, 0);
-      if (night) {
-        // Lit windows and warm lamp heads, over the dark.
+      if (dark > 0.12) {
+        // Lit windows (they come on house by house as it darkens) and warm lamp heads, over the dark.
         const a0 = Math.max(0, tx0 + 3), b0 = Math.max(0, ty0 + 3), a1 = Math.min(map.w - 1, tx1 - 3), b1 = Math.min(map.h - 1, ty1 - 3);
         g.globalCompositeOperation = 'lighter';
         for (let ty = b0; ty <= b1; ty++) for (let tx = a0; tx <= a1; tx++) {
           const t = map.tiles[ty * map.w + tx]!;
-          if (t === T.LAMP) { g.globalAlpha = 0.5; g.drawImage(warm, tx * TILE + 8 - cx - 32, ty * TILE - 10 - cy - 32); g.globalAlpha = 1; }
-          else if (t === T.WINDOW && (map.noise[ty * map.w + tx]! & 3) !== 0) { g.fillStyle = PAL[7]; g.globalAlpha = 0.8; g.fillRect(tx * TILE + 4 - cx, ty * TILE + 4 - cy, 8, 6); g.globalAlpha = 0.25; g.fillRect(tx * TILE + 2 - cx, ty * TILE + 14 - cy, 12, 8); g.globalAlpha = 1; }
+          if (t === T.LAMP) { if (!night) continue; g.globalAlpha = 0.5; g.drawImage(warm, tx * TILE + 8 - cx - 32, ty * TILE - 10 - cy - 32); g.globalAlpha = 1; }
+          else if (t === T.WINDOW && (map.noise[ty * map.w + tx]! & 3) !== 0 && dark > 0.15 + ((map.noise[ty * map.w + (tx & ~7)]! >> 2) & 15) * 0.035) { g.fillStyle = PAL[7]; g.globalAlpha = 0.8; g.fillRect(tx * TILE + 4 - cx, ty * TILE + 4 - cy, 8, 6); g.globalAlpha = 0.25; g.fillRect(tx * TILE + 2 - cx, ty * TILE + 14 - cy, 12, 8); g.globalAlpha = 1; }
         }
+        life.glow(g, v, cx, cy, vw, vh, dark);
         g.globalCompositeOperation = 'source-over';
       }
     }
@@ -173,7 +187,7 @@ export const createRenderer = (canvas: HTMLCanvasElement, town: Town): Renderer 
 
 /** The map sheet: one pixel per tile times `k`, fogged where unexplored. Not called per frame. */
 export const paintMap = (canvas: HTMLCanvasElement, town: Town, k = 2, all = false): void => {
-  const m = town.map, st = town.state;
+  const m = town.outdoor, st = town.state;
   canvas.width = m.w * k; canvas.height = m.h * k;
   const g = canvas.getContext('2d')!;
   g.fillStyle = PAL[1]; g.fillRect(0, 0, canvas.width, canvas.height);
@@ -188,11 +202,13 @@ export const paintMap = (canvas: HTMLCanvasElement, town: Town, k = 2, all = fal
     g.fillStyle = PAL[0]; g.fillText(d.name.toUpperCase(), x + 1, y + 1); g.fillStyle = PAL[9]; g.fillText(d.name.toUpperCase(), x, y);
   }
   for (const p of PLACES) {
-    if (!st.places.includes(p.id) || p.sign || p.bench) continue;
+    if (!st.places.includes(p.id) || p.sign || p.bench || (p.at[0] === 0 && p.at[1] === 0)) continue;
     g.fillStyle = PAL[0]; g.fillRect(p.at[0] * k - 2, p.at[1] * k - 2, 5, 5); g.fillStyle = PAL[p.stop ? 12 : p.hidden ? 14 : 7]; g.fillRect(p.at[0] * k - 1, p.at[1] * k - 1, 3, 3);
   }
+  // Every open errand gets a small gold mark; the one being followed gets the cross.
+  for (const q of town.quests()) { if (q.st.done) continue; const s = q.def.steps[q.st.stage]; const at = s?.mark ?? (s?.on.type === 'reach' && !s.on.inside ? s.on.at : null); if (at) { g.fillStyle = PAL[0]; g.fillRect(at[0] * k - 2, at[1] * k - 2, 5, 5); g.fillStyle = PAL[7]; g.fillRect(at[0] * k - 1, at[1] * k - 1, 3, 3); } }
   const lead = town.lead();
   if (lead?.at) { const x = lead.at[0] * k, y = lead.at[1] * k; g.fillStyle = PAL[0]; g.fillRect(x - 4, y - 4, 9, 9); g.fillStyle = PAL[7]; g.fillRect(x - 3, y - 1, 7, 3); g.fillRect(x - 1, y - 3, 3, 7); }
-  const kx = Math.floor(st.x / TILE) * k, ky = Math.floor(st.y / TILE) * k;
+  const kx = Math.floor((st.inside ? st.bx ?? st.x : st.x) / TILE) * k, ky = Math.floor((st.inside ? st.by ?? st.y : st.y) / TILE) * k;
   g.fillStyle = PAL[0]; g.fillRect(kx - 3, ky - 3, 7, 7); g.fillStyle = PAL[10]; g.fillRect(kx - 2, ky - 2, 5, 5);
 };

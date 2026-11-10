@@ -3,29 +3,28 @@
 // State is owned by src/game/town (localStorage 'sallow-town'); this plugin keeps none of its own.
 import type { Plugin } from '../plugins';
 import { el } from '@/ui/kit';
-import { town as getTown, COLLECT, ITEMS, NPCS, QUESTS, PLACES, clockText, dayOf } from '@/game/town';
-import { bindTown } from '@/ui/town/facts';
-import { paintMap } from '@/ui/town/render';
+import { loadTown, loaded, whenLoaded, type TownMods } from '@/ui/town/lazy';
 import './town.css';
 
 export const plugin: Plugin = (shell) => {
-  const town = getTown();
-  try { bindTown(shell.ctx); } catch { /* the town binds again when its screen mounts */ }
+  // The town is a chunk of its own: nothing of it is loaded until the street is entered or this page is opened.
   let unseen = 0;
 
-  town.on((e) => {
+  whenLoaded(({ town, game: { PLACES } }) => town.on((e) => {
     try {
       if (e.type === 'quest') { unseen++; shell.toast(e.text, { title: e.state === 'start' ? `New errand · ${e.name}` : e.state === 'done' ? `Done · ${e.name}` : e.name, sfx: '' }); }
       else if (e.type === 'find') shell.toast(`You pick up ${e.name}. ${e.have} of ${e.of}.`, { title: 'Found', sfx: '' });
       else if (e.type === 'place') { const p = PLACES.find((x) => x.id === e.id); if (p?.stop) shell.toast(`${e.name}. The 4 will bring you back here now.`, { title: 'Bus stop found', sfx: '' }); }
       else if (e.type === 'note') shell.toast(e.text, e.title ? { title: e.title, sfx: '' } : { sfx: '' });
     } catch { /* a toast must never break the walk */ }
-  });
+  }));
 
   // A battle that began in the street ends in the street.
   shell.onNavigate((from, to) => {
     try {
-      const st = town.state;
+      const m = loaded();
+      if (!m) return;
+      const town = m.town, st = town.state;
       if (!st.fromTown) return;
       if (from === 'battle' && to === 'outside') { st.fromTown = false; town.save(); window.setTimeout(() => shell.ctx.go('town'), 0); }
       else if (to === 'bedroom' || to === 'box' || to === 'mirror' || (to === 'town' && !shell.ctx.battle)) { st.fromTown = false; town.save(); }
@@ -37,6 +36,13 @@ export const plugin: Plugin = (shell) => {
     badge: () => (unseen > 0 ? `${unseen} new` : null),
     render: (into, close) => {
       unseen = 0;
+      const wait = el('p', { class: 'k-narration street-dim', 'data-id': 'street-loading' }, 'The street…');
+      into.append(wait);
+      void loadTown().then((m) => { if (!wait.isConnected) return; wait.remove(); try { m.bindTown(shell.ctx); } catch { /* binds again on the street */ } page(m, into, close); }).catch(() => { wait.textContent = 'The street will not come just now.'; });
+    },
+  });
+  const page = ({ town, paintMap, game: { COLLECT, ITEMS, NPCS, QUESTS, PLACES, clockText, dayOf } }: TownMods, into: HTMLElement, close: () => void): void => {
+    {
       const st = town.state, f = town.facts();
       const sec = (title: string, ...kids: (HTMLElement | null)[]): HTMLElement => el('section', { class: 'street-sec' }, el('h3', { class: 'k-label' }, title), ...kids);
       const all = town.quests(), active = all.filter((q) => !q.st.done), done = all.filter((q) => q.st.done);
@@ -61,6 +67,6 @@ export const plugin: Plugin = (shell) => {
             ...([['Steps', st.stats.steps], ['Talks', st.stats.talks], ['Bus rides', st.stats.rides], ['Benches sat', st.stats.sits], ['Best skim', st.skim.best], ['Rivals beaten', f.beaten], ['Deepest fold', f.deepest], ['Universes', f.count]] as const)
               .map(([k, v]) => el('div', { class: 'k-stat' }, el('b', {}, String(v)), el('span', {}, k))))),
       );
-    },
-  });
+    }
+  };
 };

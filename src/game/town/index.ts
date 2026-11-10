@@ -1,11 +1,11 @@
 // The town: one shared world model for the screen (src/ui/town) and the hub page (src/app/plugins/town.ts).
 // Pure logic over data tables; no DOM. State lives in localStorage 'sallow-town' (see state.ts).
 import { rng, child } from '@/core/hash';
-import { T, TILE, MAP_W as W, MAP_H as H, type Actor, type Cond, type Facts, type Phase, type QuestDef, type QuestState, type Reward, type Scene, type TownDeps, type TownEvent, type TownState, type Weather, type Line, type Step } from './types';
-import { townMap, solidTile, nearestOpen, SEED, DISTRICTS, GATES, PLACES, type TownMap } from './map';
+import { T, TILE, MAP_W as W, MAP_H as H, type Actor, type Cond, type Facts, type Phase, type QuestDef, type QuestState, type Reward, type Scene, type TownDeps, type TownEvent, type TownState, type Weather, type Line, type Step, type InteriorDef } from './types';
+import { townMap, indoorMap, interiorOrigin, INTERIORS, solidTile, nearestOpen, SEED, DISTRICTS, GATES, PLACES, type TownMap } from './map';
 import { NPCS } from './npcs';
 import { QUESTS } from './quests';
-import { ITEMS, SHOPS, COLLECT, item } from './items';
+import { ITEMS, SHOPS, COLLECT, CATCHES, item } from './items';
 import { ENCOUNTERS } from './encounters';
 import * as S from './state';
 
@@ -13,12 +13,24 @@ import * as S from './state';
 import.meta.glob('./{quests,npcs,items,places,encounters}/*.ts', { eager: true });
 
 export * from './types';
-export { DISTRICTS, GATES, PLACES, NPCS, QUESTS, ITEMS, SHOPS, COLLECT, ENCOUNTERS, item, townMap };
+export { DISTRICTS, GATES, PLACES, NPCS, QUESTS, ITEMS, SHOPS, COLLECT, CATCHES, INTERIORS, ENCOUNTERS, item, townMap };
 export { clockText, phaseOf, dayOf, isSeen, STORE_KEY, CELL, CELLS } from './state';
 
 export interface Find { id: string; kind: string; x: number; y: number; taken: boolean }
 export interface Town {
+  /** The layer the kid is on: the town, or the indoor sheet. */
   readonly map: TownMap;
+  /** The town itself, whatever layer the kid is on. */
+  readonly outdoor: TownMap;
+  /** Interior id, or '' out of doors. */
+  inside(): string;
+  /** Pixel x of the front of the train on the Down Line, or a large negative number when none is running. */
+  train(): number;
+  /** Rain has fallen lately. */
+  wet(): boolean;
+  fishDone(where: string, quality: number): Scene;
+  /** Get on or off the bike (false when there is none, or indoors). */
+  ride(on: boolean): boolean;
   state: TownState;
   readonly actors: Actor[];
   readonly finds: Find[];
@@ -56,8 +68,20 @@ const BLANK: Facts = { count: 0, deepest: 0, souls: 0, era: 0, rare: 0, floors: 
 const OPEN_GROUND = new Set<number>([T.GRASS, T.TALL, T.PATH, T.PAVE, T.SAND, T.GRAVEL, T.YARD, T.FLOWER]);
 
 const create = (): Town => {
-  const map = townMap();
+  const outdoor = townMap(), indoor = indoorMap();
   let st = S.load();
+  if (st.inside && !INTERIORS.some((n) => n.id === st.inside)) { delete st.inside; }
+  let map = st.inside ? indoor : outdoor;
+  for (const n of INTERIORS) {
+    const d = n.at?.[0] ?? outdoor.doors.find((k) => k.label === n.door);
+    const at: readonly [number, number] = d ? ('x' in d ? [d.x, d.y] : d) : [0, 0];
+    const p = PLACES.find((q) => q.id === n.id);
+    if (p) (p as { at: readonly [number, number] }).at = at; else PLACES.push({ id: n.id, name: n.name, at, inside: n.id });
+  }
+  for (const c of CATCHES) if (!ITEMS.some((i) => i.id === c.id)) ITEMS.push({ id: c.id, name: c.name, desc: c.desc, kind: 'find' });
+  const TRAIN_EVERY = 180, TRAIN_RUN = 30;
+  const trainX = (): number => { const m = st.minutes % TRAIN_EVERY, h = (st.minutes % S.DAY) / 60; return m < TRAIN_RUN && h >= 5 && h < 23 ? (m / TRAIN_RUN) * (W * TILE + 600) - 300 : -1e6; };
+  const trainDue = (): boolean => { const m = st.minutes % TRAIN_EVERY, h = (st.minutes % S.DAY) / 60; return h >= 5 && h < 23 && (m > TRAIN_EVERY - 6 || m < TRAIN_RUN + 2); };
   let deps: TownDeps | null = null;
   let facts: Facts = BLANK;
   const subs: ((e: TownEvent) => void)[] = [];
@@ -152,33 +176,69 @@ const create = (): Town => {
   const place = (a: Actor, post: readonly [number, number] | null | undefined): void => {
     if (!post) { a.here = false; a.hx = -1; return; }
     if (a.hx === post[0] && a.hy === post[1] && a.here) return;
+    // Already about: walk to the new post instead of appearing there (worked out a few at a time).
+    if (a.here && a.hx >= 0 && !st.inside && a.kind !== 'quest' && Math.abs(post[0] - a.tx) + Math.abs(post[1] - a.ty) < 90) { a.hx = post[0]; a.hy = post[1]; a.want = true; a.rn = 0; return; }
     const p = nearestOpen(map, post[0], post[1]);
-    a.hx = post[0]; a.hy = post[1]; a.tx = p[0]; a.ty = p[1]; a.x = p[0] * TILE + 8; a.y = p[1] * TILE + 8; a.here = true; a.moving = false;
+    a.hx = post[0]; a.hy = post[1]; a.tx = p[0]; a.ty = p[1]; a.x = p[0] * TILE + 8; a.y = p[1] * TILE + 8; a.here = true; a.moving = false; a.want = false; a.rn = 0;
   };
   const refreshActors = (): void => {
     const ph = S.phaseOf(st.minutes), rivals = deps?.rivals() ?? [];
     let k = 0;
-    for (const n of NPCS) { const a = actors[k++]!; place(a, test(n.when) ? n.at[ph] : null); }
+    const inn = st.inside ?? '';
+    for (const n of NPCS) {
+      const a = actors[k++]!;
+      let post = test(n.when) && (n.inside ?? '') === inn ? n.at[ph] : null;
+      if (post && n.inside) { const o = interiorOrigin(INTERIORS.findIndex((x) => x.id === n.inside)); if (a.here && a.hx === o[0] + post[0] && a.hy === o[1] + post[1]) continue; post = [o[0] + post[0], o[1] + post[1]]; }
+      place(a, post);
+    }
     for (const e of ENCOUNTERS) {
       const a = actors[k++]!, r = rivals[e.rival];
-      if (!r || !test(e.when)) { a.here = false; continue; }
+      if (!r || !test(e.when) || inn) { a.here = false; a.hx = -1; continue; }
       a.name = r.name;
       // Bosses keep to the dark.
-      place(a, r.boss && ph !== 'dusk' && ph !== 'night' ? null : e.at[ph] ?? (r.boss ? e.at.night ?? e.at.dusk : null));
+      let post = r.boss && ph !== 'dusk' && ph !== 'night' ? null : e.at[ph] ?? (r.boss ? e.at.night ?? e.at.dusk : null);
+      // Beaten, they give up their spot: a couple of tiles off, out of the way.
+      if (post && facts.beatenIds.includes(r.id)) post = e.beatenAt?.[ph] ?? (beatPost[k - NPCS.length - 1] ??= {})[ph] ?? ((beatPost[k - NPCS.length - 1]![ph] = [post[0] + 2, post[1] + 2]));
+      place(a, post);
     }
     let shown = false;
-    for (const q of QUESTS) { const step = stepOf(q); if (step?.actor && step.on.type === 'reach') { questActor.look = step.actor; place(questActor, step.on.at); shown = true; break; } }
+    if (!inn) for (const q of QUESTS) { const step = stepOf(q); if (step?.actor && step.on.type === 'reach' && !step.on.inside) { questActor.look = step.actor; place(questActor, step.on.at); shown = true; break; } }
     if (!shown) questActor.here = false;
+  };
+  const beatPost: Partial<Record<Phase, readonly [number, number]>>[] = [];
+  const tmpX = new Int16Array(4096), tmpY = new Int16Array(4096);
+  /** Work out one waiting actor's walk to its new post. The kid's own route (pathX/pathY) is kept. */
+  const routeOne = (): void => {
+    for (const a of actors) {
+      if (!a.want || !a.here || a.moving) continue;
+      a.want = false;
+      const goal = nearestOpen(map, a.hx, a.hy);
+      tmpX.set(pathX); tmpY.set(pathY);
+      const n = st.inside ? 0 : path(a.tx, a.ty, goal[0], goal[1]);
+      if (n > 0 && n <= 400) { a.rx ??= new Int16Array(400); a.ry ??= new Int16Array(400); a.rx.set(pathX.subarray(0, n)); a.ry.set(pathY.subarray(0, n)); a.rn = n; a.ri = 0; }
+      else { a.tx = goal[0]; a.ty = goal[1]; a.x = goal[0] * TILE + 8; a.y = goal[1] * TILE + 8; a.rn = 0; }
+      pathX.set(tmpX); pathY.set(tmpY); lastKey = -1;
+      return;
+    }
   };
   const moveActors = (dt: number, now: number): void => {
     for (const a of actors) {
       if (!a.here) continue;
+      if (!a.moving && a.rn && a.rx && a.ry) {
+        if ((a.ri ?? 0) >= a.rn) { a.rn = 0; }
+        else { const i = a.ri ?? 0, nx = a.rx[i]!, ny = a.ry[i]!; a.dir = ny > a.ty ? 0 : ny < a.ty ? 1 : nx < a.tx ? 2 : 3; a.tx = nx; a.ty = ny; a.moving = true; a.ri = i + 1; }
+      }
+      if (a.kind === 'rival') {
+        const near = Math.abs(a.x - st.x) < 56 && Math.abs(a.y - st.y) < 56;
+        if (near && !a.alert) { a.alert = now; a.dir = Math.abs(st.x - a.x) > Math.abs(st.y - a.y) ? (st.x < a.x ? 2 : 3) : (st.y < a.y ? 1 : 0); emit({ type: 'sfx', name: 'whisper' }); }
+        else if (!near && a.alert && (Math.abs(a.x - st.x) > 120 || Math.abs(a.y - st.y) > 120)) a.alert = 0;
+      }
       if (a.moving) {
-        const gx = a.tx * TILE + 8, gy = a.ty * TILE + 8, sp = dt * 0.022;
+        const gx = a.tx * TILE + 8, gy = a.ty * TILE + 8, sp = dt * (a.rn ? 0.05 : 0.022);
         const dx = gx - a.x, dy = gy - a.y;
         if (Math.abs(dx) <= sp && Math.abs(dy) <= sp) { a.x = gx; a.y = gy; a.moving = false; }
         else { a.x += Math.sign(dx) * Math.min(sp, Math.abs(dx)); a.y += Math.sign(dy) * Math.min(sp, Math.abs(dy)); }
-      } else if (a.roam > 0 && now >= a.next && (Math.abs(a.x - st.x) > 40 || Math.abs(a.y - st.y) > 40)) {
+      } else if (a.roam > 0 && !a.rn && !a.want && now >= a.next && (Math.abs(a.x - st.x) > 40 || Math.abs(a.y - st.y) > 40)) {
         a.next = now + 1800 + wr.int(5000);
         const d = wr.int(4), nx = a.tx + (d === 0 ? 1 : d === 1 ? -1 : 0), ny = a.ty + (d === 2 ? 1 : d === 3 ? -1 : 0);
         a.dir = d === 2 ? 0 : d === 3 ? 1 : d === 1 ? 2 : 3;
@@ -196,7 +256,7 @@ const create = (): Town => {
       for (let n = 0; n < k.count; n++) {
         for (let tries = 0; tries < 4000; tries++) {
           const x = 3 + r.int(W - 6), y = 3 + r.int(H - 6), i = y * W + x;
-          if (!map.reach[i] || !OPEN_GROUND.has(map.tiles[i]!) || used.has(i) || (allowed && !allowed.includes(map.district[i]!))) continue;
+          if (!outdoor.reach[i] || !OPEN_GROUND.has(outdoor.tiles[i]!) || used.has(i) || (allowed && !allowed.includes(outdoor.district[i]!))) continue;
           used.add(i); finds.push({ id: `${k.id}-${n}`, kind: k.id, x, y, taken: false }); break;
         }
       }
@@ -205,7 +265,7 @@ const create = (): Town => {
   syncFinds();
 
   /* ---- Gates and walking ---- */
-  const refreshGates = (): void => { for (let i = 0; i < GATES.length; i++) { const o = test(GATES[i]!.open) ? 1 : 0; if (gateState[i + 1] !== o) { gateState[i + 1] = o; gateStamp++; } } };
+  const refreshGates = (): void => { for (let i = 0; i < GATES.length; i++) { const o = test(GATES[i]!.open) && !(GATES[i]!.look === 'bar' && trainDue()) ? 1 : 0; if (gateState[i + 1] !== o) { gateState[i + 1] = o; gateStamp++; } } };
   const blocked = (tx: number, ty: number): boolean => {
     if (tx < 0 || ty < 0 || tx >= W || ty >= H) return true;
     const i = ty * W + tx, t = map.tiles[i]!;
@@ -287,6 +347,7 @@ const create = (): Town => {
   const talkNpc = (a: Actor): Scene => {
     const def = NPCS.find((n) => n.id === a.id)!;
     st.stats.talks++; dirty = true;
+    jobSeen('talk', 0, 0, a.id);
     const done = (s: Scene): Scene => { st.talks[a.id] = (st.talks[a.id] ?? 0) + 1; return { ...s, look: a.look }; };
     // 1. A quest step that wants this person.
     for (const q of QUESTS) {
@@ -324,6 +385,7 @@ const create = (): Town => {
       const g = give(c.give); dirty = true;
       return c.say ? say(a.name, withGot(c.say, g), a.look) : null;
     } }));
+    if (def.kid && S.phaseOf(st.minutes) === 'day' && !st.inside) choices.push({ text: st.coins > 0 ? 'Conkers? (a coin on it)' : 'Conkers? (you have no coin to put on it)', pick: () => (st.coins > 0 ? conkers(a, 3, 3, '') : say(a.name, '"No stake, no game."', a.look)) });
     if (def.shop) { const sid = def.shop; choices.push({ text: 'What do you sell?', pick: () => shopScene(sid, a.name) }, { text: 'Nothing today', pick: () => null }); }
     return done({ who: a.name, text: withGot(text, got), ...(choices.length ? { choices } : {}) });
   };
@@ -335,8 +397,19 @@ const create = (): Town => {
     const locked = enc.rival > 0 && !!prev && !facts.beatenIds.includes(prev.id) && !beat;
     if (locked) return say(r.name, `${enc.before} "Not you. Not yet. ${prev!.name} first. Then me."`, a.look);
     if (facts.count === 0) return say(r.name, `${enc.before} "You have not even got one. Go home and look on your desk."`, a.look);
-    return { who: r.name, look: a.look, text: beat ? `${enc.after} "${r.beaten ?? r.again ?? 'Again? Fine.'}"` : `${enc.before} "${r.taunt}"`, choices: [
-      { text: beat ? 'Rematch' : 'Open your Box', pick: () => { st.fromTown = true; S.store(st); emit({ type: 'battle', rival: r.id }); return null; } },
+    const fight = (): null => { st.fromTown = true; S.store(st); emit({ type: 'battle', rival: r.id }); return null; };
+    const ph = S.phaseOf(st.minutes);
+    // The event: they notice you, a word each way, the boxes come out, then the battle.
+    const stage = r.boss
+      ? `${ph === 'night' ? 'The nearest lamp goes out. Then the next one along.' : 'The light goes the colour of a bruise.'} ${r.name} sets a box down on the ground between you, square to the kerb, and the street is very quiet. Mote draws in close to your collar.`
+      : `${r.name} takes out a box and thumbs the lid. Somewhere a window goes up to watch. ${facts.firstName ? `${facts.firstName} is warm in your pocket.` : ''}`;
+    const face: Scene = { who: r.name, look: a.look, text: stage, choices: [
+      { text: r.boss ? 'Set yours down too' : 'Lids off', pick: fight },
+      { text: 'Not here', pick: () => say(r.name, r.boss ? '"It will be here. So will I."' : '"Thought so."', a.look) },
+    ] };
+    return { who: r.name, look: a.look, text: beat ? `${enc.after} "${r.beaten ?? r.again ?? 'Again? Fine.'}"` : `${enc.notice ?? 'They have seen you. They finish what they are doing first, slowly, so you know.'} ${enc.before} "${r.taunt}"`, choices: [
+      { text: beat ? 'Rematch' : 'Open your Box', pick: () => { emit({ type: 'sfx', name: r.boss ? 'boss' : 'confirm' }); return face; } },
+      { text: beat ? 'How is your box?' : 'Who are you?', pick: () => ({ ...say(r.name, beat ? `"Quieter since. I think they talk about yours in there." ${r.where ? `(${r.where})` : ''}` : `"${r.name}. ${r.where ? `${r.where}.` : ''} You are the one from the middle of the Row. We all know which window."`, a.look), choices: [{ text: beat ? 'Rematch' : 'Open your Box', pick: () => face }, { text: 'Walk on', pick: () => null }] }) },
       { text: 'Walk on', pick: () => null },
     ] };
   };
@@ -377,14 +450,102 @@ const create = (): Town => {
       { text: 'Not today', pick: () => null },
     ] };
   };
+  /* ---- Indoors ---- */
+  const enter = (n: InteriorDef): Scene | null => {
+    const k = INTERIORS.indexOf(n), o = interiorOrigin(k), last = n.rows.length - 1, ex = Math.max(0, n.rows[last]!.indexOf('D'));
+    st.bx = st.x; st.by = st.y; st.inside = n.id; delete st.riding; map = indoor;
+    st.x = (o[0] + ex) * TILE + 8; st.y = (o[1] + last - 1) * TILE + 8; st.dir = 1;
+    const first = !st.flags[n.id];
+    S.setFlag(st, n.id);
+    if (!st.places.includes(n.id)) st.places.push(n.id);
+    dirty = true; lastKey = -1;
+    for (const a of actors) { a.here = false; a.hx = -1; }
+    refreshActors();
+    emit({ type: 'sfx', name: 'door' }); emit({ type: 'moved' });
+    return first && n.says ? say(n.name, n.says) : null;
+  };
+  const leave = (): void => {
+    delete st.inside; map = outdoor; st.x = st.bx ?? S.SPAWN[0] * TILE + 8; st.y = st.by ?? S.SPAWN[1] * TILE + 8; st.dir = 0;
+    dirty = true; lastKey = -1;
+    for (const a of actors) { a.here = false; a.hx = -1; }
+    refreshActors();
+    emit({ type: 'sfx', name: 'door' }); emit({ type: 'moved' });
+  };
+  /* ---- Conkers: first to three cracks. A coin on it. ---- */
+  const conkers = (a: Actor, mine: number, theirs: number, note: string): Scene => {
+    if (theirs <= 0) { st.coins += 1; S.setFlag(st, 'conker-wins'); dirty = true; emit({ type: 'coins', n: 1 }); const prize = (st.flags['conker-wins'] ?? 0) === 3; if (prize) S.addItem(st, 'conker', 1); return say(a.name, `${note} Theirs splits clean in two. "${(st.flags['conker-wins'] ?? 0) > 2 ? 'What is yours MADE of.' : 'Fluke.'}" A coin, handed over fair.${prize ? ' And, grudging, their best one: a sixer.' : ''}`, a.look); }
+    if (mine <= 0) { st.coins = Math.max(0, st.coins - 1); dirty = true; emit({ type: 'sfx', name: 'deny' }); return say(a.name, `${note} Yours goes to crumbs on the string. "Mine now." They take the coin without looking at it.`, a.look); }
+    const swing = (hit: number, dmg: number, risk: number, word: string) => (): Scene => {
+      let m = mine, t = theirs, txt = '';
+      if (wr.int(100) < hit) { t -= dmg; txt = `${word} Crack. ${dmg > 1 ? 'A piece comes off theirs.' : 'A mark on theirs.'}`; } else { m -= risk; txt = `${word} You miss${risk ? ' and catch your own knuckle; yours takes the knock' : ''}.`; }
+      if (t > 0 && m > 0) { if (wr.int(100) < 50) { m -= 1; txt += ' Their go: crack.'; } else txt += ' Their go: wide.'; }
+      emit({ type: 'sfx', name: 'tap' });
+      return conkers(a, m, t, txt);
+    };
+    return { who: a.name, look: a.look, text: `${note || 'Strings out. Yours hangs still.'}\nYours: ${'●'.repeat(Math.max(0, mine))}${'○'.repeat(3 - Math.max(0, mine))}  Theirs: ${'●'.repeat(Math.max(0, theirs))}${'○'.repeat(3 - Math.max(0, theirs))}`, choices: [
+      { text: 'Swing true', pick: swing(80, 1, 0, 'A neat one.') },
+      { text: 'Swing hard', pick: swing(55, 2, 1, 'Everything you have.') },
+    ] };
+  };
+  /* ---- The noticeboard: three odd jobs a day, the same three for everybody. ---- */
+  interface Job { kind: 'talk' | 'go' | 'skim' | 'fish'; id: string; at: readonly [number, number]; text: string; pay: number }
+  let jobDay = -1, jobs: Job[] = [];
+  const jobsToday = (): Job[] => {
+    const day = S.dayOf(st.minutes);
+    if (day === jobDay) return jobs;
+    jobDay = day; jobs = [];
+    const r = rng(child(SEED, `jobs-${day}`));
+    const folk = NPCS.filter((n) => !n.inside && n.at.day && !n.when), spots = PLACES.filter((p) => !p.sign && !p.inside && !p.hidden && p.id !== 'board' && p.id !== 'home');
+    const kinds: Job['kind'][] = ['talk', 'go', r.int(2) ? 'skim' : 'fish'];
+    for (const kind of kinds) {
+      if (kind === 'talk') { const n = folk[r.int(folk.length)]!; jobs.push({ kind, id: n.id, at: n.at.day as readonly [number, number], text: `"Would somebody tell ${n.name} their order is in. No name given."`, pay: 3 }); }
+      else if (kind === 'go') { const p = spots[r.int(spots.length)]!; jobs.push({ kind, id: p.id, at: p.at, text: `"Somebody to go and look at ${p.name} and say whether it is still there."`, pay: 4 }); }
+      else if (kind === 'skim') jobs.push({ kind, id: '', at: [76, 113], text: '"WANTED: a witness. Four skips or more, any water, today."', pay: 3 });
+      else jobs.push({ kind, id: '', at: [76, 113], text: '"Anything out of the water, today. Not to eat. To look at."', pay: 5 });
+    }
+    return jobs;
+  };
+  const jobKey = (i: number, what: string): string => `job${what}:${S.dayOf(st.minutes)}:${i}`;
+  function jobSeen(kind: Job['kind'], tx: number, ty: number, id: string): void {
+    const js = jobsToday();
+    for (let i = 0; i < js.length; i++) {
+      const j = js[i]!;
+      if (j.kind !== kind || !st.flags[jobKey(i, '')] || st.flags[jobKey(i, 'p')]) continue;
+      if (kind === 'talk' ? j.id === id : kind === 'go' ? Math.abs(j.at[0] - tx) <= 2 && Math.abs(j.at[1] - ty) <= 2 : true) { S.setFlag(st, jobKey(i, 'p')); dirty = true; emit({ type: 'note', title: 'Odd job', text: 'That is the job done. The noticeboard on the Parade pays.' }); }
+    }
+  }
+  const board = (note = ''): Scene => {
+    const js = jobsToday();
+    return { who: 'The noticeboard', text: `${note || 'Cards on drawing pins. Three are new today; the pins are older than the board.'}`, choices: [
+      ...js.map((j, i) => { const taken = !!st.flags[jobKey(i, '')], ready = !!st.flags[jobKey(i, 'p')], paid = !!st.flags[jobKey(i, 'd')];
+        return { text: `${paid ? '✓ ' : ready ? 'CLAIM · ' : taken ? '… ' : ''}${j.text} ${j.pay}c`, off: paid, pick: (): Scene => {
+          if (paid) return board('That card has a tick on it, in your hand.');
+          if (ready) { S.setFlag(st, jobKey(i, 'd')); st.coins += j.pay; S.setFlag(st, 'jobs-done'); dirty = true; emit({ type: 'coins', n: j.pay }); return board(`${j.pay} coins, in an envelope behind the card, exact.`); }
+          if (!taken) { S.setFlag(st, jobKey(i, '')); dirty = true; emit({ type: 'sfx', name: 'confirm' }); return board('You take the card down. The pin stays warm.'); }
+          return board('Not done yet. The card is in your pocket.');
+        } }; }),
+      { text: 'Leave it', pick: () => null },
+    ] };
+  };
   const EPITAPH = ['AGNES, WHO WAITED', 'A CHILD OF THIS PARISH. KEPT.', 'T. SULL. HE DREW SQUARES.', 'HERE LIES NOTHING. THE STONE IS ENOUGH.', 'ADA THURSDAY AND, IN TIME, HER DOG', 'RETURNED TO SENDER', 'ELEVEN OF LOWMERE, UNDER OTHER WATER', 'THE NAME HAS BEEN POLISHED OFF, CAREFULLY'];
   const interact = (tx: number, ty: number): Scene | null => {
     const a = actorAt(tx, ty);
     if (a) { emit({ type: 'sfx', name: 'whisper' }); return a.kind === 'rival' ? talkRival(a) : a.kind === 'npc' ? talkNpc(a) : say('', 'It watches you come, and goes on ahead.'); }
     if (tx < 0 || ty < 0 || tx >= W || ty >= H) return null;
     const i = ty * W + tx, t = map.tiles[i]!;
+    if (st.inside) {
+      const k = INTERIORS.findIndex((n) => n.id === st.inside), n = INTERIORS[k]!, o = interiorOrigin(k);
+      if (t === T.DOOR) { leave(); return null; }
+      if (t === T.COUNTER) { if (n.shop) { const keeper = NPCS.find((x) => x.shop === n.shop); return shopScene(n.shop, keeper?.name ?? n.name); } return say('', n.id === 'in-church' ? 'The altar. A cloth, a candle, a square pale patch where something stood for a long time.' : 'A desk, lid carved with initials. Yours are there. You did not put them there.'); }
+      if (t === T.SHELF) { const rd = n.reads ?? []; return say(n.name, rd.length ? rd[((tx - o[0]) + (ty - o[1]) * 3) % rd.length]! : 'Dust, in a neat square.'); }
+      if (t === T.BOX) return say('', n.box ?? 'A box. Not yours.');
+      if (t === T.BED) return say('', 'A bed, made tight. The pillow has the dent of a head that is elsewhere.');
+      if (t === T.BENCH) return say('', n.id === 'in-church' ? 'A pew. Hassocks stitched with houses. Eleven of them.' : 'A chair, still warm.');
+      if (t === T.WINDOW) return say('', 'Outside, the street gets on without you.');
+    }
     if (t === T.GATE) { const g = map.gate[i]!; return g > 0 && gateState[g] === 0 ? say('', GATES[g - 1]!.shut) : null; }
     const pl = PLACES.find((p) => p.at[0] === tx && p.at[1] === ty);
+    if (t === T.SIGN && pl?.id === 'board') return board();
     if (t === T.SIGN) return say('A sign', pl?.sign ?? 'The paint has gone. Only the screws are left, very bright.');
     if (t === T.BENCH) return bench();
     if (t === T.STOP) return bus(pl?.id ?? '');
@@ -392,9 +553,17 @@ const create = (): Town => {
       emit({ type: 'sfx', name: 'door' });
       if (tx === 62 && ty === 55) return { who: 'Your front door', text: 'Home. The hall light is on. Along the Row are the other doorsteps, and the kids who sit on them.', choices: [
         { text: 'Go in (your room)', pick: () => { emit({ type: 'go', to: 'bedroom' }); return null; } },
-        { text: 'The doorsteps (the old list of doors)', pick: () => { emit({ type: 'go', to: 'outside' }); return null; } },
+        { text: 'The doors (every kid on the Row, as a list)', pick: () => { emit({ type: 'go', to: 'outside' }); return null; } },
         { text: 'Stay out', pick: () => null },
       ] };
+      const d0 = map.doors.find((k) => k.x === tx && k.y === ty);
+      const room = INTERIORS.find((n) => (d0 && n.door === d0.label) || n.at?.some((q) => q[0] === tx && q[1] === ty));
+      if (room) {
+        const shop = room.shop ? SHOPS.find((x) => x.id === room.shop) : null;
+        if (shop && !shop.open.includes(S.phaseOf(st.minutes))) return say(shop.name, 'Closed. The sign has been turned, and turned neatly.');
+        if (room.day && S.phaseOf(st.minutes) === 'night') return say(room.name, 'Locked for the night. Through the letterbox: a hall, and a light at the far end of it, the size of a box lid.');
+        return enter(room);
+      }
       const d = map.doors.find((k) => k.x === tx && k.y === ty), keeper = NPCS.find((n) => n.shop && SHOPS.find((s) => s.id === n.shop)?.name === d?.label);
       if (keeper?.shop) return shopScene(keeper.shop, keeper.name);
       const ph = S.phaseOf(st.minutes), n = map.noise[i]! % 4;
@@ -404,6 +573,12 @@ const create = (): Town => {
     }
     if (t === T.WATER || t === T.DEEP || t === T.REED) {
       const sp = PLACES.find((p) => p.skim && Math.abs(p.at[0] - tx) + Math.abs(p.at[1] - ty) <= 5);
+      const where = ty > 126 && tx > 50 ? 'mere' : sp?.id === 'pond' || (tx > 60 && tx < 95 && ty > 100 && ty < 126) ? 'pond' : 'creek';
+      const cast: Scene = { who: where === 'mere' ? 'Lowmere' : where === 'pond' ? 'Penny Pond' : 'The creek', text: 'You let the line down. The float sits. Wait for it to go under, then strike.', fish: where };
+      if (S.has(st, 'rod')) {
+        if (!sp) return cast;
+        return { who: sp.name, text: 'Flat water. A good stone by your shoe, and the line in your pocket.', choices: [{ text: 'Skim a stone', pick: () => ({ who: sp.name, text: 'Flat water. A good stone by your shoe.', skim: sp.id }) }, { text: 'Fish', pick: () => cast }, { text: 'Leave it', pick: () => null }] };
+      }
       if (sp) return { who: sp.name, text: 'Flat water. A good stone by your shoe.', skim: sp.id };
       return say('', ty > 134 ? 'Lowmere. Flat, and darker than its depth explains.' : 'The creek. It runs the same way whichever bank you stand on.');
     }
@@ -425,12 +600,27 @@ const create = (): Town => {
   const moved = (tx: number, ty: number): Scene | null => {
     let out: Scene | null = null;
     st.stats.steps++;
+    if (st.inside) {
+      const k = INTERIORS.findIndex((n) => n.id === st.inside), o = interiorOrigin(k);
+      for (const q of QUESTS) {
+        const step = stepOf(q);
+        if (!step || step.on.type !== 'reach' || step.on.inside !== st.inside) continue;
+        const on = step.on, r = on.r ?? 1;
+        if (Math.abs(o[0] + on.at[0] - tx) > r || Math.abs(o[1] + on.at[1] - ty) > r || !test(on.need)) continue;
+        const got = advance(q);
+        if (on.say) out = say(q.name, withGot(on.say, got));
+      }
+      return out ?? checkConds();
+    }
+    jobSeen('go', tx, ty, '');
     if (S.markSeen(st, tx, ty)) dirty = true;
     const d = DISTRICTS[map.district[ty * W + tx]!]!;
     if (!st.districts.includes(d.id)) { st.districts.push(d.id); dirty = true; emit({ type: 'district', id: d.id, name: d.name, says: d.says }); }
     for (const p of PLACES) {
       if (st.places.includes(p.id) || p.sign || p.bench || Math.abs(p.at[0] - tx) > 2 || Math.abs(p.at[1] - ty) > 2) continue;
       st.places.push(p.id); dirty = true; emit({ type: 'place', id: p.id, name: p.name });
+      if (p.photo) { S.addItem(st, 'photo', 1); deps?.addGlow(300); st.log.push(`A photograph: ${p.name}.`); emit({ type: 'sfx', name: 'pickup' }); out = say(p.name, `${p.photo}\n(Mote holds still while you take it. A photograph, and a little Light.)`); }
+      if (p.id === 'bike-spot' && !S.has(st, 'bike')) { S.addItem(st, 'bike', 1); emit({ type: 'item', id: 'bike', name: 'The bike', n: 1 }); out = say('In the nettles', 'A heavy black bike, laid down carefully, a long time ago. The tyres are hard. The bell works. Nobody is coming back for it.\n(The bike. Use the Bike button.)'); }
       if (p.hidden) { st.coins += 2; emit({ type: 'note', title: 'A hidden place', text: `${p.name}. Two coins, in a place nobody would look.` }); }
     }
     for (const f of finds) {
@@ -445,7 +635,7 @@ const create = (): Town => {
     }
     for (const q of QUESTS) {
       const step = stepOf(q);
-      if (!step || step.on.type !== 'reach') continue;
+      if (!step || step.on.type !== 'reach' || step.on.inside) continue;
       const on = step.on, r = on.r ?? 1;
       if (Math.abs(on.at[0] - tx) > r || Math.abs(on.at[1] - ty) > r || !test(on.need)) continue;
       const got = advance(q);
@@ -462,7 +652,28 @@ const create = (): Town => {
   let pending: Scene | null = null;
 
   const town: Town = {
-    map, get state() { return st; }, set state(v: TownState) { st = v; }, actors, finds, pathX, pathY,
+    get map() { return map; }, outdoor, inside: () => st.inside ?? '', train: trainX,
+    wet: () => { const w = S.weatherOf(st.minutes); return w === 'rain' || S.weatherOf(st.minutes - 120) === 'rain'; },
+    ride: (on) => { if (!on || (S.has(st, 'bike') && !st.inside)) { if (on) st.riding = true; else delete st.riding; dirty = true; return on; } return false; },
+    fishDone: (where, quality) => {
+      const day = S.dayOf(st.minutes), night = S.phaseOf(st.minutes) === 'night';
+      st.flags['casts'] = (st.flags['casts'] ?? 0) + 1; dirty = true;
+      const again = (text: string): Scene => ({ who: where === 'mere' ? 'Lowmere' : where === 'pond' ? 'Penny Pond' : 'The creek', text, choices: [{ text: 'Cast again', pick: () => ({ who: '', text: 'The float sits. Wait for it to go under.', fish: where }) }, { text: 'Wind it in', pick: () => checkConds() }] });
+      if (quality <= 0) return again('Too soon, or too late. The hook comes back clean and a little colder.');
+      const r = rng(child(SEED, `cast-${day}-${st.flags['casts']}`));
+      const pool = CATCHES.filter((c) => (!c.where || c.where === where) && (!c.night || night));
+      let total = 0; for (const c of pool) total += quality > 0.7 ? Math.max(c.weight, 12) : c.weight;
+      let pick = pool[0]!, roll = r.int(Math.max(1, total));
+      for (const c of pool) { roll -= quality > 0.7 ? Math.max(c.weight, 12) : c.weight; if (roll < 0) { pick = c; break; } }
+      const isNew = !st.bag[pick.id];
+      S.addItem(st, pick.id, 1); S.setFlag(st, 'caught');
+      if (pick.coins && isNew) { st.coins += pick.coins; emit({ type: 'coins', n: pick.coins }); }
+      emit({ type: 'sfx', name: 'pickup' }); emit({ type: 'item', id: pick.id, name: pick.name, n: 1 });
+      jobSeen('fish', 0, 0, '');
+      const have = CATCHES.filter((c) => st.bag[c.id]).length;
+      return again(`${pick.name}. ${pick.desc}${isNew ? ` (New. ${have} of ${CATCHES.length} kinds${pick.coins ? `; Gaff would give ${pick.coins}c for the sight of it, and somehow has` : ''}.)` : ''}`);
+    },
+    get state() { return st; }, set state(v: TownState) { st = v; }, actors, finds, pathX, pathY,
     bind: (d) => { deps = d; everySecond();
       // A universe that was owed while the Box was full.
       for (const k of Object.keys(st.flags)) if (k.startsWith('owed-') && st.flags[k]) { const name = d.addUniverse(k.slice(5)); if (name) { delete st.flags[k]; dirty = true; emit({ type: 'note', title: 'From the pit', text: `There is room now. ${name} is in your Box.` }); } }
@@ -473,7 +684,7 @@ const create = (): Town => {
       st.minutes += (dt / 1000) * 2;
       slow += dt; saveIn += dt;
       if (slow >= 1000) {
-        slow = 0; everySecond();
+        slow = 0; everySecond(); routeOne(); routeOne();
         const ph = S.phaseOf(st.minutes);
         if (ph !== lastPhase) { lastPhase = ph; emit({ type: 'note', title: S.clockText(st.minutes), text: ph === 'night' ? 'Night. The lamps are lit. The gates are shut.' : ph === 'dusk' ? 'Dusk. The kids are called in, one name at a time.' : ph === 'dawn' ? 'Dawn. The shutters go up on the Parade.' : 'Day. The Row is itself again.' }); }
         const s = checkConds(); if (s) pending = s;
@@ -481,7 +692,7 @@ const create = (): Town => {
       moveActors(dt, st.minutes * 500);
       if (saveIn >= 3000) { saveIn = 0; if (dirty) { dirty = false; S.store(st); } }
     },
-    phase: () => S.phaseOf(st.minutes), dark: () => S.darkOf(st.minutes), weather: () => S.weatherOf(st.minutes),
+    phase: () => S.phaseOf(st.minutes), dark: () => (st.inside ? 0 : S.darkOf(st.minutes)), weather: () => (st.inside ? 'clear' : S.weatherOf(st.minutes)),
     blocked, gateOpen: (i) => gateState[i + 1] === 1, path,
     moved: (tx, ty) => { const s = moved(tx, ty) ?? pending; pending = null; return s; },
     actorAt, interact,
@@ -492,6 +703,7 @@ const create = (): Town => {
       let text = skips <= 0 ? 'Plop. One ring, widening.' : skips < 4 ? `${skips} skip${skips === 1 ? '' : 's'}. The water takes it.` : skips < 7 ? `${skips} skips. A good one.` : `${skips} skips. On the last it seemed to climb.`;
       if (skips > st.skim.best) { st.skim.best = skips; text += ' Your best yet.'; }
       if (skips >= 7) S.setFlag(st, 'skim-7');
+      if (skips >= 4) jobSeen('skim', 0, 0, '');
       if (skips >= 4 && st.skim.day !== day) { st.skim.day = day; const c = Math.min(6, skips - 2); st.coins += c; text += ` Something glints where it sank and washes in: ${c} coins. (Once a day.)`; emit({ type: 'coins', n: c }); }
       const after = checkConds();
       return { who: PLACES.find((p) => p.id === placeId)?.name ?? 'The water', text, choices: [{ text: 'Another stone', pick: () => ({ who: '', text: 'You pick another.', skim: placeId }) }, { text: 'Enough', pick: () => after }] };
@@ -519,7 +731,7 @@ const create = (): Town => {
     },
     districtAt: (tx, ty) => DISTRICTS[map.district[Math.max(0, Math.min(H - 1, ty)) * W + Math.max(0, Math.min(W - 1, tx))]!]!.name,
     save: () => { dirty = false; S.store(st); },
-    reset: () => { st = S.fresh(); syncFinds(); everySecond(); S.store(st); },
+    reset: () => { st = S.fresh(); map = outdoor; syncFinds(); everySecond(); S.store(st); },
     test, setMinutes: (m) => { st.minutes = m; dirty = true; everySecond(); },
   };
   return town;
