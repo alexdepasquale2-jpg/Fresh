@@ -432,6 +432,8 @@ export const factory: PlanetRendererFactory = () => {
         W = g.width; H = g.height; FWd = env.fieldW; FHd = env.fieldH;
         top = new Uint8Array(W);
         colKind = new Uint8Array(W);
+        // A new size replaces the old textures; free them so switching worlds does not leak GPU memory.
+        for (const k of ['cells', 'top', 'mat', 'temp', 'hum'] as const) { const old = tex[k]; if (old) gl.deleteTexture(old); }
         tex.cells = makeTex(W, H, gl.R8UI, gl.RED_INTEGER, false);
         tex.top = makeTex(W, 1, gl.R8UI, gl.RED_INTEGER, false);
         tex.mat = makeTex(256, 1, gl.RG8UI, gl.RG_INTEGER, false);
@@ -447,6 +449,7 @@ export const factory: PlanetRendererFactory = () => {
         const eng: [number, number, number][] = [[ENGINE.ice.id, ENGINE.ice.color, 1], [ENGINE.snow.id, ENGINE.snow.color, 2], [ENGINE.ore.id, ENGINE.ore.color, 1], [ENGINE.fire.id, ENGINE.fire.color, 5], [ENGINE.ash.id, ENGINE.ash.color, 2]];
         for (const [id, c, k] of eng) { mat[id * 2] = c; mat[id * 2 + 1] = k; }
         upload(tex.mat!, 256, 1, gl.RG_INTEGER, mat);
+        if (tex.pal) gl.deleteTexture(tex.pal);
         tex.pal = core.paletteTexture(v.universe.palette);
         for (let i = 0; i < 16; i++) { const c = hexToRgb(v.universe.palette[i] ?? '#000000'); palF[i * 3] = c[0] / 255; palF[i * 3 + 1] = c[1] / 255; palF[i * 3 + 2] = c[2] / 255; }
         let h = 2166136261;
@@ -507,7 +510,10 @@ export const factory: PlanetRendererFactory = () => {
         wx.day = (wx.day + dd * Math.min(1, dt * 0.012) + 1000) % 1000;
       }
 
-      people ??= createPeople(core);
+      // Build at most one layer's programs per frame. Compiling them all in the first frame of a
+      // world, on top of its heaviest drawing, can stall a phone's GPU until the system resets it.
+      let made = 0;
+      if (!people) { people = createPeople(core); made++; }
       people.update(v.civ, dt);
       if (pl.ref !== v.planet) {
         const p = v.planet;
@@ -526,7 +532,7 @@ export const factory: PlanetRendererFactory = () => {
       const dayl = Math.max(0, Math.min(1, (sunUp + 0.3) / 0.65));
       const ambP = (0.44 + Math.max(0, v.modifiers.nightLight) / 250 + (1 - 0.44) * dayl) * (1 - Math.max(0, v.modifiers.dimming) / 220);
       if (v.view?.fp) {
-        fp ??= createFirstPerson(core);
+        if (!fp) { if (made) return; fp = createFirstPerson(core); made++; }
         const body = people.avatar();
         const view3 = v.view.fp;
         let fv: PlanetRenderView = v;
@@ -541,14 +547,14 @@ export const factory: PlanetRendererFactory = () => {
         lifeFrame.seed = siteSeed; lifeFrame.day = (pl.locked ? lockDay : wx.day) / 1000; lifeFrame.time = time; lifeFrame.dt = dt; lifeFrame.snow = wx.snow; lifeFrame.dry = wx.dry; lifeFrame.leaf = wx.leaf;
         fpCam.ro = cam.ro; fpCam.yaw = cam.yaw; fpCam.pitch = cam.pitch; fpCam.depth = cam.depth; fpCam.ground = cam.ground; fpCam.tw = cam.tw; fpCam.th = cam.th;
         lifeFrame.fp = fpCam; lifeFrame.rect = v.rect; lifeFrame.amb = ambP; lifeFrame.night = 1 - dayl; lifeFrame.pal = tex.pal!; lifeFrame.far = far; lifeFrame.quality = ql;
-        story ??= createStory(core);
-        story.back(lifeFrame);
+        if (!story && !made) { story = createStory(core); made++; }
+        story?.back(lifeFrame);
         placeZ = view3.z;
         peopleFp.ro = cam.ro; peopleFp.yaw = cam.yaw; peopleFp.pitch = cam.pitch; peopleFp.depth = cam.depth; peopleFp.tw = cam.tw; peopleFp.th = cam.th; peopleFp.far = far;
         peopleFrame.fp = peopleFp; peopleFrame.view = mapCam; peopleFrame.rect = v.rect; peopleFrame.W = W; peopleFrame.H = H; peopleFrame.time = time; peopleFrame.amb = ambP; peopleFrame.night = 1 - dayl; peopleFrame.pal = tex.pal!;
         people.draw(peopleFrame);
-        life ??= createLife(core);
-        life.draw(lifeFrame);
+        if (!life && !made) { life = createLife(core); made++; }
+        life?.draw(lifeFrame);
         fp.present();
         return;
       }
@@ -632,19 +638,19 @@ export const factory: PlanetRendererFactory = () => {
         gl.disable(gl.SCISSOR_TEST);
       }
       mapCam.cx = v.view?.cx ?? W / 2; mapCam.cy = v.view?.cy ?? H / 2; mapCam.zoom = Math.max(1, v.view?.zoom ?? 1);
-      life ??= createLife(core);
+      if (!life && !made) { life = createLife(core); made++; }
       lifeFrame.civ = v.civ; lifeFrame.env = env; lifeFrame.top = top; lifeFrame.kind = colKind; lifeFrame.W = W; lifeFrame.H = H;
       lifeFrame.seed = siteSeed; lifeFrame.day = (pl.locked ? lockDay : wx.day) / 1000; lifeFrame.time = time; lifeFrame.dt = dt; lifeFrame.snow = wx.snow; lifeFrame.dry = wx.dry; lifeFrame.leaf = wx.leaf;
       lifeFrame.fp = null; lifeFrame.far = 260; lifeFrame.quality = ql; lifeFrame.view = mapCam; lifeFrame.rect = v.rect; lifeFrame.amb = ambP; lifeFrame.night = 1 - dayl; lifeFrame.pal = tex.pal!;
-      life.draw(lifeFrame);
-      story ??= createStory(core);
-      story.back(lifeFrame);
-      structures ??= createStructures(core);
+      life?.draw(lifeFrame);
+      if (!story && !made) { story = createStory(core); made++; }
+      story?.back(lifeFrame);
+      if (!structures && !made) { structures = createStructures(core); made++; }
       structFrame.civ = v.civ; structFrame.top = top; structFrame.view = mapCam; structFrame.rect = v.rect; structFrame.W = W; structFrame.H = H; structFrame.time = time;
       structFrame.amb = ambP; structFrame.night = 1 - dayl; structFrame.pulse = v.pulse / FX_ONE; structFrame.pal = tex.pal!;
       structFrame.wind = env.wind / 100; structFrame.season = env.season / 1000; structFrame.snow = wx.snow;
-      structures.draw(structFrame);
-      story.front(lifeFrame);
+      structures?.draw(structFrame);
+      story?.front(lifeFrame);
       peopleFrame.fp = null; peopleFrame.view = mapCam; peopleFrame.rect = v.rect; peopleFrame.W = W; peopleFrame.H = H; peopleFrame.time = time; peopleFrame.amb = ambP; peopleFrame.night = 1 - dayl; peopleFrame.pal = tex.pal!;
       people.draw(peopleFrame);
     },

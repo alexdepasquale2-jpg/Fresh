@@ -194,6 +194,8 @@ export const createFrameLoop = (o: {
   maxSteps?: number;
   fixed: (steps: number) => void;
   frame: (dtMs: number) => void;
+  /** Called when a frame throws; the loop carries on regardless. */
+  onError?: (e: unknown) => void;
 }): FrameLoop => {
   let acc = 0;
   let last = 0;
@@ -205,9 +207,14 @@ export const createFrameLoop = (o: {
     let steps = Math.floor(acc / o.stepMs);
     acc -= steps * o.stepMs;
     steps = Math.min(steps, o.maxSteps ?? 5);
-    if (steps > 0) o.fixed(steps);
-    o.frame(dt);
+    // The next frame is asked for first, so one frame that throws can never stop the game.
     id = requestAnimationFrame(loop);
+    try {
+      if (steps > 0) o.fixed(steps);
+      o.frame(dt);
+    } catch (e) {
+      o.onError?.(e);
+    }
   };
   return {
     start: () => {

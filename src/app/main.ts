@@ -3,6 +3,8 @@ import '@/ui/tokens.css';
 import './app.css';
 import type { Screen, ScreenId } from '@/contracts/app';
 import { createGlCore, createFrameLoop } from '@/render/gl';
+import { perfControl } from '@/platform/perf';
+import type { PerfMode } from '@/platform/perf';
 import { TICKS_PER_SECOND } from '@/contracts/time';
 import { createApp, STARTER_SERIALS } from './context';
 import { createHub } from './hub';
@@ -17,8 +19,27 @@ export const boot = async (host: HTMLElement) => {
   layer.className = 'screen';
   host.append(canvas, layer);
 
-  // Desktop mode caps the drawing buffer through this; in the phone layout it is always 1.
-  const gl = createGlCore(canvas, { resolutionScale: () => stage.glScale });
+  // Desktop mode caps the drawing buffer through stage.glScale (1 in the phone layout). After the
+  // device has reset the GPU, safeScale draws fewer pixels so it does not happen again.
+  let shellToast: ((t: string, o?: { title?: string; sfx?: string }) => void) | null = null;
+  let safeScale = 1;
+  try { safeScale = Number(localStorage.getItem('sallow-gpu-safe') ?? '1') || 1; } catch { /* storage blocked */ }
+  const gl = createGlCore(canvas, { resolutionScale: () => stage.glScale * safeScale });
+  // A phone that cannot keep up resets its GPU: the canvas blinks white and, after a few resets,
+  // the browser gives up on the page. Each reset steps quality and resolution down and remembers it.
+  let gpuResets = 0;
+  canvas.addEventListener('webglcontextlost', () => {
+    gpuResets++;
+    const ladder: PerfMode[] = ['high', 'medium', 'low', 'minimal'];
+    const now = perfControl.mode() === 'auto' ? (['minimal', 'low', 'medium', 'high'] as const)[perfControl.stats().level ?? 3] ?? 'high' : perfControl.mode();
+    const next = ladder[Math.min(ladder.length - 1, Math.max(0, ladder.indexOf(now)) + 1)]!;
+    perfControl.setMode(next);
+    safeScale = Math.max(0.5, Math.round((safeScale - 0.2) * 100) / 100);
+    try { localStorage.setItem('sallow-gpu-safe', String(safeScale)); } catch { /* storage blocked */ }
+    console.error(`[sallow] the GPU was reset (${gpuResets}); quality set to ${next}, resolution x${safeScale}`);
+    try { localStorage.setItem('sallow-last-error', JSON.stringify({ where: 'gpu', msg: `The device reset its GPU (${gpuResets}). Quality now ${next}, resolution x${safeScale}.`, stack: '', at: Date.now(), ua: navigator.userAgent })); } catch { /* storage blocked */ }
+    if (gpuResets === 1) shellToast?.('Your device could not keep up, so I dimmed the world a little. You can change it under Menu, Performance.', { title: 'Mote', sfx: '' });
+  });
   let current: Screen | null = null;
   let saveTimer = 0;
 
@@ -79,6 +100,19 @@ export const boot = async (host: HTMLElement) => {
     for (const s of STARTER_SERIALS) ctx.box.add(s);
   }
 
+  // Errors inside a frame are reported once per place and never stop the loop.
+  const seen = new Set<string>();
+  const report = (where: string, e: unknown) => {
+    const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    const key = `${where}|${msg}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    console.error(`[sallow] ${where} failed:`, e);
+    try { localStorage.setItem('sallow-last-error', JSON.stringify({ where, msg, stack: e instanceof Error ? (e.stack ?? '').slice(0, 800) : '', at: Date.now(), ua: navigator.userAgent })); } catch { /* storage blocked */ }
+    if (seen.size <= 3) shellToast?.(`Something stumbled (${where}). The game carries on. ${msg.slice(0, 140)}`, { title: 'Mote', sfx: '' });
+  };
+  const guard = (where: string, fn: () => void) => { try { fn(); } catch (e) { report(where, e); } };
+
   createFrameLoop({
     stepMs: 1000 / TICKS_PER_SECOND,
     fixed: () => {},
@@ -89,11 +123,13 @@ export const boot = async (host: HTMLElement) => {
         ctx.pulse().step(ticks, []);
         ctx.sim.step(ticks);
       }
-      ctx.audio.setPulse(ctx.pulse());
-      ctx.audio.update(dt);
-      current?.frame(dt);
-      for (const cb of frameCbs) cb(dt);
+      // Each part of a frame is guarded on its own, so a failing piece (a renderer quirk on one
+      // GPU, an audio hiccup, a plugin) cannot take the rest of the game down with it.
+      guard('audio', () => { ctx.audio.setPulse(ctx.pulse()); ctx.audio.update(dt); });
+      guard(`screen:${currentId ?? '-'}`, () => current?.frame(dt));
+      for (let i = 0; i < frameCbs.length; i++) { const cb = frameCbs[i]!; guard(`plugin:${i}`, () => cb(dt)); }
     },
+    onError: (e) => report('frame', e),
   }).start();
 
   // Test hook (also handy in the console).
@@ -106,6 +142,7 @@ export const boot = async (host: HTMLElement) => {
     onNavigate: (cb) => void navCbs.push(cb),
     setTransition: (fn) => void (transition = fn),
   };
+  shellToast = shell.toast;
   for (const p of await loadPlugins()) {
     try { p(shell); } catch (e) { console.error('plugin failed', e); }
   }
