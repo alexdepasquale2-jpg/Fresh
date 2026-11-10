@@ -67,6 +67,12 @@ export interface SystemRenderView {
   readonly touch?: { x: number; y: number; age: number } | null;
   /** 0.5..1 from Perf.resolutionScale(); at the bottom the renderer drops its finest detail. */
   readonly quality?: number;
+  /** CSS px rect (canvas space) the orrery is fitted to: the star sits at its middle and the widest thing reaches its nearer edge. Without it, the phone's fixed spot. */
+  readonly rect?: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
+  /** Extra magnification on top of the fit (1 = fitted). Only read when `rect` is given. */
+  readonly zoom?: number;
+  /** Where the star is drawn, as an offset in CSS px from the middle of `rect`. Only read when `rect` is given. */
+  readonly pan?: { readonly x: number; readonly y: number };
 }
 export interface SystemRenderer extends Renderer<SystemRenderView> {
   /** Orbit index under a CSS px point, or -1. */
@@ -107,6 +113,8 @@ export interface RoomRenderView {
   readonly lightPips: number;
   /** Bedroom dressing, read every draw (scene 0 only; other scenes stay a plain room). */
   readonly decor?: RoomDecor;
+  /** CSS px rect (canvas space) to draw the room into, at the largest whole-pixel scale that fits, centred. `kid`, `target` and every point the renderer returns are in the same space. Without it, the phone's fixed spot. */
+  readonly rect?: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
 }
 /** Things in the bedroom the kid can walk to. The index is the spot id used by RoomRenderer.spotAt/standAt/near. */
 export const ROOM_SPOTS = ['window', 'bed', 'pc', 'shelf', 'poster', 'box'] as const;

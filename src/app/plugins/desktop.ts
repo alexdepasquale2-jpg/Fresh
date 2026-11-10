@@ -28,16 +28,16 @@ type Theatre = 0 | 720 | 900;
 interface Controls { layout: LayoutMode; scale: number; theatre: Theatre; fullscreen: boolean; keys: InputKeymap | null; page: string }
 const DEFAULTS: Controls = { layout: 'auto', scale: 100, theatre: 0, fullscreen: false, keys: null, page: '' };
 
-/** Screens whose renderer draws at a fixed spot of the canvas: the canvas is moved so that spot sits on this element's middle. */
-const ANCHOR: Partial<Record<ScreenId, readonly [string, number]>> = { bedroom: ['[data-id=floor]', 319], mirror: ['[data-id=mirror-stage]', 319], system: ['[data-id=orbits]', 250] };
+/** What the planet screen hangs on its surface element (see src/ui/system-planet/README.md). */
+interface SurfaceView { pick(clientX: number, clientY: number): { village: { name: string; souls: number } | null } | null }
 
 const COMMON: readonly InputAction[] = ['confirm', 'back', 'menu', 'help', 'journal', 'codex', 'almanac', 'box', 'fullscreen'];
 const PER_SCREEN: Record<ScreenId, { readonly keys: readonly InputAction[]; readonly mouse: readonly string[] }> = {
   bedroom: { keys: ['left', 'right', 'up', 'down'], mouse: ['Click the floor to walk there', 'Click a thing in the room to use it'] },
   box: { keys: ['left', 'right', 'up', 'down'], mouse: ['Click a universe to see it on the right', 'Wheel scrolls the grid and the card'] },
   dive: { keys: ['hold', 'left', 'right', 'up', 'down'], mouse: ['Move over a ring to aim at it, click to choose it', 'Hold the button to fall, let go to hover', 'Click a flicker to throw a reliquary'] },
-  system: { keys: ['tabNext', 'tabPrev', 'left', 'right', 'up', 'down'], mouse: ['Drag a sky piece onto an orbit', 'Click an orbit to choose its world'] },
-  planet: { keys: ['left', 'right', 'up', 'down', 'zoomIn', 'zoomOut', 'tabNext', 'tabPrev', 'pause', 'slower', 'faster', 'speed0', 'speed1', 'speed3', 'tool1', 'eyes'], mouse: ['Wheel leans in on the spot under the cursor', 'Drag to pan while watching; right or middle drag pans too', 'Click to use the tool in hand, hold to keep using it', 'Double click to lean in two layers'] },
+  system: { keys: ['tabNext', 'tabPrev', 'left', 'right', 'up', 'down'], mouse: ['Drag a sky piece onto an orbit', 'Click an orbit to choose its world', 'Wheel zooms the orrery toward the cursor', 'Drag empty space, or right or middle drag, to pan; Fit puts it back'] },
+  planet: { keys: ['left', 'right', 'up', 'down', 'zoomIn', 'zoomOut', 'tabNext', 'tabPrev', 'pause', 'slower', 'faster', 'speed0', 'speed1', 'speed3', 'tool1', 'eyes'], mouse: ['Wheel leans in on the spot under the cursor', 'Drag to pan while watching; right or middle drag pans with any tool in hand', 'Rest the cursor on a village to read its name and souls', 'Click to use the tool in hand, hold to keep using it', 'Double click to lean in two layers'] },
   outside: { keys: ['left', 'right', 'up', 'down'], mouse: ['Click a rival to fight them'] },
   battle: { keys: ['tool1', 'guard', 'fuse'], mouse: ['Click a move; hover a chip to read it'] },
   mirror: { keys: ['left', 'right', 'up', 'down'], mouse: ['Click the room to hear the rest'] },
@@ -64,6 +64,53 @@ const btn = (label: string, id: string, onClick: () => void, cls = ''): HTMLButt
 };
 const visible = (e: Element | null): e is HTMLElement => e instanceof HTMLElement && !(e as HTMLButtonElement).disabled && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
 
+/* ---------- UI scale for type inside screens ----------
+   Chrome that is positioned by this plugin (the menu sheet, notices, tooltips) is scaled with `zoom`. Screens are not:
+   zoom would also scale the boxes their pointer maths measure. Their type is scaled instead, the way the Settings
+   plugin scales text: one generated rule per px font-size in the loaded sheets, gated on a root class, multiplied by
+   --dt-text (the UI scale; pinned to 1 inside anything already zoomed) and by Settings' own --sallow-text. */
+let textSheet: HTMLStyleElement | null = null;
+const TEXT_GATE = ':root.sallow-desktop.dt-text';
+const buildTextScale = (): void => {
+  if (textSheet) return;
+  const lines: string[] = [];
+  const split = (sel: string): string[] => {
+    const out: string[] = [];
+    let depth = 0, cur = '';
+    for (const ch of sel) {
+      if (ch === '(' || ch === '[') depth++; else if (ch === ')' || ch === ']') depth--;
+      if (ch === ',' && depth === 0) { out.push(cur.trim()); cur = ''; } else cur += ch;
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  };
+  const walk = (rules: CSSRuleList, wrap: (s: string) => string) => {
+    for (const rule of Array.from(rules)) {
+      if (rule instanceof CSSStyleRule) {
+        const m = /^(-?[\d.]+)px$/.exec(rule.style.fontSize) ?? /(?:^|\s)([\d.]+)px(?=[\s/]|$)/.exec(rule.style.getPropertyValue('font'));
+        const raw = m ? Number(m[1]) : 0;
+        if (!(raw > 0)) continue;
+        const px = Math.max(raw, 11);
+        // Headlines grow less, as they do for Settings' text size: they are what would push a row out of its panel.
+        const k = px >= 20 ? 0.5 : px >= 16 ? 0.8 : 1;
+        const tk = px >= 20 ? 0.4 : px >= 16 ? 0.75 : 1;
+        const sel = split(rule.selectorText).map((x) => (x.startsWith(':root') ? TEXT_GATE + x.slice(5) : x.startsWith('html') ? TEXT_GATE + x.slice(4) : `${TEXT_GATE} ${x}`)).join(', ');
+        lines.push(wrap(`${sel} { font-size: max(10px, calc(${px}px * (1 + (var(--dt-text, 1) - 1) * ${k}) * (1 + (var(--sallow-text, 1) - 1) * ${tk}))); }`));
+      } else if (rule instanceof CSSMediaRule) walk(rule.cssRules, (x) => wrap(`@media ${rule.conditionText} { ${x} }`));
+      else if (rule instanceof CSSSupportsRule) walk(rule.cssRules, (x) => wrap(`@supports ${rule.conditionText} { ${x} }`));
+    }
+  };
+  for (const sheet of Array.from(document.styleSheets)) {
+    // Settings' own generated sheets restate rules that are read here from their sources.
+    if ((sheet.ownerNode as HTMLElement | null)?.dataset?.sallow) continue;
+    try { walk(sheet.cssRules, (x) => x); } catch { /* a sheet from elsewhere: leave it */ }
+  }
+  textSheet = document.createElement('style');
+  textSheet.dataset.sallow = 'dt-text';
+  textSheet.textContent = lines.join('\n');
+  document.head.append(textSheet);
+};
+
 export const plugin: Plugin = (shell: Shell) => {
   const { ctx, host, layer, canvas } = shell;
   const root = document.documentElement;
@@ -88,17 +135,8 @@ export const plugin: Plugin = (shell: Shell) => {
   let cl = -1, ct = -1, cw = -1, ch = -1;
   const placeCanvas = () => {
     if (!on) return;
-    let l = 0, t = 0, w = stageW, h = stageH;
-    const a = ANCHOR[shell.current() ?? 'bedroom'];
-    const e = a ? layer.querySelector(a[0]) : null;
-    if (a && e) {
-      const r = e.getBoundingClientRect(), hr = host.getBoundingClientRect();
-      if (r.width > 0) {
-        const fx = r.left - hr.left + r.width / 2, fy = r.top - hr.top + r.height / 2;
-        const half = Math.max(120, Math.min(fx, stageW - fx));
-        l = Math.round(fx - half); w = Math.round(half * 2); t = Math.round(fy - a[1]); h = Math.max(200, stageH - t);
-      }
-    }
+    // The canvas is the whole stage on every screen: the room, the orrery and the surface are each drawn into the rect of their own element.
+    const l = 0, t = 0, w = stageW, h = stageH;
     if (l === cl && t === ct && w === cw && h === ch) return;
     cl = l; ct = t; cw = w; ch = h;
     const s = canvas.style;
@@ -128,8 +166,12 @@ export const plugin: Plugin = (shell: Shell) => {
       root.style.setProperty('--panel-w', `${panel}px`);
       root.style.setProperty('--play-w', `${stageW - panel}px`);
       root.style.setProperty('--ui-scale', String(k));
+      root.style.setProperty('--dt-text', String(k));
+      root.classList.toggle('dt-text', k !== 1);
+      if (k !== 1) { try { buildTextScale(); } catch (e) { console.error(e); } }
     } else if (on) {
-      for (const v of ['--stage-w', '--stage-h', '--panel-w', '--play-w', '--ui-scale', '--theatre-h']) root.style.removeProperty(v);
+      for (const v of ['--stage-w', '--stage-h', '--panel-w', '--play-w', '--ui-scale', '--dt-text', '--theatre-h']) root.style.removeProperty(v);
+      root.classList.remove('dt-text');
       for (const p of ['left', 'top', 'right', 'bottom', 'width', 'height']) canvas.style.removeProperty(p);
       cl = ct = cw = ch = -1;
       hideTip();
@@ -236,7 +278,7 @@ export const plugin: Plugin = (shell: Shell) => {
   host.append(tip);
   let tipTimer = 0;
   let tipFor: Element | null = null;
-  function hideTip() { window.clearTimeout(tipTimer); tip.hidden = true; tipFor = null; }
+  function hideTip() { window.clearTimeout(tipTimer); tip.hidden = true; tipFor = null; delete tip.dataset.id; }
   const tipText = (e: HTMLElement): string => {
     const id = e.dataset.id ?? '';
     const a = KEY_OF[id];
@@ -289,22 +331,32 @@ export const plugin: Plugin = (shell: Shell) => {
         const o = ev.target === field ? ctx.renderers.system.orbitAt(ev.clientX - r.left, ev.clientY - r.top) : -1;
         field.classList.toggle('dt-over-orbit', o >= 0);
         if (o >= 0) field.dataset.tip = `Orbit ${o + 1}`; else delete field.dataset.tip;
+      } else if (scr === 'planet') {
+        // The village under the cursor, by name: the surface element answers through its read-only sallowView.
+        const slot = ev.target instanceof HTMLElement && ev.target.dataset.id === 'surface' ? ev.target : null;
+        const hit = slot && ev.buttons === 0 ? (slot as HTMLElement & { sallowView?: SurfaceView }).sallowView?.pick(ev.clientX, ev.clientY)?.village ?? null : null;
+        if (hit && slot) {
+          const text = `${hit.name} · ${hit.souls} ${hit.souls === 1 ? 'soul' : 'souls'}`;
+          window.clearTimeout(tipTimer);
+          if (tip.textContent !== text || tip.hidden) { tip.textContent = text; tip.hidden = false; }
+          tip.dataset.id = 'dt-village-tip';
+          tipFor = slot;
+          const hr = host.getBoundingClientRect(), k = st.scale / 100;
+          tip.style.left = `${Math.round(Math.max(6, Math.min(hr.width - tip.offsetWidth * k - 6, ev.clientX - hr.left + 14)) / k)}px`;
+          tip.style.top = `${Math.round(Math.max(6, ev.clientY - hr.top - tip.offsetHeight * k - 12) / k)}px`;
+        } else if (tip.dataset.id === 'dt-village-tip') hideTip();
       }
     } catch { /* a hover must never break anything */ }
   });
-  // Right or middle button on a world: the same drag the left button does while watching.
+  // Right or middle drag on a world pans it whatever is in hand (the planet screen does that itself); here only the cursor and the village note.
   const surfaceOf = (t: EventTarget | null): HTMLElement | null => (t as Element | null)?.closest?.<HTMLElement>('[data-id=surface]') ?? null;
   const watching = (slot: HTMLElement): boolean => { const chip = slot.querySelector<HTMLElement>('[data-id=tool-chip]'); return !chip || chip.hidden; };
   host.addEventListener('pointerdown', (ev) => {
-    if (!on || !ev.isTrusted || ev.pointerType !== 'mouse' || ev.button === 0) return;
+    if (!on || ev.pointerType !== 'mouse' || ev.button === 0) return;
     const slot = surfaceOf(ev.target);
     if (!slot || ev.target !== slot) return;
-    ev.stopPropagation();
-    ev.preventDefault();
-    if (!watching(slot)) return; // a tool in hand would be used by the press: the other buttons do nothing then
     slot.classList.add('dt-grabbing');
     window.addEventListener('pointerup', () => slot.classList.remove('dt-grabbing'), { once: true });
-    slot.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: ev.pointerId, pointerType: 'mouse', button: 0, buttons: 1, clientX: ev.clientX, clientY: ev.clientY }));
   }, true);
   host.addEventListener('contextmenu', (ev) => { if (on && surfaceOf(ev.target)) ev.preventDefault(); });
   host.addEventListener('auxclick', (ev) => { if (on && surfaceOf(ev.target)) ev.preventDefault(); });
@@ -313,9 +365,10 @@ export const plugin: Plugin = (shell: Shell) => {
   const PAN_ID = 9731;
   const held = { left: false, right: false, up: false, down: false };
   let panSlot: HTMLElement | null = null;
-  let panX = 0, panY = 0, panMoved = 0;
+  let panX = 0, panY = 0;
   const safeCapture = new WeakSet<HTMLElement>();
-  const pe = (type: string, x: number, y: number) => new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: PAN_ID, pointerType: 'mouse', button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: x, clientY: y });
+  /** A pointer made of keys. `pan` presses the middle button, which the surface always reads as a pan, tool in hand or not. */
+  const pe = (type: string, x: number, y: number, pan = false) => new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: PAN_ID, pointerType: 'mouse', button: pan ? 1 : 0, buttons: type === 'pointerup' ? 0 : pan ? 4 : 1, clientX: x, clientY: y });
   /** A tool in hand, used on the middle of the view: what Enter does on a world. */
   const useCentre = (slot: HTMLElement) => {
     makeSafe(slot);
@@ -336,11 +389,11 @@ export const plugin: Plugin = (shell: Shell) => {
   };
   const panStart = (): boolean => {
     const slot = layer.querySelector<HTMLElement>('[data-id=surface]');
-    if (!slot || !watching(slot)) return false;
+    if (!slot) return false;
     makeSafe(slot);
     const r = slot.getBoundingClientRect();
-    panSlot = slot; panX = r.left + r.width / 2; panY = r.top + r.height / 2; panMoved = 0;
-    slot.dispatchEvent(pe('pointerdown', panX, panY));
+    panSlot = slot; panX = r.left + r.width / 2; panY = r.top + r.height / 2;
+    slot.dispatchEvent(pe('pointerdown', panX, panY, true));
     return true;
   };
   const panEnd = () => {
@@ -348,9 +401,7 @@ export const plugin: Plugin = (shell: Shell) => {
     if (!slot) return;
     panSlot = null;
     if (slot.isConnected) {
-      // A drag shorter than a tap's slop would count as a tap: wiggle so it does not.
-      if (panMoved < 20) { slot.dispatchEvent(pe('pointermove', panX + 12, panY)); slot.dispatchEvent(pe('pointermove', panX, panY)); }
-      slot.dispatchEvent(pe('pointerup', panX, panY));
+      slot.dispatchEvent(pe('pointerup', panX, panY, true));
     }
   };
   function panFrame(dt: number) {
@@ -358,8 +409,8 @@ export const plugin: Plugin = (shell: Shell) => {
     const dx = (held.left ? 1 : 0) - (held.right ? 1 : 0), dy = (held.up ? 1 : 0) - (held.down ? 1 : 0);
     if ((!dx && !dy) || !panSlot.isConnected || shell.current() !== 'planet' || shell.menu.isOpen()) { panEnd(); return; }
     const step = Math.min(40, dt * 0.55);
-    panX += dx * step; panY += dy * step; panMoved += step;
-    panSlot.dispatchEvent(pe('pointermove', panX, panY));
+    panX += dx * step; panY += dy * step;
+    panSlot.dispatchEvent(pe('pointermove', panX, panY, true));
   }
   const DIRS: readonly InputAction[] = ['left', 'right', 'up', 'down'];
   const panning = (): boolean => shell.current() === 'planet' && !shell.menu.isOpen() && !helpOpen() && !ctx.sim.latest()?.civ.avatar;
@@ -504,7 +555,7 @@ export const plugin: Plugin = (shell: Shell) => {
       disp.append(
         row('Layout', st.layout === 'desktop' && !fits ? 'This window is too small for the wide layout.' : st.layout === 'auto' ? `Auto picks the wide layout for a big window and a mouse. Now: ${on ? 'desktop' : 'phone'}.` : 'Wide for a desktop, or the tall phone column.',
           choice<LayoutMode>('dt-layout', [['auto', 'Auto'], ['desktop', 'Desktop'], ['phone', 'Phone']], () => st.layout, (v) => { st.layout = v; save(); apply(); paint(); })),
-        row('UI scale', `Side panels, the menu and notices. ${st.scale}%.`,
+        row('UI scale', `Side panels, the menu, notices and the type on every screen. ${st.scale}%.`,
           choice<number>('dt-scale', [[80, '80'], [90, '90'], [100, '100'], [110, '110'], [120, '120'], [140, '140']], () => st.scale, (v) => { st.scale = v; save(); apply(); paint(); })),
         row('Window', 'Fill the window, or keep a fixed stage in the middle of it.',
           choice<Theatre>('dt-theatre', [[0, 'Fill'], [720, '1280×720'], [900, '1600×900']], () => st.theatre, (v) => { st.theatre = v; save(); apply(); paint(); })),
@@ -572,7 +623,7 @@ export const plugin: Plugin = (shell: Shell) => {
 
       const mouse = section('Mouse and gamepad', 'dt-mouse');
       mouse.append(
-        mk('p', 'dt-note', 'Mouse: wheel leans in on a world where the cursor is; drag pans while watching (right or middle drag too); click uses the tool in hand and holding repeats; double click leans in; drag sky pieces onto orbits; move over a ring in a dive to aim at it.'),
+        mk('p', 'dt-note', 'Mouse: wheel leans in on a world where the cursor is; drag pans while watching, and right or middle drag pans with any tool in hand; rest the cursor on a village to read its name; on the orrery the wheel zooms and a drag pans; click uses the tool in hand and holding repeats; double click leans in; drag sky pieces onto orbits; move over a ring in a dive to aim at it.'),
         mk('p', 'dt-note', 'Gamepad: sticks or D-pad steer, pan and walk. A confirms and falls, B goes back, X presses the button in focus, Y pauses, LB and RB turn pages, LT and RT zoom, Start opens the menu, Select shows the controls.'),
       );
       page.append(disp, keys, mouse);

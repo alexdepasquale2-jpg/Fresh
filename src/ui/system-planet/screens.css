@@ -155,3 +155,8 @@
 /* Narrow phones: the age line wraps under the name instead of being cut off. */
 .pl-header .col { min-width: 0; }
 .pl-header .col .k-label { white-space: normal; overflow: visible; text-overflow: clip; text-align: right; line-height: 1.25; }
+
+/* The orrery's FIT button (desktop: shown once the view has been zoomed or panned). */
+.sy-fit[hidden] { display: none; }
+.sy-fit { min-width: var(--touch); min-height: var(--touch); padding: 0 8px; background: color-mix(in srgb, var(--bg) 70%, transparent); cursor: pointer; text-align: center; border-color: var(--glow); color: var(--glow); }
+.sy-field.sy-panning { cursor: grabbing; }

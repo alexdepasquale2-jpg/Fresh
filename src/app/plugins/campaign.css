@@ -65,3 +65,9 @@
 .camp-quote { padding-left: 10px; border-left: 2px solid var(--glow); }
 .camp-remains { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
 .camp-remains li { padding: 8px 0; border-top: 1px solid var(--line-dim); font: 400 14px/1.35 var(--font-ui); color: var(--ink); text-wrap: pretty; }
+
+/* Desktop: the chapter card is a centred dialog on the stage, not a band across a phone frame. */
+.sallow-desktop .camp-frame { left: 0; top: 0; width: 100%; height: 100%; transform: none; justify-content: center; }
+.sallow-desktop .camp-card { width: min(560px, 90%); padding: 30px 36px 24px; border: 2px solid var(--line); box-shadow: 0 0 0 6px var(--bg), 0 0 0 100vmax color-mix(in srgb, var(--bg) 62%, transparent); }
+.sallow-desktop .camp-card.end { border-color: var(--glow); }
+.sallow-desktop .camp-card .camp-text { max-width: 440px; }

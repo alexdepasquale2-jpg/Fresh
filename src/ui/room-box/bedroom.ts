@@ -37,6 +37,28 @@ export const bedroom: ScreenFactory = () => {
   let bankShown = -1;
   const decor: Mutable<RoomDecor> = { hour: 12, weather: 0, trophies: [0, 0, 0, 0, 0], poster: null, asleep: false, moteMood: 0, focus: -1 };
   const start = { x: 195, y: 400 };
+  // Desktop: the room is drawn into the floor element's own rect (canvas px), measured a few times a second.
+  // On the phone layout `rect` stays null and the renderer keeps its fixed spot.
+  const area = { x: 0, y: 0, w: 0, h: 0 };
+  let rect: typeof area | null = null;
+  let floorEl: HTMLElement | null = null;
+  let rectWait = 0;
+  let again = false;
+  const measure = () => {
+    const wide = document.documentElement.classList.contains('sallow-desktop');
+    if (!wide || !floorEl || !ctx) { if (rect) { rect = null; target = null; again = pending >= 0; start.x = ctx ? ctx.gl.width() / 2 : 195; start.y = 400; } return; }
+    const f = floorEl.getBoundingClientRect(), cr = ctx.gl.canvas.getBoundingClientRect();
+    if (f.width < 60 || f.height < 78) return;
+    const x = Math.round(f.left - cr.left) + 12, y = Math.round(f.top - cr.top) + 12, w = Math.round(f.width) - 24, h = Math.round(f.height) - 24;
+    if (rect && x === area.x && y === area.y && w === area.w && h === area.h) return;
+    area.x = x; area.y = y; area.w = w; area.h = h;
+    // Points are in canvas px, so a target from the old rect means nothing now: the kid stays, or walks on to the spot it was sent to.
+    if (rect || target) { target = null; again = pending >= 0; }
+    rect = area;
+    const sc = Math.max(1, Math.floor(Math.min(w / 60, h / 78)));
+    start.x = x + w / 2; start.y = y + h / 2 + 13.5 * sc;
+  };
+  const onLayout = () => { rectWait = 0; };
   return {
     id: 'bedroom',
     mount: (root, c) => {
@@ -81,8 +103,13 @@ export const bedroom: ScreenFactory = () => {
       dress();
       decor.moteMood = fresh.length ? 2 : 0;
       start.x = c.gl.width() / 2;
+      start.y = 400;
+      rect = null; rectWait = 0; again = false;
+      window.addEventListener('sallow:layout', onLayout);
+      window.addEventListener('resize', onLayout);
 
       const floor = el('div', { class: 'spacer floor rb-floor', 'data-id': 'floor' });
+      floorEl = floor;
       const line = narration('');
       line.dataset.id = 'room-line';
       const shelf = el('div', { class: 'rb-shelf', 'data-id': 'shelf-card', hidden: true });
@@ -295,7 +322,11 @@ export const bedroom: ScreenFactory = () => {
         sayLeft -= step;
         if (sayLeft <= 0 && bubble) { bubble.hidden = true; if (decor.moteMood === 1) decor.moteMood = 0; sayWait = 11000; }
       } else if (!decor.asleep) { sayWait -= step; if (sayWait <= 0) speak(); }
-      room.draw({ kid: start, target, pulse: ctx.pulse().phase(), lightPips: ctx.light.view().pips, decor }, dt);
+      rectWait -= step;
+      if (rectWait <= 0) { rectWait = 400; measure(); }
+      room.draw(rect ? { kid: start, target, pulse: ctx.pulse().phase(), lightPips: ctx.light.view().pips, decor, rect } : { kid: start, target, pulse: ctx.pulse().phase(), lightPips: ctx.light.view().pips, decor }, dt);
+      // The rect moved under a walk to a spot: send the kid on to it, now that the renderer knows the new rect.
+      if (again) { again = false; if (pending >= 0 && room.standAt) { const p = room.standAt(pending); target = { x: p.x, y: p.y }; } }
       if (sayLeft > 0 && bubble && host) {
         const m = room.mote();
         const w = host.clientWidth;
@@ -303,6 +334,6 @@ export const bedroom: ScreenFactory = () => {
         if (bx !== lastBx || by !== lastBy) { lastBx = bx; lastBy = by; bubble.style.left = `${bx}px`; bubble.style.top = `${by}px`; }
       }
     },
-    unmount: () => { ctx = null; host = null; bubble = null; bankEl = null; bankShown = -1; },
+    unmount: () => { window.removeEventListener('sallow:layout', onLayout); window.removeEventListener('resize', onLayout); floorEl = null; rect = null; ctx = null; host = null; bubble = null; bankEl = null; bankShown = -1; },
   };
 };
