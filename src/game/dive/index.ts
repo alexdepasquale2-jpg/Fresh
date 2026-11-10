@@ -60,8 +60,13 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
       return { ok: true, serialNumber: f.serialNumber, slot };
     },
     update: (ticks) => {
-      if (phase !== 'falling' || !address) return;
-      progress += ticks * FALL_PER_TICK;
+      if (!address) return;
+      // Hovering in the dark lets Mote gather a little light back.
+      if (phase === 'hovering' || phase === 'stopped') { light.addGlow(ticks * 2); return; }
+      if (phase !== 'falling') return;
+      // With no Light left you still fall, only slower and through dimmer folds.
+      const dim = light.view().pips === 0;
+      progress += ticks * (dim ? FALL_PER_TICK / 2 : FALL_PER_TICK);
       while (progress >= 1000) {
         progress -= 1000;
         const into = children[aim] ?? children[0]!;
@@ -76,16 +81,13 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
         cameFrom = aim;
         children = fold.childrenOf(address);
         best = Math.max(best, address.depth);
-        if (!light.drainFolds(1)) {
-          surface();
-          return;
-        }
+        light.drainFolds(1);
       }
     },
     aim: (i) => { if (i >= 0 && i <= 6 && phase !== 'surfaced' && progress < 600) aim = i; },
     surface,
     view: (): DiveView => {
-      const lines = LINES[phase];
+      const lines = phase === 'falling' && light.view().pips === 0 ? ['Mote is spent. The folds go dim, but you can still fall.', 'Darker here. Let go to rest and gather light.'] : LINES[phase];
       return {
         phase,
         universe,

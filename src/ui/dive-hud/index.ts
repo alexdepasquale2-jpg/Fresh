@@ -117,7 +117,7 @@ const dive: ScreenFactory = () => {
         leaving = true;
         ctx.persist();
         setTimeout(() => ctx?.go('box'), 1200);
-        ui.say.textContent = 'The light is spent. Mote pulls you up.';
+        ui.say.textContent = 'You surface.';
       }
     },
     unmount: () => void (ctx = ui = null),
