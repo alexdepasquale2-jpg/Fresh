@@ -128,3 +128,67 @@
 @media (prefers-reduced-motion: reduce) {
   .creature, .creature * { animation: none !important; }
 }
+
+/* Grown forms, shields and held relics. */
+.cr-mane { fill: var(--cs); stroke: var(--co); stroke-width: 1.2; stroke-linejoin: round; }
+.cr-chest { fill: none; stroke: var(--cb2); stroke-width: 3; stroke-linecap: round; opacity: .8; }
+.cr-wing { fill: var(--cb2); stroke: var(--co); stroke-width: 1.3; stroke-linejoin: round; opacity: .92; }
+.cr-crown { fill: var(--c-gold); stroke: var(--co); stroke-width: 1; stroke-linejoin: round; }
+.cr-elder { fill: none; stroke: var(--glow); stroke-width: 1; stroke-dasharray: 2 4; opacity: .7; }
+.cr-relic { fill: var(--c-gold); stroke: var(--co); stroke-width: .9; }
+.cr-shell { fill: none; stroke: var(--c-pale); stroke-width: 2.4; stroke-linecap: round; opacity: .85; }
+
+/* Universe character: signature pattern, rarity aura, bond, temperament. */
+.cr-sigs { opacity: .5; }
+.cr-sig { fill: none; stroke: var(--sg1); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.cr-sig.wide { stroke-width: 2.6; }
+.cr-sig.alt { stroke: var(--sg2); }
+.cr-sig.fill { fill: var(--sg2); }
+.cr-sigdot { fill: var(--sg2); }
+.cr-rar-ring { fill: none; stroke: var(--ink); stroke-width: 1; stroke-dasharray: 1 5; stroke-linecap: round; opacity: .8; transform-origin: 60px 64px; animation: cr-spin 26s linear infinite; }
+.cr-rar-ring.two { stroke-dasharray: 8 6; animation-direction: reverse; animation-duration: 18s; }
+.cr-rar-spark { fill: var(--ink-bright); transform-box: fill-box; transform-origin: 50% 50%; animation: cr-twinkle 2.2s ease-in-out infinite; }
+.cr-rar-rays { transform-origin: 60px 64px; animation: cr-spin 40s linear infinite; }
+.cr-rar-rays path { fill: none; stroke: var(--gold); stroke-width: 1.4; stroke-linecap: round; }
+.r-rare .cr-rar-ring { stroke: var(--glow); stroke-dasharray: 2 4; stroke-width: 1.3; }
+.r-epic .cr-rar-ring, .r-mythic .cr-rar-ring { stroke: var(--gold); stroke-width: 1.5; }
+.r-mythic .cr-rar-ring.two { stroke: var(--ink-bright); }
+.cr-bond { fill: none; stroke: var(--glow); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 1.5px var(--glow)); }
+
+/* Temperament at rest. Hurt, guarding and down keep their own poses. */
+.creature:is(.tm-placid, .tm-patient, .tm-cold):not(.is-low, .is-down, .is-guard) .cr-bob { animation-duration: 6s; }
+.creature:is(.tm-restless, .tm-feral, .tm-hungry):not(.is-low, .is-down, .is-guard) .cr-bob { animation: cr-fidget 1.7s ease-in-out infinite; }
+.creature.tm-proud:not(.is-low, .is-down, .is-guard) .cr-bob { animation: cr-proud 3.8s ease-in-out infinite; }
+.creature:is(.tm-shy, .tm-mournful):not(.is-low, .is-down, .is-guard) .cr-bob { animation: cr-shy 4.4s ease-in-out infinite; }
+.creature.tm-kind:not(.is-low, .is-down, .is-guard) .cr-bob { animation: cr-rock 3.6s ease-in-out infinite; }
+.creature.tm-dreaming:not(.is-low, .is-down, .is-guard) .cr-bob { animation: cr-float 6.4s ease-in-out infinite; }
+.creature.tm-dreaming .cr-eye { animation: cr-doze 6.4s ease-in-out infinite; }
+.creature.tm-watchful .cr-pupil { animation-duration: 2.9s; }
+.creature.tm-restless .cr-pupil, .creature.tm-feral .cr-pupil { animation-duration: 3.4s; }
+/* Temperament when struck. */
+.creature:is(.tm-feral, .tm-hungry).a-hit .cr-act { animation-name: cr-hit-snarl; }
+.creature:is(.tm-shy, .tm-mournful, .tm-dreaming).a-hit .cr-act { animation-name: cr-hit-cower; }
+.creature:is(.tm-proud, .tm-patient, .tm-cold).a-hit .cr-act { animation-name: cr-hit-stiff; }
+/* Victory. */
+.a-victory .cr-act { animation: cr-vic-hop 1.3s ease-in-out; }
+.a-victory .cr-aura { animation: cr-surge 1.3s ease-out; }
+.creature:is(.tm-proud, .tm-cold).a-victory .cr-act { animation-name: cr-vic-rise; }
+.creature:is(.tm-shy, .tm-mournful, .tm-placid, .tm-patient, .tm-dreaming).a-victory .cr-act { animation-name: cr-vic-nod; }
+.creature:is(.tm-feral, .tm-restless, .tm-hungry).a-victory .cr-act { animation-name: cr-vic-spin; }
+/* Double speed. */
+.creature.x2[class*=' a-'] .cr-act, .creature.x2[class*=' a-'] .cr-flash, .creature.x2[class*=' a-'] .cr-aura { animation-duration: .26s; }
+.creature.x2.a-faint .cr-act, .creature.x2.a-heal .cr-act, .creature.x2.a-fuse .cr-act { animation-duration: .42s; }
+.creature.x2.a-victory .cr-act { animation-duration: .65s; }
+@keyframes cr-fidget { 0%, 100% { transform: none; } 18% { transform: translateX(-1.6px) rotate(-2deg); } 36% { transform: translateX(1.8px) rotate(2deg) scale(.98, 1.03); } 54% { transform: translateY(-2.4px); } 72% { transform: translateX(-1px) rotate(-1deg); } }
+@keyframes cr-proud { 0%, 100% { transform: scale(.98, 1.03); } 50% { transform: translateY(-2px) scale(.95, 1.08); } }
+@keyframes cr-shy { 0%, 100% { transform: translateX(-2px) scale(.97) rotate(-2deg); } 50% { transform: translateX(-3.5px) scale(.94, .96) rotate(-4deg); } }
+@keyframes cr-rock { 0%, 100% { transform: rotate(-2.5deg); } 50% { transform: rotate(2.5deg) translateY(-1px); } }
+@keyframes cr-doze { 0%, 100% { transform: scaleY(.3); } 45%, 55% { transform: scaleY(.75); } }
+@keyframes cr-hit-snarl { 15% { transform: translateX(-11px) rotate(-8deg); } 45% { transform: translateX(9px) rotate(6deg) scale(1.08); } 70% { transform: translateX(-3px); } }
+@keyframes cr-hit-cower { 15% { transform: translateX(-14px) rotate(-10deg) scale(.9); } 55% { transform: translateX(-9px) scale(.86, .82); } 85% { transform: translateX(-3px) scale(.95); } }
+@keyframes cr-hit-stiff { 20% { transform: translateX(-7px) rotate(-3deg); } 50% { transform: translateX(2px); } }
+@keyframes cr-vic-hop { 0%, 100% { transform: none; } 15% { transform: scale(1.08, .88); } 32% { transform: translateY(-13px) scale(.95, 1.08); } 50% { transform: scale(1.06, .92); } 66% { transform: translateY(-8px); } 82% { transform: scale(1.03, .96); } }
+@keyframes cr-vic-rise { 0%, 100% { transform: none; } 30%, 75% { transform: translateY(-5px) scale(1.1, 1.16); } }
+@keyframes cr-vic-nod { 0%, 100% { transform: none; } 25% { transform: translateY(2px) scale(1.04, .94); } 50% { transform: translateY(-3px); } 75% { transform: translateY(1px) scale(1.02, .97); } }
+@keyframes cr-vic-spin { 0%, 100% { transform: none; } 20% { transform: translateY(-12px) rotate(-14deg); } 40% { transform: translateY(0) rotate(8deg) scale(1.08, .9); } 60% { transform: translateY(-10px) rotate(12deg); } 80% { transform: rotate(-4deg) scale(1.05, .94); } }
+@media (prefers-reduced-motion: reduce) { .creature, .creature * { animation: none !important; } }

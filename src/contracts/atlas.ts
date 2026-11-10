@@ -19,6 +19,14 @@ export const MaterialSchema = z.object({
   color: z.number().int().min(0).max(15),
   /** Heavier sinks through lighter liquids/gases. 0..255. */
   density: z.number().int().min(0).max(255),
+  /** Optional: a powder or liquid that falls upward. */
+  rises: z.boolean().optional(),
+  /** Optional: a powder that flows like a liquid by night or by day. */
+  flows: z.enum(['night', 'day']).optional(),
+  /** Optional 1..100: how readily the wind carries it sideways. */
+  drift: z.number().int().min(1).max(100).optional(),
+  /** Optional 2..16: a thick liquid spreads sideways only one tick in this many. */
+  viscosity: z.number().int().min(2).max(16).optional(),
 });
 export type Material = z.infer<typeof MaterialSchema>;
 
@@ -29,12 +37,16 @@ export const ChanceSchema = z.tuple([z.number().int().min(0), z.number().int().m
 export const ModifierKeySchema = z.enum(['tide', 'nightLight', 'impacts', 'seasons', 'dimming', 'warmth', 'dust']);
 export type ModifierKey = z.infer<typeof ModifierKeySchema>;
 
+const RangeSchema = (lo: number, hi: number) =>
+  z.object({ min: z.number().int().min(lo).max(hi).optional(), max: z.number().int().min(lo).max(hi).optional() });
+
 export const ReactionSchema = z.object({
   /** Material name of the cell. */
   a: z.string(),
   /** Material name of a 4-neighbour, or "*" for any. */
   b: z.string(),
   becomesA: z.string(),
+  /** A material name, or "*" to leave the neighbour as it is (useful when b is "*"). */
   becomesB: z.string(),
   /** Per-tick chance when a meets b. */
   chance: ChanceSchema,
@@ -42,6 +54,23 @@ export const ReactionSchema = z.object({
   needs: z
     .object({ key: ModifierKeySchema, min: z.number().int().optional(), max: z.number().int().optional() })
     .optional(),
+  /** Optional gates below; a reaction with none of them behaves exactly as before. */
+  /** Only where the coarse temperature is in range (0..255; 128 mild, <100 freezing, >200 burning). */
+  temp: RangeSchema(0, 255).optional(),
+  /** day: under a strong sun. night: sun down. lit: sun or a bright night sky. dark: neither. */
+  light: z.enum(['day', 'night', 'lit', 'dark']).optional(),
+  /** Only at this depth, as a percent of the grid height from the top (0 sky .. 100 bedrock). */
+  depth: RangeSchema(0, 100).optional(),
+  /** Where b must sit: above a, below a, or beside it. */
+  dir: z.enum(['up', 'down', 'side']).optional(),
+  /** Only while the wind strength (0..100) is in range. */
+  wind: RangeSchema(0, 100).optional(),
+  /** Only while the cloud over this column (0..255) is in range. */
+  humid: RangeSchema(0, 255).optional(),
+  /** Heat given to (or taken from) the air each time it fires. */
+  heat: z.number().int().min(-60).max(60).optional(),
+  /** Moisture given to (or taken from) the cloud above each time it fires. */
+  vapour: z.number().int().min(-40).max(40).optional(),
 });
 export type Reaction = z.infer<typeof ReactionSchema>;
 

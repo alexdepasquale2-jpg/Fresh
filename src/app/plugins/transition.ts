@@ -11,7 +11,7 @@ import './transition.css';
 import type { ScreenId } from '@/contracts/app';
 import type { Plugin } from '../plugins';
 
-const DEPTH: Record<ScreenId, number> = { outside: -1, battle: -1, bedroom: 0, box: 1, dive: 2, system: 3, planet: 4, mirror: 5 };
+const DEPTH: Record<ScreenId, number> = { outside: -1, battle: -1, town: -1, bedroom: 0, box: 1, dive: 2, system: 3, planet: 4, mirror: 5 };
 
 type Kind = 'in' | 'out' | 'side';
 interface Phase { ms: number; easing: string; frames: (dir: 1 | -1) => Keyframe[] }

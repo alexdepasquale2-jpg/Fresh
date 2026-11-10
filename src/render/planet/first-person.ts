@@ -4,7 +4,7 @@
 // bonfires and people stand where the sim has them. Ray-marched in one fragment
 // shader into a half-resolution target, then scaled up into the surface rect.
 import type { GlCore, PlanetRenderView } from '@/contracts/render';
-import { ENGINE, ROLE } from '@/contracts/sim';
+import { ENGINE, FIELD, ROLE } from '@/contracts/sim';
 import { FULLSCREEN_VS } from '@/render/gl';
 import { FX_ONE } from '@/core/fixed';
 import { HEAVENS_GLSL, HEAVENS_UNIFORMS, uploadHeavens } from './heavens';
@@ -20,11 +20,12 @@ const FS = `#version 300 es
 precision highp float;
 in vec2 v_uv; out vec4 o;
 uniform vec2 u_res; uniform vec3 u_ro; uniform vec2 u_look; uniform vec2 u_grid;
-uniform sampler2D u_cols, u_pal; uniform highp usampler2D u_mat;
-uniform float u_day, u_season, u_time, u_pulse, u_nl, u_dim, u_dust, u_wind, u_hum, u_rain, u_flash, u_moons, u_suns, u_rings, u_snow, u_orb, u_impacts, u_aurora;
+uniform sampler2D u_cols; uniform highp usampler2D u_mat; uniform vec3 u_palc[16];
+uniform float u_day, u_season, u_time, u_pulse, u_nl, u_dim, u_dust, u_wind, u_hum, u_rain, u_flash, u_moons, u_suns, u_rings, u_snow, u_orb, u_impacts, u_aurora, u_wet, u_snowc, u_fogv, u_heat, u_wslant; uniform vec3 u_bolt;
 uniform vec4 u_vill[12]; uniform int u_nvill;
+uniform vec3 u_lod;   // x cloud steps (1..5), y shadow steps (0..10), z 1 = the far dark, haze layers and sun shafts are drawn
 ${HEAVENS_GLSL}
-vec3 pal(int i){ return texelFetch(u_pal, ivec2(i & 15, 0), 0).rgb; }
+vec3 pal(int i){ return u_palc[i & 15]; }
 float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + 1.0), f.x), f.y); }
@@ -56,6 +57,8 @@ float map(vec2 p, out float layer, out vec4 tag){
 }
 vec3 sunDir(float k){ float a = (u_day - 0.25 + k * 0.07) * 6.2831853; return normalize(vec3(cos(a), sin(a), 0.35)); }
 vec3 sky(vec3 rd, float daylight, float dusk, bool hq){
+  int csteps = hq ? int(u_lod.x) : 1;
+  hq = hq && u_lod.z > 0.5;
   float up = clamp(rd.y, -0.2, 1.0);
   vec3 day = mix(mix(pal(9), pal(13), dusk * 0.6), mix(pal(12), pal(9), 0.25), smoothstep(0.0, 0.6, up));
   vec3 night = mix(pal(2), pal(0) * 0.6, smoothstep(0.0, 0.7, up));
@@ -153,12 +156,25 @@ vec3 sky(vec3 rd, float daylight, float dusk, bool hq){
       c += mix(pal(10), pal(15), 0.5 + 0.5 * sin(av.x * 2.0)) * ray * smoothstep(0.05, 0.3, rd.y) * smoothstep(0.9, 0.4, rd.y) * u_aurora * (1.0 - daylight) * 1.3;
     }
   }
+  // Lightning: a bolt wandering down the sky to the ground, forking once. The cloud hides its top.
+  if (hq && u_bolt.z > 0.01 && rd.y > -0.05 && rd.y < 0.62) {
+    float az = atan(rd.z, rd.x) - u_bolt.x; az -= 6.2831853 * floor(az / 6.2831853 + 0.5);
+    if (abs(az) < 0.7) {
+      float yy = rd.y;
+      float off = (noise(vec2(yy * 9.0, u_bolt.y)) - 0.5) * 0.32 * smoothstep(0.0, 0.3, yy) + (noise(vec2(yy * 40.0, u_bolt.y + 5.0)) - 0.5) * 0.03;
+      float db = abs(az - off);
+      float fy0 = 0.3 + 0.15 * fract(u_bolt.y * 0.37), fdir = fract(u_bolt.y * 0.71) > 0.5 ? 1.0 : -1.0, fl = fy0 - yy;
+      float df = abs(az - off - fdir * fl * 0.7 - (noise(vec2(yy * 20.0, u_bolt.y + 9.0)) - 0.5) * 0.08 * clamp(fl * 10.0, 0.0, 1.0));
+      float bolt = smoothstep(0.012, 0.003, db) + smoothstep(0.009, 0.002, df) * step(0.0, fl) * smoothstep(0.3, 0.08, fl) * 0.7;
+      c += (pal(9) * bolt * 3.0 + mix(pal(9), pal(12), 0.5) * exp(-db * 14.0) * 0.5) * u_bolt.z;
+    }
+  }
   // Clouds with depth: marched through a slab and lit from the sun's side, so they have
   // bright edges, grey bellies and a silver lining.
   if (rd.y > 0.02) {
     vec2 drift = vec2(u_time * u_wind * 0.05 + u_time * 0.004, 0.0);
     float trans = 1.0; vec3 acc = vec3(0.0);
-    int steps = hq ? 5 : 1;
+    int steps = csteps;
     for (int i = 0; i < 5; i++) {
       if (i >= steps) break;
       float hgt = (float(i) + 0.5) / float(steps);
@@ -169,8 +185,8 @@ vec3 sky(vec3 rd, float daylight, float dusk, bool hq){
         float shade = exp(-toSun * 2.2) * (0.55 + 0.45 * hgt);
         vec3 lit = mix(pal(2) * 1.2, mix(pal(9), pal(13), dusk * 0.7), shade) * (0.25 + 0.75 * daylight) + pal(14) * dusk * 0.35 * shade;
         lit += pal(9) * pow(sd, 12.0) * shade * 0.9 * (daylight + dusk);          // silver lining
-        lit += pal(9) * u_flash * 1.5;                                             // lightning inside the cloud
-        float a = d * (hq ? 0.5 : 0.9);
+        lit += pal(9) * u_flash * 0.55;                                             // lightning inside the cloud
+        float a = d * (steps > 1 ? 1.0 - pow(0.5, 5.0 / float(steps)) : 0.9);
         acc += lit * a * trans; trans *= 1.0 - a;
       }
     }
@@ -193,10 +209,11 @@ void main(){
   vec3 fwd = vec3(cy * cp, sp, sy * cp), right = vec3(-sy, 0.0, cy), upv = cross(right, fwd);
   vec3 rd = normalize(fwd + uv.x * right + uv.y * upv);
   vec3 ro = u_ro;
+  // Heat shimmer low over hot ground.
+  if (u_heat > 0.01) rd = normalize(rd + vec3(0.0, sin(uv.x * 55.0 + u_time * 9.0 + uv.y * 30.0) * 0.006 * u_heat * smoothstep(0.25, 0.0, abs(rd.y + 0.05)), 0.0));
   float sunUp = sin((u_day - 0.25) * 6.2831853);
   float daylight = smoothstep(-0.3, 0.35, sunUp) * (1.0 - u_dim * 0.45);
   float dusk = exp(-pow(sunUp * 3.5, 2.0));
-  vec3 skyc = sky(rd, daylight, dusk, true);
   // march
   float t = 0.3, tp = 0.0, layer = 0.0; vec4 tag = vec4(0.0); bool hit = false;
   for (int i = 0; i < 96; i++) {
@@ -207,7 +224,9 @@ void main(){
     t += clamp(d * 0.45, 0.1 + 0.004 * t, 7.0);
     if (t > 260.0 || (rd.y > 0.0 && p.y > u_grid.y + 30.0)) break;
   }
-  vec3 col = skyc;
+  // The sky is only worked out where the ray reaches it.
+  vec3 col = vec3(0.0);
+  if (!hit) col = sky(rd, daylight, dusk, true);
   if (hit) {
     for (int i = 0; i < 5; i++) { float tm = 0.5 * (tp + t); vec3 pm = ro + rd * tm; float l2; vec4 g2; if (pm.y - map(pm.xz, l2, g2) < 0.0) t = tm; else tp = tm; }
     vec3 p = ro + rd * t;
@@ -235,7 +254,7 @@ void main(){
       float wallh = tag.r * 255.0 / 16.0;
       if (code == 3) { base = mix(pal(13), pal(9), noise(vec2(p.x * 4.0, u_time * 8.0))); emis = 1.5; }
       else if (code == 2) { base = pal(3) * (0.9 + 0.3 * grain); if (hy > wallh - 1.0) { base = pal(13); emis = (1.0 - daylight) * 1.2; } }
-      else if (hy > wallh - 0.05) base = pal(14) * (0.85 + 0.3 * step(0.5, fract(p.x * 2.0 + p.z * 2.0)));
+      else if (hy > wallh - 0.05) base = mix(pal(14) * (0.85 + 0.3 * step(0.5, fract(p.x * 2.0 + p.z * 2.0))), pal(9), u_snowc * 0.85);
       else {
         base = pal(5) * (1.0 - 0.25 * max(step(0.88, fract(p.y * 2.0)), step(0.9, fract((p.x + p.z) * 1.5 + floor(p.y * 2.0) * 0.5))));
         vec2 w = vec2(fract((p.x + p.z) * 0.9), hy);
@@ -251,21 +270,37 @@ void main(){
     } else if (kind == 5u) { base = mix(pal(13), pal(9), noise(p.xz * 2.5 + vec2(0.0, u_time * 5.0))); emis = 1.4; }
     else if (kind == 6u) {        // moss and grass
       base *= 0.75 + 0.5 * fine; base = mix(base, pal(14), autumn * 0.5);
-      base *= 0.85 + 0.3 * step(0.5, fract(p.x * 5.0 + noise(p.xz * 2.0) * 2.0 + sin(u_time * 1.5 + p.z) * 0.1));
+      base *= 0.85 + 0.3 * step(0.5, fract(p.x * 5.0 + noise(p.xz * 2.0) * 2.0 + sin(u_time * (1.5 + abs(u_wind) * 2.0) + p.z) * (0.1 + abs(u_wind) * 0.4)));
     }
     else if (kind == 2u) base *= 0.8 + 0.25 * grain + 0.15 * sin(p.x * 2.0 + noise(p.xz * 0.6) * 6.0);
     else base *= 0.8 + 0.3 * fine + 0.1 * grain;
     if (layer < 0.5 && kind != 3u && kind != 5u) {
+      // Close to the eye the ground has grit, pebbles, blades and flowers; they give the distance its scale.
+      float near = smoothstep(18.0, 2.0, t);
+      if (near > 0.0) {
+        vec2 pc = floor(p.xz * 2.5);
+        base *= 1.0 + near * (h21(floor(p.xz * 9.0)) - 0.5) * 0.3;
+        if (kind != 6u) base = mix(base, pal(4) * (0.65 + 0.5 * h21(pc)), smoothstep(0.22, 0.12, length(fract(p.xz * 2.5 + h21(pc) * 0.4) - 0.5)) * step(0.72, h21(pc + 3.0)) * near * 0.7);
+        else base *= 1.0 + near * 0.4 * (step(0.5, fract(p.x * 13.0 + noise(p.xz * 6.0) * 3.0 + sin(u_time * 2.0 + p.z * 2.0) * (0.15 + abs(u_wind)))) - 0.5);
+      }
+      if (kind == 6u) {
+        float spring = smoothstep(0.0, 0.05, u_season) * smoothstep(0.3, 0.15, u_season), winter = smoothstep(0.62, 0.75, u_season) * smoothstep(0.98, 0.85, u_season);
+        float bloom = max(u_wet, spring * 0.7) * (1.0 - winter);
+        vec2 fl = floor(p.xz * 3.0); float fh = h21(fl + 7.0);
+        if (bloom > 0.05 && fh > 0.88 - bloom * 0.2 && length(fract(p.xz * 3.0) - 0.5) < 0.2) base = mix(base, mix(mix(pal(15), pal(13), step(0.94, fh)), pal(9), step(0.98, fh)) * 1.25, bloom * smoothstep(45.0, 8.0, t));
+      }
+      // Rain darkens the ground and leaves it shining.
+      base *= 1.0 - u_wet * 0.3; spec = max(spec, u_wet * 0.7 * smoothstep(0.75, 0.95, n.y) * step(0.6, noise(p.xz * 0.7)));
       if (n.y < 0.55) base = mix(base, pal(4) * (0.6 + 0.4 * noise(vec2(p.x + p.z, p.y * 3.0))), 0.7);   // cliffs show rock
       if (m == ${ENGINE.ice.id}u) { base = mix(pal(9), pal(10), 0.4); spec = 1.0; }
       if (m == ${ENGINE.ore.id}u) base = mix(pal(7), pal(9), step(0.8, grain));
-      base = mix(base, pal(9), u_snow * smoothstep(0.6, 0.9, n.y) * 0.7);
+      base = mix(base, pal(9), u_snowc * smoothstep(0.6, 0.9, n.y) * 0.85);
     }
     vec3 L = sunDir(0.0);
     float dif = max(dot(n, L), 0.0) * daylight;
     if (dif > 0.0 && emis < 0.5) {      // soft shadow toward the sun
       float st = 0.4, sh = 1.0;
-      for (int i = 0; i < 10; i++) { vec3 q = p + n * 0.1 + L * st; float l2; vec4 g2; float d2 = q.y - map(q.xz, l2, g2); sh = min(sh, 6.0 * d2 / st); if (sh < 0.05) break; st += clamp(d2, 0.5, 4.0); }
+      for (int i = 0; i < 10; i++) { if (float(i) >= u_lod.y) break; vec3 q = p + n * 0.1 + L * st; float l2; vec4 g2; float d2 = q.y - map(q.xz, l2, g2); sh = min(sh, 6.0 * d2 / st); if (sh < 0.05) break; st += clamp(d2, 0.5, 4.0); }
       dif *= clamp(sh, 0.0, 1.0);
     }
     float amb = mix(0.2 + u_nl * 0.4 + u_moons * 0.07, 0.42, daylight) * (0.6 + 0.4 * n.y);
@@ -282,13 +317,26 @@ void main(){
     col = emis > 0.5 ? (kind == 3u && layer < 0.5 ? base + pal(9) * spec * pow(max(dot(reflect(rd, n), L), 0.0), 80.0) * daylight : base * emis) : lit;
     col += base * u_flash * 0.6;
     float fog = 1.0 - exp(-t * (0.006 + u_hum * 0.012 + u_dust * 0.02));
-    col = mix(col, sky(normalize(vec3(rd.x, 0.03, rd.z)), daylight, dusk, false), fog);
-  }
+    // Dawn fog lies in the low ground: thick below the eye, thin above it.
+    float low = exp(-max(p.y - (u_ro.y - 3.0), 0.0) * 0.18);
+    fog = max(fog, u_fogv * low * (1.0 - exp(-t * 0.045)) * 0.92);
+    vec3 hz = sky(normalize(vec3(rd.x, 0.03, rd.z)), daylight, dusk, false);
+    // Aerial perspective: far ground loses its contrast and takes the colour of the air before the air takes it.
+    float ap = 1.0 - exp(-t * 0.014);
+    col = mix(col, mix(vec3(dot(col, vec3(0.3, 0.5, 0.2))), hz, 0.6), ap * 0.45);
+    col = mix(col, mix(hz, pal(9) * (0.35 + 0.65 * daylight), u_fogv * 0.6), fog);
+  } else col = mix(col, pal(9) * (0.35 + 0.65 * daylight), u_fogv * 0.7 * smoothstep(0.14, -0.02, rd.y));
   // rain or snow on the lens
   if (u_rain > 0.01) {
     float snow = u_snow;
-    vec2 g = mix(vec2(floor(fc.x / 2.0), floor((fc.y + u_time * 700.0) / 34.0)), floor((fc + vec2(sin(u_time + fc.y * 0.02) * 12.0, u_time * 70.0)) / 5.0), snow);
+    // It slants with whatever part of the wind blows across the view.
+    float rx = fc.x + fc.y * u_wslant;
+    vec2 g = mix(vec2(floor(rx / 2.0), floor((fc.y + u_time * 700.0) / 34.0)), floor((vec2(fc.x + fc.y * u_wslant * 2.0, fc.y) + vec2(sin(u_time + fc.y * 0.02) * 12.0, u_time * 70.0)) / 5.0), snow);
     col = mix(col, pal(9), step(mix(0.985, 0.992, snow) - u_rain * 0.03, h21(g)) * 0.35);
+    // A nearer, sparser sheet: bigger and faster, so the weather has depth.
+    vec2 g2 = mix(vec2(floor(rx / 3.0) + 40.0, floor((fc.y + u_time * 1100.0) / 62.0)), floor((vec2(fc.x + fc.y * u_wslant * 2.5, fc.y) + vec2(sin(u_time * 1.3 + fc.y * 0.015) * 18.0, u_time * 115.0)) / 7.0) + 50.0, snow);
+    vec2 sq = (vec2(fc.x + fc.y * u_wslant * 2.5, fc.y) + vec2(sin(u_time * 1.3 + fc.y * 0.015) * 18.0, u_time * 115.0)) / 7.0;
+    col = mix(col, pal(9), step(0.992 - u_rain * 0.02, h21(g2)) * 0.3 * mix(1.0, smoothstep(0.5, 0.2, length(fract(sq) - 0.5)) * 1.6, snow));
   }
   col *= 0.85 + 0.15 * smoothstep(1.3, 0.4, length(uv));
   // Alpha carries distance, so sprites drawn afterwards can hide behind the terrain.
@@ -298,7 +346,7 @@ void main(){
 const BLIT_FS = `#version 300 es
 precision mediump float;
 in vec2 v_uv; out vec4 o;
-uniform vec2 u_res; uniform vec4 u_rect; uniform sampler2D u_tex; uniform vec2 u_px;
+uniform vec2 u_res; uniform vec4 u_rect; uniform sampler2D u_tex, u_spr; uniform vec2 u_px; uniform float u_bloom;
 void main(){
   vec2 fc = vec2(v_uv.x * u_res.x, (1.0 - v_uv.y) * u_res.y);
   vec2 q = (fc - u_rect.xy) / u_rect.zw;
@@ -313,10 +361,13 @@ void main(){
   c = clamp((c + (n + s + e + w) * amt) / (1.0 + 4.0 * amt), 0.0, 4.0);
   // Bloom: bright things bleed light.
   vec3 bl = vec3(0.0);
-  for (int i = 0; i < 8; i++) { float a = float(i) * 0.7854; vec3 t = texture(u_tex, uv + vec2(cos(a), sin(a)) * u_px * (3.0 + float(i & 1) * 4.0)).rgb; bl += max(t - 0.75, 0.0); }
+  if (u_bloom > 0.5) for (int i = 0; i < 8; i++) { float a = float(i) * 0.7854; vec3 t = texture(u_tex, uv + vec2(cos(a), sin(a)) * u_px * (3.0 + float(i & 1) * 4.0)).rgb; bl += max(t - 0.75, 0.0); }
   c += bl * 0.16;
   // Filmic shoulder so highlights roll off instead of clipping.
   c = c * (1.0 + c * 0.25) / (1.0 + c * 0.55 + c * c * 0.12) * 1.18;
+  // Sprites (life, story, people) were drawn into a target of the same reduced size: lay them over, premultiplied.
+  vec4 sp = texture(u_spr, uv);
+  c = sp.rgb + c * (1.0 - sp.a);
   o = vec4(c, 1.0);
 }`;
 
@@ -329,8 +380,12 @@ export interface FpFrame {
   top: Uint8Array;
   matTex: WebGLTexture;
   palTex: WebGLTexture;
+  /** The palette as 16 x rgb floats. */
+  palF: Float32Array;
   time: number;
   flash: number;
+  /** Eased weather from the map renderer: wet ground, snow lying, dawn fog, and the last bolt. */
+  wet: number; snow: number; fog: number; bolt: number; boltX: number; boltSeed: number;
 }
 
 export const createFirstPerson = (core: GlCore) => {
@@ -338,8 +393,8 @@ export const createFirstPerson = (core: GlCore) => {
   const prog = core.program(FULLSCREEN_VS, FS);
   const blit = core.program(FULLSCREEN_VS, BLIT_FS);
   const U = (p: WebGLProgram, names: string[]) => Object.fromEntries(names.map((n) => [n, gl.getUniformLocation(p, n)])) as Record<string, WebGLUniformLocation | null>;
-  const loc = U(prog, ['u_res', 'u_ro', 'u_look', 'u_grid', 'u_cols', 'u_pal', 'u_mat', 'u_day', 'u_season', 'u_time', 'u_pulse', 'u_nl', 'u_dim', 'u_dust', 'u_wind', 'u_hum', 'u_rain', 'u_flash', 'u_moons', 'u_suns', 'u_rings', 'u_snow', 'u_orb', 'u_impacts', 'u_aurora', 'u_vill', 'u_nvill', ...HEAVENS_UNIFORMS]);
-  const bloc = U(blit, ['u_res', 'u_rect', 'u_tex', 'u_px']);
+  const loc = U(prog, ['u_res', 'u_ro', 'u_look', 'u_grid', 'u_cols', 'u_pal', 'u_mat', 'u_day', 'u_season', 'u_time', 'u_pulse', 'u_nl', 'u_dim', 'u_dust', 'u_wind', 'u_hum', 'u_rain', 'u_flash', 'u_moons', 'u_suns', 'u_rings', 'u_snow', 'u_orb', 'u_impacts', 'u_aurora', 'u_wet', 'u_snowc', 'u_fogv', 'u_heat', 'u_wslant', 'u_bolt', 'u_vill', 'u_nvill', 'u_lod', 'u_palc', ...HEAVENS_UNIFORMS]);
+  const bloc = U(blit, ['u_res', 'u_rect', 'u_tex', 'u_spr', 'u_px', 'u_bloom']);
   // Own quad so we can draw into a smaller target.
   const vao = gl.createVertexArray();
   const buf = gl.createBuffer();
@@ -351,12 +406,22 @@ export const createFirstPerson = (core: GlCore) => {
   gl.bindVertexArray(null);
   const fbo = gl.createFramebuffer();
   const target = gl.createTexture();
+  // Sprites go into a second target of the same size, so quality scaling covers them too.
+  const sfbo = gl.createFramebuffer();
+  const sprites = gl.createTexture();
   let fw = 0, fh = 0;
+  let lowQ = false;
+  let palette0 = '#000000';
+  let rect = { x: 0, y: 0, w: 1, h: 1 };
   const colsTex = gl.createTexture();
   let cols = new Uint8Array(0);
   let colsW = 0;
   const vill = new Float32Array(48);
   let eyeY = -1;
+  // One camera record, reused every frame.
+  const ro: [number, number, number] = [0, 0, 0];
+  let cur: FpFrame | null = null;
+  const out = { ro, yaw: 0, pitch: 0, depth: target!, tw: 0, th: 0, ground: (x: number, z: number) => (cur ? groundAt(cur, x, z) : 0) };
 
   const linear = (t: WebGLTexture | null) => {
     gl.bindTexture(gl.TEXTURE_2D, t);
@@ -411,7 +476,7 @@ export const createFirstPerson = (core: GlCore) => {
             for (let dx = -1; dx <= 1; dx++) built(b.x + dx, hh, 1, zoff, b.kind === 'house' ? 1.7 : 2.2);
           }
         }
-        if (nv < 12) { vill.set([vg.x, H - f.top[Math.max(0, Math.min(W - 1, vg.x))]!, 0, (night ? 1 : 0.2) * (0.5 + vg.tech * 0.15)], nv * 4); nv++; }
+        if (nv < 12) { const k = nv * 4; vill[k] = vg.x; vill[k + 1] = H - f.top[Math.max(0, Math.min(W - 1, vg.x))]!; vill[k + 2] = 0; vill[k + 3] = (night ? 1 : 0.2) * (0.5 + vg.tech * 0.15) * (0.75 + vg.prosperity / 200); nv++; }
       }
       gl.bindTexture(gl.TEXTURE_2D, colsTex);
       gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
@@ -427,6 +492,10 @@ export const createFirstPerson = (core: GlCore) => {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, fw, fh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target, 0);
+        linear(sprites);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, fw, fh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, sfbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sprites, 0);
       }
       // ---- eye ----
       const want = groundAt(f, f.eyeX, fp.z) + 2.4;
@@ -438,13 +507,29 @@ export const createFirstPerson = (core: GlCore) => {
       gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
       gl.viewport(0, 0, fw, fh);
       gl.useProgram(prog);
-      const bind = (unit: number, t: WebGLTexture | null, name: string) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t); gl.uniform1i(loc[name]!, unit); };
-      bind(0, colsTex, 'u_cols'); bind(1, f.palTex, 'u_pal'); bind(2, f.matTex, 'u_mat');
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, colsTex); gl.uniform1i(loc.u_cols!, 0);
+      gl.uniform3fv(loc.u_palc!, f.palF);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, f.matTex); gl.uniform1i(loc.u_mat!, 2);
+      // Detail by quality: fewer cloud slabs and shadow steps as it falls, and the extras go at the bottom.
+      const ql = v.quality ?? 1;
+      lowQ = ql < 0.52;
+      gl.uniform3f(loc.u_lod!, ql >= 0.9 ? 5 : ql >= 0.7 ? 4 : lowQ ? 2 : 3, ql >= 0.7 ? 10 : lowQ ? 0 : 6, lowQ ? 0 : 1);
       const md = v.modifiers;
-      const count = (k: string) => v.sky.pieces.filter((p) => p === k).length;
+      let moons = 0, suns = 0;
+      for (let i = 0; i < v.sky.pieces.length; i++) { const k = v.sky.pieces[i]; if (k === 'moon') moons++; else if (k === 'sun') suns++; }
       gl.uniform2f(loc.u_res!, fw, fh);
-      const ro: [number, number, number] = [f.eyeX, eyeY + (fp.bob ?? 0), fp.z];
-      gl.uniform3f(loc.u_ro!, ...ro);
+      ro[0] = f.eyeX; ro[1] = eyeY + (fp.bob ?? 0); ro[2] = fp.z;
+      gl.uniform3f(loc.u_ro!, ro[0], ro[1], ro[2]);
+      // How hot the ground is where you stand.
+      const ec = Math.max(0, Math.min(W - 1, Math.round(f.eyeX)));
+      const fx = Math.min(v.env.fieldW - 1, (ec / FIELD) | 0), fy = Math.max(0, Math.min(v.env.fieldH - 1, ((f.top[ec]! - 1) / FIELD) | 0));
+      gl.uniform1f(loc.u_heat!, sat((v.env.temp[fy * v.env.fieldW + fx]! - 160) / 60 + Math.max(0, md.warmth) / 200));
+      gl.uniform1f(loc.u_wet!, f.wet);
+      gl.uniform1f(loc.u_snowc!, f.snow);
+      gl.uniform1f(loc.u_fogv!, f.fog);
+      gl.uniform1f(loc.u_wslant!, (v.env.wind / 100) * -Math.sin(fp.yaw) * 0.6);
+      const bz = (f.boltSeed % 2 ? 1 : -1) * (45 + (f.boltSeed % 30));
+      gl.uniform3f(loc.u_bolt!, Math.atan2(bz - fp.z, f.boltX - f.eyeX), f.boltSeed, f.bolt);
       gl.uniform2f(loc.u_look!, fp.yaw, fp.pitch);
       gl.uniform2f(loc.u_grid!, W, H);
       gl.uniform1f(loc.u_day!, v.env.day / 1000);
@@ -458,30 +543,48 @@ export const createFirstPerson = (core: GlCore) => {
       gl.uniform1f(loc.u_hum!, hum);
       gl.uniform1f(loc.u_rain!, v.env.rain / 255);
       gl.uniform1f(loc.u_flash!, f.flash);
-      gl.uniform1f(loc.u_moons!, count('moon'));
-      gl.uniform1f(loc.u_suns!, count('sun'));
+      gl.uniform1f(loc.u_moons!, moons);
+      gl.uniform1f(loc.u_suns!, suns);
       uploadHeavens(gl, loc, v);
       gl.uniform1f(loc.u_snow!, v.env.snowing ? 1 : 0);
-      gl.uniform1f(loc.u_orb!, Math.min(8, v.sky.built ?? 0));
+      gl.uniform1f(loc.u_orb!, Math.min(8, Math.max(v.sky.built ?? 0, v.civ.launches)));
       gl.uniform1f(loc.u_impacts!, Math.max(0, md.impacts) / 100);
       gl.uniform1f(loc.u_aurora!, Math.min(1, Math.max(0, md.nightLight) / 80 + (v.sky.built ?? 0) / 10 + (v.env.snowing ? 0.4 : 0)));
       gl.uniform4fv(loc.u_vill!, vill);
       gl.uniform1i(loc.u_nvill!, nv);
       gl.bindVertexArray(vao);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      // ---- the sprite target: cleared, and left bound for the sprite layers ----
+      gl.bindFramebuffer(gl.FRAMEBUFFER, sfbo);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      palette0 = v.universe.palette[0]!;
+      rect = v.rect;
+      out.tw = fw; out.th = fh;
+      cur = f; out.yaw = fp.yaw; out.pitch = fp.pitch;
+      return out;
+    },
+    /** After the sprite layers: scale the base pass up into the surface rect and lay the sprites over it. */
+    present: () => {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-      // ---- scale up into the surface rect ----
-      core.clear(v.universe.palette[0]!);
+      core.clear(palette0);
       gl.useProgram(blit);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, sprites);
+      gl.uniform1i(bloc.u_spr!, 1);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, target);
       gl.uniform1i(bloc.u_tex!, 0);
       gl.uniform2f(bloc.u_res!, core.width(), core.height());
-      gl.uniform4f(bloc.u_rect!, v.rect.x, v.rect.y, v.rect.w, v.rect.h);
+      gl.uniform4f(bloc.u_rect!, rect.x, rect.y, rect.w, rect.h);
       gl.uniform2f(bloc.u_px!, 1 / fw, 1 / fh);
+      gl.uniform1f(bloc.u_bloom!, lowQ ? 0 : 1);
+      // Only the surface rect is shaded, not the whole canvas.
+      const sx = core.canvas.width / Math.max(1, core.width()), sy = core.canvas.height / Math.max(1, core.height());
+      gl.enable(gl.SCISSOR_TEST);
+      gl.scissor(Math.floor(rect.x * sx), Math.floor(core.canvas.height - (rect.y + rect.h) * sy), Math.ceil(rect.w * sx) + 1, Math.ceil(rect.h * sy) + 1);
       core.quad(blit);
-      return { ro, yaw: fp.yaw, pitch: fp.pitch, depth: target!, ground: (x: number, z: number) => groundAt(f, x, z) };
+      gl.disable(gl.SCISSOR_TEST);
     },
   };
 };

@@ -1,0 +1,198 @@
+/* Bedroom and Box (unit 21). Tokens only. */
+.screen .rb-head { padding-right: 36px; flex-wrap: nowrap; }
+.screen[data-screen='bedroom'] { gap: 8px; }
+.rb-floor { position: relative; touch-action: manipulation; min-height: 0; }
+.rb-floor::after { content: ''; position: absolute; inset: -8px -16px; background: var(--bg); opacity: 0; pointer-events: none; transition: opacity .9s; }
+.rb-asleep .rb-floor::after { opacity: .78; }
+.rb-info { display: flex; flex-direction: column; gap: 6px; min-height: 44px; justify-content: flex-end; }
+.rb-info .k-narration { font-size: 15px; line-height: 1.3; }
+.rb-say { position: absolute; z-index: 4; width: 220px; margin: 0; padding: 6px 8px; transform: translateY(-100%); background: color-mix(in srgb, var(--bg) 88%, transparent); border: 1px solid var(--glow); color: var(--glow); font: italic 14px/1.25 var(--font-voice); pointer-events: none; animation: rb-in .35s ease-out; }
+@keyframes rb-in { from { opacity: 0; } to { opacity: 1; } }
+.rb-shelf { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.rb-trophy { display: flex; flex-direction: column; align-items: center; padding: 2px 0; border: 1px solid var(--line-dim); }
+.rb-trophy b { font: 600 15px var(--font-ui); color: var(--ink-off); }
+.rb-trophy span { font: 400 10px var(--font-ui); color: var(--ink-muted); letter-spacing: .08em; text-transform: uppercase; }
+.rb-trophy.lv1 { border-color: var(--line); }
+.rb-trophy.lv1 b { color: var(--ink); }
+.rb-trophy.lv2 { border-color: var(--gold); }
+.rb-trophy.lv2 b { color: var(--gold); }
+.rb-trophy.lv3 { border-color: var(--glow); }
+.rb-trophy.lv3 b { color: var(--glow); }
+
+.rb-chip { flex: 0 0 auto; min-height: var(--touch); min-width: var(--touch); padding: 0 10px; background: transparent; border: 1px solid var(--line); color: var(--ink-muted); font: 600 11px var(--font-ui); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; touch-action: manipulation; }
+.rb-chip[aria-pressed='true'] { border-color: var(--glow); color: var(--glow); background: var(--raised); }
+.rb-bar { display: flex; gap: 6px; overflow-x: auto; flex: none; scrollbar-width: none; margin: 0 calc(var(--pad) * -1); padding: 0 var(--pad); }
+.rb-bar::-webkit-scrollbar { display: none; }
+.rb-grid { flex: none; }
+.rb-grid .k-slot { position: relative; }
+.rb-grid .k-slot.empty { cursor: pointer; border-style: dashed; }
+.rb-grid .k-slot.empty::after { content: '+'; color: var(--line-dim); font: 400 16px var(--font-ui); }
+.rb-grid .k-slot.rb-fav::before { content: '★'; position: absolute; top: 1px; right: 3px; font: 400 10px var(--font-ui); color: var(--gold); }
+.rb-grid .k-slot.rb-dim { opacity: .28; }
+.rb-grid .k-slot.rb-other { border-color: var(--gold); color: var(--gold); }
+.screen .detail { flex: none; }
+.rb-note { flex: none; padding: 8px 12px; border: 1px dashed var(--line); }
+.rb-note .k-narration { font-size: 14px; }
+.rb-preview { display: flex; align-items: center; gap: 12px; }
+.rb-glyph { flex: 0 0 auto; width: 52px; height: 52px; display: grid; place-items: center; border: 2px solid var(--line); background: var(--raised); color: var(--glow); font: 600 24px var(--font-ui); }
+.rb-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rb-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
+.rb-facts span { font: 400 11px var(--font-ui); color: var(--ink-muted); letter-spacing: .08em; text-transform: uppercase; }
+.rb-facts b { color: var(--ink-bright); font-weight: 600; }
+.rb-tools .k-btn { padding: 0 6px; font-size: 13px; }
+.rb-input { flex: 3 !important; min-width: 0; min-height: var(--touch); padding: 0 10px; background: var(--bg); border: 2px solid var(--glow); color: var(--ink-bright); font: 400 18px var(--font-voice); }
+.rb-pair { display: flex; align-items: center; gap: 8px; }
+.rb-thing { flex: 1; min-width: 0; padding: 8px; border: 1px dashed var(--line-dim); color: var(--ink-off); font: 400 16px var(--font-voice); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-thing.on { border: 1px solid var(--line); color: var(--ink-bright); }
+.rb-plus { color: var(--glow); font: 600 18px var(--font-ui); }
+.rb-vs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.rb-side { align-items: center; text-align: center; }
+.rb-side:last-child .rb-glyph { color: var(--gold); }
+.rb-table { display: grid; grid-template-columns: 1fr auto 1fr; gap: 3px 10px; align-items: baseline; }
+.rb-table b { font: 600 14px var(--font-ui); color: var(--ink); text-align: center; }
+.rb-table b.win { color: var(--glow); }
+.rb-table span { font: 400 10px var(--font-ui); color: var(--ink-muted); letter-spacing: .08em; text-transform: uppercase; text-align: center; }
+
+/* The Box keeps its header still and scrolls only what is under it, so nothing ever slides beneath the hub button. */
+.screen.rb-box[data-screen='box'] { overflow: hidden; }
+.rb-box .rb-head { flex: none; min-height: var(--touch); }
+.rb-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 12px; margin: 0 calc(var(--pad) * -1) calc(var(--pad) * -1); padding: 0 var(--pad) var(--pad); scrollbar-width: none; }
+.rb-scroll::-webkit-scrollbar { display: none; }
+.rb-scroll > * { flex: none; }
+.rb-pipwrap { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.rb-bank { font-size: 10px; color: var(--ink-off); letter-spacing: .08em; }
+.rb-bank.on { color: var(--glow); }
+.rb-mote { gap: 10px; padding: 6px 10px; }
+.rb-mote .rb-col:first-of-type { flex: 1; }
+.rb-light { align-items: flex-end; }
+.rb-light .k-pips { font-size: 0; gap: 3px; }
+
+/* Rarity: a letter, a word and a frame. Never colour alone. */
+.rb-rarity { display: inline-block; padding: 2px 6px; border: 1px solid var(--line-dim); color: var(--ink-off); font: 600 11px var(--font-ui); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
+.rb-rarity.rb-r1 { border: 1px dashed var(--ink-muted); color: var(--ink-muted); }
+.rb-rarity.rb-r2 { border: 1px solid var(--gold); color: var(--gold); }
+.rb-rarity.rb-r3 { border: 3px double var(--gold); color: var(--ink-bright); }
+.rb-rarity.rb-r4 { border: 3px double var(--glow); color: var(--glow); background: var(--raised); }
+.rb-detail .rb-rarity, .rb-reveal .rb-rarity, [data-id='merge-preview'] .rb-rarity { color: var(--ink); }
+.rb-detail .rb-rarity.rb-r2, .rb-reveal .rb-rarity.rb-r2, [data-id='merge-preview'] .rb-rarity.rb-r2 { color: var(--gold); }
+.rb-detail .rb-rarity.rb-r3, .rb-reveal .rb-rarity.rb-r3, [data-id='merge-preview'] .rb-rarity.rb-r3 { color: var(--ink-bright); }
+.rb-detail .rb-rarity.rb-r4, .rb-reveal .rb-rarity.rb-r4, [data-id='merge-preview'] .rb-rarity.rb-r4 { color: var(--glow); }
+.rb-count { display: flex; flex-wrap: wrap; gap: 4px; }
+.rb-count .rb-rarity { font-size: 10px; padding: 2px 4px; letter-spacing: .04em; opacity: .55; }
+.rb-count .rb-rarity.on { opacity: 1; }
+.rb-have { padding: 2px 6px; border: 1px solid var(--line-dim); color: var(--ink-off); font: 400 11px var(--font-ui); letter-spacing: .06em; text-transform: uppercase; }
+.rb-have.seen { color: var(--ink-muted); }
+.rb-have.on { border-color: var(--line); color: var(--ink-bright); }
+.rb-collect { display: flex; flex-direction: column; gap: 6px; }
+.rb-collect .rb-chip { padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb-legend { color: var(--ink-off); font-size: 10px; }
+
+/* Slots: emblem behind, glyph over, rarity letter, bond bar, made mark. */
+.rb-grid .k-slot { isolation: isolate; overflow: hidden; text-shadow: 0 0 3px var(--bg), 0 1px 0 var(--bg), 0 -1px 0 var(--bg), 1px 0 0 var(--bg), -1px 0 0 var(--bg); color: var(--ink-bright); }
+.rb-emblem { image-rendering: pixelated; pointer-events: none; }
+.rb-grid .k-slot .rb-emblem { position: absolute; inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); z-index: -1; opacity: .5; }
+.rb-grid .k-slot[aria-selected='true'] .rb-emblem { opacity: .8; }
+.rb-rar { position: absolute; left: 2px; top: 1px; font: 600 10px/1 var(--font-ui); color: var(--ink-muted); padding: 1px 2px; background: var(--bg); text-shadow: none; }
+.rb-made { position: absolute; right: 3px; bottom: 5px; font: 400 10px/1 var(--font-ui); color: var(--ink-muted); }
+.rb-bond { position: absolute; left: 0; bottom: 0; height: 3px; max-width: 100%; background: var(--glow); }
+.rb-grid .k-slot.rb-r1::after, .rb-grid .k-slot.rb-r2::after, .rb-grid .k-slot.rb-r3::after, .rb-grid .k-slot.rb-r4::after { content: ''; position: absolute; inset: 1px; pointer-events: none; border: 1px dashed var(--ink-muted); }
+.rb-grid .k-slot.rb-r2::after { border: 1px solid var(--gold); }
+.rb-grid .k-slot.rb-r3::after { border: 3px double var(--gold); }
+.rb-grid .k-slot.rb-r4::after { border: 3px double var(--glow); }
+.rb-grid .k-slot.rb-r2 .rb-rar, .rb-grid .k-slot.rb-r3 .rb-rar { color: var(--gold); }
+.rb-grid .k-slot.rb-r4 .rb-rar { color: var(--glow); }
+
+/* Crest: the emblem at card size with the glyph over it. */
+.rb-crest { position: relative; isolation: isolate; overflow: hidden; }
+.rb-crest .rb-emblem { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; opacity: .7; }
+.rb-crest b { font: inherit; color: var(--ink-bright); text-shadow: 0 0 4px var(--bg), 0 1px 0 var(--bg), 0 -1px 0 var(--bg), 1px 0 0 var(--bg), -1px 0 0 var(--bg); }
+.rb-crest.big { width: 72px; height: 72px; font-size: 30px; }
+.rb-crest.rb-r1 { border: 2px dashed var(--ink-muted); }
+.rb-crest.rb-r2 { border-color: var(--gold); }
+.rb-crest.rb-r3 { border: 4px double var(--gold); }
+.rb-crest.rb-r4 { border: 4px double var(--glow); }
+.rb-detail.rb-r2, .rb-detail.rb-r3 { border-color: var(--gold); }
+.rb-detail.rb-r4 { border-color: var(--glow); }
+.rb-title { color: var(--gold); }
+
+/* Card blocks. */
+.rb-block { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line-dim); }
+.rb-origin { font: 400 13px/1.35 var(--font-voice); color: var(--ink-muted); }
+.rb-motto { font: italic 15px/1.3 var(--font-voice); color: var(--ink-bright); text-align: center; }
+.rb-trait { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border: 1px solid var(--line-dim); background: var(--bg); }
+.rb-trait.slim { padding: 4px 8px; }
+.rb-trait-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.rb-trait-head b { font: 600 14px var(--font-ui); color: var(--ink-bright); }
+.rb-trait .k-label { font-size: 10px; letter-spacing: .06em; }
+.rb-mods { display: flex; flex-wrap: wrap; gap: 4px; }
+.rb-mods:empty { display: none; }
+.rb-mod { padding: 1px 5px; border: 1px solid var(--line); font: 600 11px var(--font-ui); color: var(--ink-muted); white-space: nowrap; }
+.rb-mod.up { border-color: var(--glow); color: var(--glow); }
+.rb-mod.down { border-style: dashed; color: var(--ink-muted); }
+.rb-total { display: flex; flex-direction: column; gap: 4px; }
+.rb-meter { height: 8px; border: 1px solid var(--line); background: var(--bg); }
+.rb-meter i { display: block; height: 100%; max-width: 100%; background: var(--glow); }
+.rb-bond-word { font: 600 13px var(--font-ui); color: var(--glow); letter-spacing: .08em; text-transform: uppercase; }
+.rb-parts { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
+.rb-parts span { font: 400 11px var(--font-ui); color: var(--ink-muted); letter-spacing: .08em; text-transform: uppercase; }
+.rb-parts b { color: var(--ink-bright); font-weight: 600; }
+.rb-parts .full b { color: var(--glow); }
+
+/* The family tree. */
+.rb-tree { display: flex; flex-direction: column; align-items: stretch; }
+.rb-parents { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rb-node { display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: var(--touch); min-width: 0; padding: 6px 4px; background: var(--bg); border: 1px dashed var(--line-dim); color: var(--ink-muted); font: 400 12px var(--font-ui); text-align: center; }
+.rb-node b { font: 400 15px var(--font-voice); color: var(--ink); overflow-wrap: anywhere; }
+.rb-node .rb-col { align-items: center; gap: 2px; }
+.rb-node .k-label { font-size: 9px; letter-spacing: .04em; }
+.rb-node .rb-glyph { width: 40px; height: 40px; font-size: 18px; }
+button.rb-node { cursor: default; }
+button.rb-node.here { border: 1px solid var(--glow); cursor: pointer; touch-action: manipulation; }
+button.rb-node.here b { color: var(--ink-bright); }
+.rb-node.child { align-self: center; width: 60%; border: 2px solid var(--line); }
+.rb-join { display: block; height: 14px; margin: 0 25%; border: 1px solid var(--line); border-top: 0; position: relative; }
+.rb-join::after { content: ''; position: absolute; left: 50%; top: 100%; height: 8px; border-left: 1px solid var(--line); }
+.rb-tree .rb-node.child { margin-top: 8px; }
+.rb-swatches { display: flex; align-items: center; gap: 4px; }
+.rb-swatches i { width: 16px; height: 16px; border: 1px solid var(--line); }
+.rb-recipe-line { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border: 1px solid var(--gold); }
+.rb-recipe-line b { font: 600 13px var(--font-ui); color: var(--gold); letter-spacing: .06em; }
+
+/* Merge odds. */
+.rb-lines { margin: 0; padding: 0 0 0 16px; display: flex; flex-direction: column; gap: 2px; font: 400 14px/1.3 var(--font-voice); color: var(--ink); }
+.rb-odds { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 8px; align-items: baseline; }
+.rb-odd-l { font: 400 13px/1.25 var(--font-voice); color: var(--ink); }
+.rb-odds b { font: 600 13px var(--font-ui); color: var(--ink-bright); text-align: right; }
+.rb-odd-r { font: 600 10px var(--font-ui); color: var(--ink-off); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.rb-odd-r.yes { color: var(--glow); }
+
+/* Recipe book and sets. */
+.rb-page, .rb-set { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px dashed var(--line-dim); }
+.rb-page.got { border: 1px solid var(--gold); }
+.rb-page:not(.got) .rb-trait-head b { color: var(--ink-off); letter-spacing: .2em; }
+.rb-set.ready { border: 1px solid var(--glow); background: var(--raised); }
+.rb-set.paid { border: 1px solid var(--line); }
+.rb-set .k-btn { flex: 0 0 auto; min-width: 96px; }
+.rb-paid { color: var(--glow); }
+
+/* The reveal after a merge. */
+/* Opaque, and above every overlay but the hub (60 and up), so nothing under or over it reads through it. */
+.rb-reveal { position: absolute; inset: 0; z-index: 55; display: flex; align-items: center; justify-content: center; padding: 60px var(--pad) var(--pad); background: var(--bg); animation: rb-in .4s ease-out; }
+.rb-reveal-in { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; max-height: 100%; overflow-y: auto; touch-action: pan-y; padding: 16px 12px; background: var(--panel); border: 2px solid var(--line); text-align: center; scrollbar-width: none; }
+.rb-reveal-in > * { flex: none; }
+.rb-reveal-in > .rb-block, .rb-reveal-in > .k-btn, .rb-reveal-in > .rb-recipe-line { align-self: stretch; }
+.rb-reveal-in > .rb-block, .rb-reveal-in > .rb-recipe-line { text-align: left; }
+.rb-reveal.rb-r2 .rb-reveal-in, .rb-reveal.rb-r3 .rb-reveal-in { border-color: var(--gold); }
+.rb-reveal.rb-r4 .rb-reveal-in { border-color: var(--glow); }
+.rb-reveal .rb-crest.big { width: 96px; height: 96px; font-size: 40px; animation: rb-rise .7s ease-out; }
+.rb-reveal-rar { justify-content: center !important; animation: rb-in 1s ease-out; }
+.rb-reveal .rb-rarity { font-size: 14px; padding: 4px 10px; }
+@keyframes rb-rise { from { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } to { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .rb-floor::after { transition: none; } .rb-say, .rb-reveal, .rb-reveal .rb-crest.big, .rb-reveal-rar { animation: none; } }
+.sallow-reduce-motion .rb-reveal, .sallow-reduce-motion .rb-reveal .rb-crest.big, .sallow-reduce-motion .rb-reveal-rar { animation: none; }
+
+/* A name of 24 letters with no space in it still stays inside its card. */
+.rb-preview > .rb-col { flex: 1; }
+.rb-col > .k-title, .rb-side .k-title, .rb-say, .rb-node b, .rb-reveal-in > .k-title { overflow-wrap: anywhere; min-width: 0; }
+.rb-vs > * { min-width: 0; }
+.rb-side .k-title { max-width: 100%; }

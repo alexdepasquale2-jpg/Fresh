@@ -4,7 +4,7 @@
 .screen .fighter.pet-card.down { opacity: .8; }
 .pet-card .f-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .pet-card .f-info .k-title.small { min-width: 0; line-height: 1.1; }
-.pet-card .f-pet { position: relative; flex: none; width: 136px; height: 136px; }
+.pet-card .f-pet { position: relative; flex: none; width: 112px; height: 112px; }
 .pet-card .hp.low i { background: var(--gold); }
 .pet-card .float { top: 20px; }
 .screen[data-screen='battle'] .battle-log { flex: none; padding: 6px 10px; }
@@ -19,3 +19,114 @@
 .catch { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
 .catch .k-btn { width: 100%; }
 .caught:empty { display: none; }
+
+/* Ladder, growth, weather, chains, relics, summary. */
+.screen[data-screen='battle'] { gap: 6px; }
+.k-tag.tip { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; background: color-mix(in srgb, var(--panel) 70%, transparent); cursor: pointer; min-height: 44px; min-width: 44px; padding: 0 8px; font: 400 12px var(--font-ui); white-space: nowrap; }
+.k-tag.swap.relic { min-height: 44px; display: inline-flex; align-items: center; }
+.k-tag.relic { position: relative; }
+.relic-ask { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding: 8px; border: 1px solid var(--gold); background: var(--bg); min-width: 0; }
+.relic-ask p { margin: 0; font-size: 14px; line-height: 1.25; overflow-wrap: anywhere; }
+.relic-ask p.dim { color: var(--ink-muted); }
+.relic-ask .row { gap: 6px; }
+.relic-ask .k-btn { flex: 1 1 0; min-width: 0; padding: 4px 6px; font-size: 13px; line-height: 1.1; letter-spacing: .04em; white-space: normal; }
+.k-tag.tip.relic, .k-tag.swap.relic:not(:disabled) { border-color: var(--gold); color: var(--gold); }
+.k-tag.tip.good { border-color: var(--glow); color: var(--glow); }
+.k-tag.tip.bad { border-color: var(--gold); color: var(--gold); }
+.k-tag.lv { flex: 0 0 auto; border-color: var(--line-dim); }
+.k-tag.lv.up { border-color: var(--glow); color: var(--glow); box-shadow: 0 0 8px color-mix(in srgb, var(--glow) 50%, transparent); }
+.field { flex: none; justify-content: flex-start; flex-wrap: nowrap; gap: 6px; }
+.xp { height: 4px; border: 1px solid var(--line-dim); }
+.xp i { display: block; height: 100%; background: var(--gold); }
+.screen[data-screen='battle'] .battle-log { height: 78px; overflow-y: auto; scrollbar-width: none; padding: 4px 8px; gap: 2px; }
+.screen[data-screen='battle'] .battle-log li { font-size: 12px; line-height: 1.25; }
+.screen[data-screen='battle'] .skills { grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.screen[data-screen='battle'] .skills .skill { min-height: 46px; min-width: 0; padding: 2px; font-size: 12px; }
+.screen[data-screen='battle'] .skills .skill b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.screen[data-screen='battle'] .skills .skill small { font-size: 9px; letter-spacing: .04em; }
+.skills .skill.kind-finisher { border-color: var(--gold); }
+.skills .skill.ask[aria-pressed='true'] { border-color: var(--glow); color: var(--glow); }
+.screen[data-screen='battle'] .tool-hint { min-height: 30px; margin: 0; flex: none; text-transform: none; letter-spacing: .02em; }
+.screen[data-screen='battle'] .bench { flex-wrap: wrap; }
+.pet-card .chips { row-gap: 4px; }
+.pet-card .float { display: flex; flex-direction: column; align-items: center; line-height: 1; }
+.float small { font: 600 10px var(--font-ui); letter-spacing: .08em; }
+.float.strong { color: var(--ink-bright); }
+.float.weak { color: var(--ink-off); }
+.summary { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; background: color-mix(in srgb, var(--panel) 90%, transparent); border: 2px solid var(--glow); flex: none; }
+.sum-row { display: flex; align-items: center; gap: 8px; }
+.summary .learned, .summary .rewards { color: var(--glow); text-transform: none; letter-spacing: .02em; }
+.summary .k-narration { font-size: 14px; }
+.screen[data-screen='outside'] { gap: 8px; }
+.screen[data-screen='outside'] .tool-hint { margin: 0; flex: none; text-transform: none; letter-spacing: .02em; min-height: 26px; }
+.screen[data-screen='outside'] .team { flex: none; gap: 4px; }
+.screen[data-screen='outside'] .team-row .k-narration { font-size: 14px; }
+.tier-head { padding-top: 4px; color: var(--gold); flex: none; }
+.rival { flex: none; }
+.rival.boss { border-color: var(--gold); border-width: 3px; }
+.rival.boss.locked { border-style: dashed; border-color: var(--line); }
+.rival-say { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.rival-say .taunt { font-size: 13px; }
+.rival-say .mech { color: var(--gold); text-transform: none; letter-spacing: .02em; }
+.screen[data-screen='battle'] > header, .screen[data-screen='outside'] > header { padding-right: 30px; flex-wrap: nowrap; }
+.screen[data-screen='battle'] > header .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+
+/* Info chips are full touch targets; a card's chips sit on one line and slide sideways. */
+.pet-card .chips, .team-row .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 5px; }
+.pet-card .chips::-webkit-scrollbar, .team-row .chips::-webkit-scrollbar { display: none; }
+.field { overflow-x: auto; scrollbar-width: none; }
+.field .k-tag.tip { padding: 0 6px; font-size: 11px; }
+.k-tag.tip.ctl { color: var(--ink); border-color: var(--line); margin-left: auto; }
+.k-tag.tip.ctl + .k-tag.tip.ctl { margin-left: 0; }
+.k-tag.tip.ctl.good { border-color: var(--glow); color: var(--glow); }
+.k-tag.tip.off { opacity: .55; }
+.k-tag.tip.mech { border-color: var(--gold); color: var(--gold); }
+.k-tag.rar { border-color: var(--line-dim); }
+.k-tag.rar-rare { border-color: var(--glow); color: var(--glow); }
+.k-tag.rar-epic, .k-tag.rar-mythic { border-color: var(--gold); color: var(--gold); }
+.k-tag.intent.danger { border-color: var(--gold); color: var(--ink-bright); background: color-mix(in srgb, var(--gold) 28%, transparent); animation: b-warn 1s ease-in-out infinite; }
+.skills .skill.wanted { border-color: var(--glow); box-shadow: 0 0 10px color-mix(in srgb, var(--glow) 55%, transparent); }
+.screen[data-screen='battle'] .battle-log { height: 66px; }
+.screen[data-screen='battle'] .battle-log li.log-tick { color: var(--gold); border-top: 1px dashed var(--line-dim); padding-top: 2px; }
+.pet-card .float.tick { font-size: 15px; opacity: .9; }
+.pet-card .f-info .row.nowrap { flex-wrap: nowrap; }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; flex: none; }
+.modes .mode { min-height: 46px; padding: 2px 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
+.modes .mode b { font-weight: 600; font-size: 14px; }
+.modes .mode small { font-size: 9px; letter-spacing: .05em; color: var(--ink-muted); }
+.modes .mode.off { opacity: .6; }
+.rival-acts { display: flex; gap: 6px; }
+.rival-acts .k-btn { flex: 1; min-width: 0; }
+.screen[data-screen='outside'] .rivals { min-height: 0; }
+@keyframes b-warn { 50% { background: color-mix(in srgb, var(--gold) 10%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .k-tag.intent.danger { animation: none; } }
+:root.sallow-reduce-motion .k-tag.intent.danger { animation: none; }
+.screen .pet-card .row.chips, .screen .team-row .row.chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.screen[data-screen='battle'] .row.bench { gap: 5px; }
+.screen[data-screen='battle'] .row.bench > * { white-space: nowrap; }
+.screen[data-screen='battle'] .battle-log { height: 56px; }
+.k-label.stats { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .02em; }
+.pet-card .f-info .k-title.small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.screen[data-screen='battle'] .summary { min-height: 0; flex: 0 1 auto; overflow-y: auto; scrollbar-width: none; }
+
+/* Every control a full 44px target, and a screen that still fits 390x844 at all three text sizes. */
+/* Your bench is a two-column grid: swaps on the first row, FUSE and GO INSIDE after them. Always whole rows of 44px. */
+.screen[data-screen='battle'] > .row.bench { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; align-items: stretch; }
+.screen[data-screen='battle'] > .row.bench > .k-tag.swap { display: flex; align-items: center; justify-content: center; min-height: var(--touch); min-width: var(--touch); padding: 2px 6px; white-space: normal; text-align: center; line-height: 1.15; letter-spacing: .04em; overflow: hidden; overflow-wrap: break-word; }
+.k-tag.swap.relic { min-height: var(--touch); min-width: var(--touch); }
+.modes .mode, .rival-acts .k-btn, .catch .k-btn { min-height: var(--touch); }
+/* A skill's name may take two lines; it is never cut to "ALIGNME…". */
+.screen[data-screen='battle'] .skills .skill { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; overflow: hidden; }
+.screen[data-screen='battle'] .skills .skill b { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word; text-align: center; line-height: 1.05; letter-spacing: .02em; }
+:root.sallow-text-l .screen[data-screen='battle'] .skills .skill b { font-size: .9em; letter-spacing: 0; }
+/* The header says who and which turn on two lines if it must. */
+.screen[data-screen='battle'] > header { padding-right: calc(var(--touch) - var(--pad) + var(--gap)); }
+.screen[data-screen='outside'] > header { padding-right: calc(var(--touch) - var(--pad) + var(--gap)); }
+.screen[data-screen='battle'] > header .who { flex: 1 1 auto; white-space: normal; text-overflow: clip; line-height: 1.25; max-height: var(--touch); letter-spacing: .08em; overflow-wrap: break-word; }
+/* A creature's name is shown whole: its tags drop to the next line when the name needs the room. */
+.pet-card .f-info .row.nowrap { flex-wrap: wrap; row-gap: 3px; }
+.pet-card .f-info .row.nowrap > .k-title.small { flex: 1 1 auto; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word; }
+/* When the screen is full (large text, a boss's extra chip) the log gives way first, then the hint; the buttons never do. */
+.screen[data-screen='battle'] .battle-log { flex: 0 1 56px; min-height: 30px; }
+.screen[data-screen='battle'] .tool-hint { flex: 0 1 auto; overflow: hidden; }
+.screen[data-screen='battle'] > .k-label { flex: none; }

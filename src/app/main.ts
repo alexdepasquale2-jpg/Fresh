@@ -5,8 +5,10 @@ import type { Screen, ScreenId } from '@/contracts/app';
 import { createGlCore, createFrameLoop } from '@/render/gl';
 import { TICKS_PER_SECOND } from '@/contracts/time';
 import { createApp, STARTER_SERIALS } from './context';
-import { plugins } from './plugins';
+import { createHub } from './hub';
+import { loadPlugins } from './plugins';
 import type { Shell } from './plugins';
+import { stage } from './plugins/desktop';
 
 export const boot = async (host: HTMLElement) => {
   const canvas = document.createElement('canvas');
@@ -15,7 +17,8 @@ export const boot = async (host: HTMLElement) => {
   layer.className = 'screen';
   host.append(canvas, layer);
 
-  const gl = createGlCore(canvas);
+  // Desktop mode caps the drawing buffer through this; in the phone layout it is always 1.
+  const gl = createGlCore(canvas, { resolutionScale: () => stage.glScale });
   let current: Screen | null = null;
   let saveTimer = 0;
 
@@ -62,7 +65,7 @@ export const boot = async (host: HTMLElement) => {
   const app = createApp(gl, go, persist);
   const { ctx } = app;
   ctx.input.attach(layer);
-  window.addEventListener('pointerdown', () => void ctx.audio.unlock(), { once: true });
+  window.addEventListener('pointerdown', () => void ctx.audio.unlock(), { once: true, capture: true });
   // Every button answers a touch.
   window.addEventListener('click', (e) => { if ((e.target as HTMLElement | null)?.closest('button')) ctx.audio.sfx('tap'); });
 
@@ -97,12 +100,13 @@ export const boot = async (host: HTMLElement) => {
   (window as unknown as { __sallow: unknown }).__sallow = { go, ctx };
   const shell: Shell = {
     ctx, host, layer, canvas, resumed,
+    ...createHub(host, (n) => ctx.audio.sfx(n)),
     current: () => currentId,
     onFrame: (cb) => void frameCbs.push(cb),
     onNavigate: (cb) => void navCbs.push(cb),
     setTransition: (fn) => void (transition = fn),
   };
-  for (const p of plugins) {
+  for (const p of await loadPlugins()) {
     try { p(shell); } catch (e) { console.error('plugin failed', e); }
   }
   go('bedroom');

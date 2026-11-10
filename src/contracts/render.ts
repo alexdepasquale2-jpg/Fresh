@@ -44,6 +44,10 @@ export interface DiveRenderView {
   readonly pulse: Fx;
   /** 0..8, drives the vignette. */
   readonly lightPips: number;
+  /** A reliquary throw being timed: the closing ring around child `index`; scale 1 is the catch. */
+  readonly catchRing?: { readonly index: number; readonly scale: number } | null;
+  /** 0.5..1 from Perf.resolutionScale(); below ~0.7 the renderer drops detail. */
+  readonly quality?: number;
 }
 export type DiveRenderer = Renderer<DiveRenderView>;
 
@@ -61,6 +65,14 @@ export interface SystemRenderView {
   readonly flare?: number;
   /** Ripple at a touched point, 0..1 age. */
   readonly touch?: { x: number; y: number; age: number } | null;
+  /** 0.5..1 from Perf.resolutionScale(); at the bottom the renderer drops its finest detail. */
+  readonly quality?: number;
+  /** CSS px rect (canvas space) the orrery is fitted to: the star sits at its middle and the widest thing reaches its nearer edge. Without it, the phone's fixed spot. */
+  readonly rect?: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
+  /** Extra magnification on top of the fit (1 = fitted). Only read when `rect` is given. */
+  readonly zoom?: number;
+  /** Where the star is drawn, as an offset in CSS px from the middle of `rect`. Only read when `rect` is given. */
+  readonly pan?: { readonly x: number; readonly y: number };
 }
 export interface SystemRenderer extends Renderer<SystemRenderView> {
   /** Orbit index under a CSS px point, or -1. */
@@ -76,6 +88,8 @@ export interface PlanetRenderView {
   readonly modifiers: import('./sky').SurfaceModifiers;
   /** The generated sky (star, sibling worlds, each moon). Without it the sky falls back to piece counts. */
   readonly heavens?: import('./sky').Heavens;
+  /** The planet being drawn (seed, biome, land form, gravity, tidal lock). Lets the renderer tell two worlds of one universe apart. */
+  readonly planet?: import('./system').PlanetSpec;
   readonly pulse: Fx;
   /** Camera: centre in grid cells and zoom (1 shows the whole world). Above ~1.5 the renderer draws sub-cell detail. */
   readonly view?: {
@@ -97,10 +111,41 @@ export interface RoomRenderView {
   readonly scene?: number;
   readonly pulse: Fx;
   readonly lightPips: number;
+  /** Bedroom dressing, read every draw (scene 0 only; other scenes stay a plain room). */
+  readonly decor?: RoomDecor;
+  /** CSS px rect (canvas space) to draw the room into, at the largest whole-pixel scale that fits, centred. `kid`, `target` and every point the renderer returns are in the same space. Without it, the phone's fixed spot. */
+  readonly rect?: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
+}
+/** Things in the bedroom the kid can walk to. The index is the spot id used by RoomRenderer.spotAt/standAt/near. */
+export const ROOM_SPOTS = ['window', 'bed', 'pc', 'shelf', 'poster', 'box'] as const;
+export type RoomSpot = (typeof ROOM_SPOTS)[number];
+export interface RoomDecor {
+  /** Hour of the day shown in the window, 0..24. */
+  readonly hour: number;
+  /** 0 clear, 1 cloud, 2 rain. */
+  readonly weather: number;
+  /** Shelf trophies, each a level 0..3: deepest fold, worlds tended, battles, universes held, light earned. */
+  readonly trophies: readonly number[];
+  /** The poster over the bed: a universe's 16-colour palette and a seed for its pattern. null = bare paper. */
+  readonly poster: { readonly palette: readonly string[]; readonly seed: number } | null;
+  /** The kid is in bed. */
+  readonly asleep: boolean;
+  /** 0 follows the kid, 1 circles the kid, 2 waits over the box. */
+  readonly moteMood: number;
+  /** Spot index to mark as the one in use, or -1. */
+  readonly focus: number;
 }
 export interface RoomRenderer extends Renderer<RoomRenderView> {
   /** Where Mote is now (eased), CSS px. */
   mote(): { x: number; y: number };
+  /** Where the kid is now, CSS px. */
+  kid?(): { x: number; y: number };
+  /** Spot index under a CSS px point in the bedroom, or -1. */
+  spotAt?(x: number, y: number): number;
+  /** Where the kid stands to use a spot, CSS px (a shared object: read it at once). */
+  standAt?(spot: number): { x: number; y: number };
+  /** Spot index the kid is standing at now, or -1. */
+  near?(): number;
 }
 
 export type DiveRendererFactory = () => DiveRenderer;

@@ -1,0 +1,22 @@
+/* The Ascension page in the hub. Tokens only. */
+.asc-page { display: flex; flex-direction: column; gap: var(--gap); padding-bottom: var(--pad); }
+.asc-page > * { flex: none; }
+.asc-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap); }
+.asc-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--panel); border: 1px solid var(--line-dim); }
+.asc-card p { margin: 0; text-wrap: pretty; }
+.asc-prog { display: flex; align-items: center; gap: 10px; font: 400 13px var(--font-ui); color: var(--ink); }
+.asc-prog span { flex: none; width: 112px; }
+.asc-prog b { flex: none; font: 600 11px var(--font-ui); color: var(--gold); }
+.asc-bar { flex: 1; height: 6px; background: var(--line-dim); }
+.asc-bar i { display: block; height: 100%; background: var(--glow); }
+.asc-test { font: 600 11px var(--font-ui); letter-spacing: .1em; text-transform: uppercase; color: var(--gold); }
+.asc-boon { display: flex; flex-direction: column; gap: 2px; padding-top: 8px; border-top: 1px solid var(--line-dim); }
+.asc-boon b { font: 600 14px var(--font-ui); color: var(--ink-bright); }
+.asc-boon span { font: italic 15px/1.35 var(--font-voice); color: var(--ink); }
+.asc-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font: 400 13px var(--font-ui); color: var(--ink-muted); }
+.asc-facts b { font-weight: 600; color: var(--ink-bright); }
+.asc-story.end { border-color: var(--glow); }
+.asc-frag { display: flex; gap: 10px; padding-top: 8px; border-top: 1px solid var(--line-dim); font: italic 16px/1.4 var(--font-voice); color: var(--ink); }
+.asc-frag b { flex: none; width: 16px; font: 600 11px/1.9 var(--font-ui); font-style: normal; color: var(--gold); }
+.asc-frag.missing { color: var(--ink-off); font-size: 14px; }
+.asc-frag.missing b { color: var(--ink-off); }

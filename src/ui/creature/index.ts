@@ -6,7 +6,7 @@ import type { Element, Fighter, StatusKind } from '@/contracts/battle';
 import { child, rng } from '@/core/hash';
 import './creature.css';
 
-export type CreatureAnim = 'attack' | 'hit' | 'crit' | 'heal' | 'guard' | 'fuse' | 'faint' | 'idle' | 'enter';
+export type CreatureAnim = 'attack' | 'hit' | 'crit' | 'heal' | 'guard' | 'fuse' | 'faint' | 'idle' | 'enter' | 'victory';
 export interface CreatureOpts {
   /** Rendered size in px (square). Default 128. */
   readonly size?: number;
@@ -16,7 +16,8 @@ export interface CreatureOpts {
 export interface Creature {
   readonly el: HTMLElement;
   update(fighter: Fighter): void;
-  play(anim: CreatureAnim): void;
+  /** rate 2 plays it in half the time. */
+  play(anim: CreatureAnim, rate?: number): void;
   dispose(): void;
 }
 
@@ -70,6 +71,10 @@ const planOf = (spec: UniverseSpec): Plan => {
 interface Look {
   element: Element; element2: Element | null; big: number; rings: number; aura: number; plates: number; motes: number;
   traits: string; status: string; low: boolean; down: boolean; guarding: boolean; fused: boolean;
+  /** 1, 2 or 3: grown forms carry more on the body. */
+  form: number; shield: boolean; relic: boolean;
+  /** The universe's own character: rarity aura, signature pattern [pattern, turn, repeat], temperament, bond mark. */
+  rarity: string; sig: readonly [number, number, number] | null; temper: string; bonded: boolean;
 }
 const STATUSES: readonly StatusKind[] = ['burn', 'chill', 'ward', 'regen', 'expose'];
 const lookOf = (spec: UniverseSpec, f?: Fighter): Look => {
@@ -89,7 +94,49 @@ const lookOf = (spec: UniverseSpec, f?: Fighter): Look => {
     down: !!f && f.hp <= 0,
     guarding: !!f?.guarding,
     fused: !!f?.fused,
+    form: Math.max(1, Math.min(3, f?.form ?? 1)), shield: (f?.shield ?? 0) > 0, relic: !!f?.relic,
+    rarity: f?.rarity ?? spec.rarity ?? 'common',
+    sig: spec.signature ? [spec.signature.pattern, spec.signature.turn, spec.signature.repeat] : null,
+    temper: f?.temperament ?? spec.temperament ?? '', bonded: (f?.bond ?? 0) >= 25,
   };
+};
+
+/** The universe's signature pattern, worn on the body (clipped to it). One small drawing per pattern name. */
+const sigArt = (pat: number, turn: number, rep: number, rx: number, ry: number): string => {
+  const o: string[] = [], n = rep + 1, cy = CY + ry * 0.2;
+  const P = (d: string, cls = 'cr-sig'): void => void o.push(`<path class="${cls}" d="${d}"/>`);
+  const D = (x: number, y: number, r: number, cls = 'cr-sigdot'): void => void o.push(`<circle class="${cls}" cx="${n1(x)}" cy="${n1(y)}" r="${n1(r)}"/>`);
+  const wave = (y: number, a: number): string => { let d = `M${n1(CX - rx)} ${n1(y)}`; for (let i = 0; i < 4; i++) d += `q${n1(rx / 4)} ${n1(i % 2 ? a : -a)} ${n1(rx / 2)} 0`; return d; };
+  switch (pat) {
+    case 0: for (let i = 0; i < n; i++) o.push(`<ellipse class="cr-sig" cx="${CX}" cy="${n1(cy)}" rx="${n1(rx * (0.25 + i * 0.2))}" ry="${n1(ry * (0.2 + i * 0.17))}"/>`); break; // rings
+    case 1: for (let i = 0; i <= n; i++) P(`M${n1(CX - rx * 0.7 + (i * rx * 1.4) / n)} ${n1(CY - ry)}v${n1(ry * 2)}`, 'cr-sig wide'); break; // bars
+    case 2: { let d = ''; for (let i = 0; i <= 40; i++) { const th = (i / 40) * TAU * (1 + rep * 0.5), r = (i / 40) * rx * 0.8; d += `${i ? 'L' : 'M'}${n1(CX + Math.cos(th) * r)} ${n1(cy + Math.sin(th) * r * 0.9)}`; } P(d); break; } // spiral
+    case 3: for (let i = -n; i <= n; i++) { P(`M${n1(CX + i * 9 - ry)} ${n1(CY - ry)}l${n1(ry * 2)} ${n1(ry * 2)}`); P(`M${n1(CX + i * 9 + ry)} ${n1(CY - ry)}l${n1(-ry * 2)} ${n1(ry * 2)}`); } break; // lattice
+    case 4: for (let i = 0; i < 4 + rep * 3; i++) D(CX + Math.cos(i * 2.4) * rx * 0.75 * Math.sqrt((i + 1) / (4 + rep * 3)), cy + Math.sin(i * 2.4) * ry * 0.7 * Math.sqrt((i + 1) / (4 + rep * 3)), 1.4 + (i % 3) * 0.6); break; // scatter
+    case 5: P(`M${n1(CX - rx * 0.6)} ${n1(cy + ry * 0.3)}q${n1(rx * 0.6)} ${n1(-ry * 0.5)} ${n1(rx * 1.2)} 0q${n1(-rx * 0.6)} ${n1(ry * 0.5)} ${n1(-rx * 1.2)} 0z`); D(CX, cy + ry * 0.3, 2.6); break; // eye
+    case 6: for (let i = 0; i < n + 1; i++) P(`M${n1(CX - rx + (i * rx * 2) / (n + 1))} ${n1(CY - ry)}q${n1(rx * 0.5)} ${n1(ry)} ${n1(rx * 0.1)} ${n1(ry * 2)}`); break; // veil
+    case 7: for (let i = 0; i < n; i++) P(wave(cy - ry * 0.2 + i * 7, 5)); break; // tide
+    case 8: for (let i = 0; i < n; i++) { let d = `M${n1(CX - rx)} ${n1(cy + i * 8)}`; for (let j = 0; j < 8; j++) d += `l${n1(rx / 8)} ${j % 2 ? 6 : -6}l${n1(rx / 8)} ${j % 2 ? -6 : 6}`; P(d); } break; // thorn
+    case 9: for (let i = 0; i < n; i++) { P(wave(cy - 4 + i * 8, 4)); P(wave(cy - 4 + i * 8, -4), 'cr-sig alt'); } break; // weave
+    case 10: { let d = `M${n1(CX - rx * 0.8)} ${n1(cy + ry * 0.6)}`; for (let i = 0; i < 3 + rep; i++) d += `h${n1((rx * 1.6) / (3 + rep))}v${n1((-ry * 1.1) / (3 + rep))}`; P(d); break; } // stair
+    case 11: P(`M${n1(CX - rx * 0.7)} ${n1(cy)}a${n1(rx * 0.7)} ${n1(ry * 0.6)} 0 0 0 ${n1(rx * 1.4)} 0`); for (let i = 0; i < n + 1; i++) D(CX - rx * 0.5 + (i * rx) / n, cy + ry * 0.72, 1.5); break; // halo
+    case 12: for (let i = 0; i < 4 + rep; i++) P(`M${n1(CX - 3)} ${n1(CY - ry * 0.1 + i * 6)}l6 3`, 'cr-sig wide'); break; // seam
+    case 13: P(`M${CX} ${n1(cy)}l${n1(-rx * 0.7)} ${n1(-ry * 0.2)}l${n1(rx * 0.2)} ${n1(ry * 0.6)}zM${CX} ${n1(cy)}l${n1(rx * 0.7)} ${n1(-ry * 0.2)}l${n1(-rx * 0.2)} ${n1(ry * 0.6)}z`, 'cr-sig fill'); break; // moth
+    case 14: for (let i = 0; i < 3 + rep; i++) { const x = CX - rx * 0.5 + ((i * 37) % 100) / 100 * rx, y = cy + ry * 0.6 - i * 6; P(`M${n1(x)} ${n1(y - 3)}l2.4 3 -2.4 3 -2.4 -3z`, 'cr-sig fill'); } break; // ember
+    default: o.push(`<circle class="cr-sig fill" cx="${CX}" cy="${n1(cy + ry * 0.2)}" r="${n1(rx * 0.3)}"/>`, `<circle class="cr-sig" cx="${CX}" cy="${n1(cy + ry * 0.2)}" r="${n1(rx * 0.3 + 3 + rep)}"/>`); // well
+  }
+  // The turn only tilts it: the face stays the right way up.
+  return `<g class="cr-sigs" transform="rotate(${(turn % 4) * 8 - 12} ${CX} ${CY})">${o.join('')}</g>`;
+};
+/** Rarer universes stand in more light: a ring, then sparks, then a second ring, then rays. */
+const rarityArt = (rarity: string, R: number): string => {
+  const tier = ['common', 'uncommon', 'rare', 'epic', 'mythic'].indexOf(rarity);
+  if (tier < 1) return '';
+  const r = Math.min(46, R * 1.42), o: string[] = [`<circle class="cr-rar-ring" cx="${CX}" cy="${CY}" r="${n1(r)}"/>`];
+  if (tier >= 2) for (let i = 0; i < (tier >= 3 ? 6 : 4); i++) { const a = (i / (tier >= 3 ? 6 : 4)) * TAU + 0.5, x = CX + Math.cos(a) * r, y = CY + Math.sin(a) * r; o.push(`<path class="cr-rar-spark" style="animation-delay:${n1(-i * 0.45)}s" d="M${n1(x)} ${n1(y - 3.4)}l1 2.4 2.4 1 -2.4 1 -1 2.4 -1 -2.4 -2.4 -1 2.4 -1z"/>`); }
+  if (tier >= 3) o.push(`<circle class="cr-rar-ring two" cx="${CX}" cy="${CY}" r="${n1(r - 5)}"/>`);
+  if (tier >= 4) o.push(`<g class="cr-rar-rays">${Array.from({ length: 12 }, (_, i) => `<path d="M${CX} ${n1(CY - r + 3)}v${n1(-(i % 2 ? 5 : 9))}" transform="rotate(${i * 30} ${CX} ${CY})"/>`).join('')}</g>`);
+  return `<g class="cr-rar r-${rarity}">${o.join('')}</g>`;
 };
 
 const draw = (p: Plan, k: Look, id: string, still: boolean): string => {
@@ -97,7 +144,7 @@ const draw = (p: Plan, k: Look, id: string, still: boolean): string => {
   const st = (s: string): boolean => k.status.split(' ').includes(s);
   const isEl = (e: Element): boolean => k.element === e || k.element2 === e;
   const stone = k.element === 'stone';
-  const R = (26 + 6 * k.big) * (has('thriving') ? 1.05 : 1);
+  const R = (26 + 6 * k.big) * (has('thriving') ? 1.05 : 1) * [0.9, 1, 1.08][k.form - 1]!;
   const rx = R * [1, 0.82, 1.2, 0.9, 0.86][p.sil]!, ry = R * [0.96, 1.16, 0.82, 0.9, 0.86][p.sil]!;
 
   // The silhouette: a radius around the centre, flattened where it sits.
@@ -200,6 +247,7 @@ const draw = (p: Plan, k: Look, id: string, still: boolean): string => {
   if (p.mark === 2) for (let i = 0; i < 3; i++) inside.push(`<path class="cr-stripe" d="M${n1(CX - rx * 1.4)} ${n1(CY - ry * 0.75 + i * 4)}q${n1(rx * 0.5)} ${6 + i * 2} ${n1(rx * (0.8 - i * 0.16))} ${3 + i * 5}"/>`);
   if (p.mark === 3 || p.mark === 5) inside.push(`<ellipse class="cr-belly" cx="${CX + 3}" cy="${n1(CY + ry * 0.62)}" rx="${n1(rx * 0.62)}" ry="${n1(ry * 0.5)}"/>`);
   if (p.mark === 4) inside.push(`<rect class="cr-mask" x="0" y="${n1(CY - ry * 0.42)}" width="120" height="${n1(ry * 0.5)}"/>`);
+  if (k.sig) inside.push(sigArt(k.sig[0], k.sig[1], k.sig[2], rx, ry));
   if (k.fused) inside.push(`<rect class="cr-half" x="${CX}" y="0" width="60" height="120"/>`);
   for (let i = 1; i <= k.rings; i++) inside.push(`<path class="cr-depth" d="${body}" transform="translate(${CX} ${n1(CY + i * 2)}) scale(${n1(1 - i * 0.2)}) translate(${-CX} ${-CY})"/>`);
   if (has('thriving')) inside.push(dot(CX - rx * 0.62, CY + ry * 0.22, 3.4, 'cr-blush'), dot(CX + rx * 0.72, CY + ry * 0.22, 3.4, 'cr-blush'));
@@ -238,6 +286,23 @@ const draw = (p: Plan, k: Look, id: string, still: boolean): string => {
   else if (p.mouth === 5) face.push(`<path class="cr-maw" d="M${n1(fx - mw)} ${n1(my - 1)}h${n1(mw * 2)}q${n1(-mw)} ${n1(mw * 1.5)} ${n1(-mw * 2)} 0z"/>`);
   else face.push(smile);
 
+  // Grown forms. The second wears a mane and a tail-plume; the third has wings, a crown and a second outline.
+  if (k.form >= 2) {
+    for (let i = 0; i < 5; i++) back.push(blade(-150 + i * 30, R * (0.34 + (i % 2) * 0.12), 4.2, i < 2 ? -2 : 2, 'cr-mane', 1.4, 0.9));
+    back.push(blade(140, R * 0.7, 5, -10, 'cr-mane cr-tail', 1.3));
+    inside.push(`<path class="cr-chest" d="M${n1(CX - rx * 0.5)} ${n1(CY + ry * 0.2)}q${n1(rx * 0.5)} ${n1(ry * 0.5)} ${n1(rx)} 0"/>`);
+  }
+  if (k.form >= 3) {
+    back.push(blade(200, R * 1.05, 9, 12, 'cr-wing', 1.5, 0.7), blade(222, R * 0.8, 7, 9, 'cr-wing', 1.5, 0.7), blade(-20, R * 1.05, 9, -12, 'cr-wing', 1.5, 0.7), blade(-42, R * 0.8, 7, -9, 'cr-wing', 1.5, 0.7));
+    const topY = at(-Math.PI / 2)[1];
+    over.push(`<path class="cr-crown" d="M${n1(CX - 9)} ${n1(topY + 1)}l2 -9 4 5 3 -8 3 8 4 -5 2 9z"/>`, dot(CX, topY - 9, 1.6, 'cr-bulb'));
+    over.push(`<path class="cr-elder" d="${body}" transform="translate(${CX} ${CY}) scale(1.09) translate(${-CX} ${-CY})"/>`);
+  }
+  if (k.relic) { const [px, py] = at(rad(70), 0.98); over.push(`<path class="cr-line" d="M${n1(px - 4)} ${n1(py - 5)}q4 5 4 5"/>`, `<path class="cr-relic" d="M${n1(px)} ${n1(py - 2)}l3 4 -3 4 -3 -4z"/>`); }
+
+  // Bonded: a loop of thread tied low on its side, the colour of your light.
+  if (k.bonded) { const [bx, by] = at(rad(118), 1); over.push(`<path class="cr-bond" d="M${n1(bx)} ${n1(by)}q-6 -1 -5 4q1 4 5 1q4 3 5 -1q1 -5 -5 -4z"/>`, `<path class="cr-bond tail" d="M${n1(bx)} ${n1(by + 5)}l-2 5m2 -5l3 4"/>`); }
+
   // Traits anyone can see.
   if (has('awake')) {
     back.push(`<ellipse class="cr-halo" cx="${CX}" cy="${n1(at(-Math.PI / 2)[1] - 9)}" rx="${n1(rx * 0.62)}" ry="3.6"/>`);
@@ -271,19 +336,21 @@ const draw = (p: Plan, k: Look, id: string, still: boolean): string => {
   if (k.motes > 0) orbits.push(orbit(46, 14, -16, 7 - k.motes, Array.from({ length: k.motes }, () => dot(0, 0, 1.9, 'cr-mote'))));
   if (has('reaching')) orbits.push(orbit(42, 20, 24, 9, [`${dot(0, 0, 3.4, 'cr-moon')}<ellipse class="cr-moonring" rx="5.6" ry="1.6"/>`, dot(0, 0, 2.5, 'cr-moon')]));
   if (voidy) orbits.push(orbit(40, 30, 40, 11, Array.from({ length: p.count }, (_, i) => `<rect class="cr-bit" x="-2" y="-2" width="${3 + (i % 2)}" height="${3 + (i % 2)}" transform="rotate(${i * 31})"/>`)));
+  if (k.shield) orbits.push(`<path class="cr-shell" d="M${n1(CX - Math.max(rx, ry) - 9)} ${CY + 8}a${n1(Math.max(rx, ry) + 9)} ${n1(Math.max(rx, ry) + 9)} 0 0 1 ${n1((Math.max(rx, ry) + 9) * 2)} 0"/>`);
   if (st('ward')) orbits.push(`<circle class="cr-ward" cx="${CX}" cy="${CY}" r="${n1(Math.max(rx, ry) + 13)}"/>`);
   if (k.guarding) orbits.push(`<path class="cr-shield" d="M${n1(CX + rx + 10)} ${n1(CY - ry * 0.8)}q9 ${n1(ry * 0.8)} 0 ${n1(ry * 1.6)}"/>`);
 
   const floaty = p.bottom === 2 || p.bottom === 1;
   return `<defs><clipPath id="${id}"><path d="${body}"/></clipPath></defs>`
     + `<ellipse class="cr-shadow" cx="${CX}" cy="${n1(bottomY + (floaty ? 9 : 3))}" rx="${n1(rx * 0.8)}" ry="3"/>`
+    + rarityArt(k.rarity, R)
     + `<g class="cr-act"><g class="cr-bob${floaty ? ' floaty' : ''}">${back.join('')}`
     + `<path class="cr-fill cr-body" d="${body}"/><g clip-path="url(#${id})">${inside.join('')}</g><path class="cr-outline" d="${body}"/>`
     + (p.sil === 4 ? `<path class="cr-ring front" d="M${n1(CX - rx * 1.55)} ${CY + 2}a${n1(rx * 1.55)} ${n1(ry * 0.36)} 0 0 0 ${n1(rx * 3.1)} 0" transform="rotate(-14 ${CX} ${CY})"/>` : '')
     + `${front.join('')}<g class="cr-face">${face.join('')}</g>${over.join('')}<path class="cr-flash" d="${body}"/></g></g>${orbits.join('')}`;
 };
 
-const ANIM_MS: Record<CreatureAnim, number> = { attack: 460, hit: 420, crit: 640, heal: 820, guard: 560, fuse: 900, faint: 820, enter: 420, idle: 0 };
+const ANIM_MS: Record<CreatureAnim, number> = { attack: 460, hit: 420, crit: 640, heal: 820, guard: 560, fuse: 900, faint: 820, enter: 420, idle: 0, victory: 1300 };
 
 /** A living portrait of one universe. Call update() whenever its fighter changes. */
 export const creature = (spec: UniverseSpec, fighter?: Fighter, opts: CreatureOpts = {}): Creature => {
@@ -303,6 +370,7 @@ export const creature = (spec: UniverseSpec, fighter?: Fighter, opts: CreatureOp
   let key = '';
   let timer: ReturnType<typeof setTimeout> | undefined;
   let anim: CreatureAnim = 'idle';
+  let fast = false;
 
   const render = (f?: Fighter) => {
     const k = lookOf(spec, f);
@@ -311,8 +379,8 @@ export const creature = (spec: UniverseSpec, fighter?: Fighter, opts: CreatureOp
     key = next;
     const pick = (list: readonly number[], i: number) => col(list[i % list.length]!);
     const dark = k.element === 'void';
-    root.className = `creature el-${k.element}${opts.facing === 'left' ? ' face-left' : ''}${k.low ? ' is-low' : ''}${k.down ? ' is-down' : ''}${k.guarding ? ' is-guard' : ''}${k.fused ? ' is-fused' : ''}${k.status.split(' ').filter(Boolean).map((s) => ` st-${s}`).join('')}${anim !== 'idle' ? ` a-${anim}` : ''}`;
-    root.setAttribute('aria-label', `${f?.name ?? spec.name}, a ${k.element} creature`);
+    root.className = `creature el-${k.element}${opts.facing === 'left' ? ' face-left' : ''}${k.low ? ' is-low' : ''}${k.down ? ' is-down' : ''}${k.guarding ? ' is-guard' : ''}${k.fused ? ' is-fused' : ''} form-${k.form} rar-${k.rarity}${k.temper ? ` tm-${k.temper}` : ''}${k.bonded ? ' is-bonded' : ''}${fast ? ' x2' : ''}${k.status.split(' ').filter(Boolean).map((s) => ` st-${s}`).join('')}${anim !== 'idle' ? ` a-${anim}` : ''}`;
+    root.setAttribute('aria-label', `${f?.name ?? spec.name}, a ${k.rarity === 'common' ? '' : `${k.rarity} `}${k.temper ? `${k.temper} ` : ''}${k.element} creature${k.form > 1 ? `, form ${k.form}` : ''}${k.bonded ? ', bonded' : ''}`);
     const vars: Record<string, string> = {
       '--cr-size': `${size}px`,
       '--cb': pick(BODY[k.element], p.body), '--cs': pick(SECOND[k.element], p.second),
@@ -320,6 +388,7 @@ export const creature = (spec: UniverseSpec, fighter?: Fighter, opts: CreatureOp
       '--co': col(dark ? 9 : 0), '--cf': col(dark ? 9 : 0),
       '--c-fire': col(13), '--c-ember': col(14), '--c-gold': col(7), '--c-life': col(15),
       '--c-water': col(11), '--c-deep': col(12), '--c-pale': col(9), '--c-paper': col(8), '--c-line': col(3), '--c-void': col(0),
+      '--sg1': col(spec.signature?.accents[0] ?? 8), '--sg2': col(spec.signature?.accents[2] ?? 7),
       '--cr-aura': String(0.1 + k.aura * 0.6), '--cr-beat': `${n1(3.4 - k.motes * 0.25)}s`,
     };
     for (const [n, v] of Object.entries(vars)) root.style.setProperty(n, v);
@@ -330,14 +399,16 @@ export const creature = (spec: UniverseSpec, fighter?: Fighter, opts: CreatureOp
   return {
     el: root,
     update: (f) => render(f),
-    play: (a) => {
+    play: (a, rate = 1) => {
       clearTimeout(timer);
       if (anim !== 'idle') root.classList.remove(`a-${anim}`);
       anim = a;
+      fast = rate > 1;
+      root.classList.toggle('x2', fast);
       if (a === 'idle') return;
       void root.offsetWidth; // restart the keyframes
       root.classList.add(`a-${a}`);
-      timer = setTimeout(() => { root.classList.remove(`a-${a}`); anim = 'idle'; }, ANIM_MS[a]);
+      timer = setTimeout(() => { root.classList.remove(`a-${a}`); anim = 'idle'; }, ANIM_MS[a] / Math.max(1, rate));
     },
     dispose: () => { clearTimeout(timer); root.remove(); },
   };

@@ -71,7 +71,9 @@ export interface GridView {
  * Falling-sand surface. Runs in the sim Worker at a fixed 20 ticks/s.
  * Invariants: deterministic in (planet, universe, surface, sequence of
  * step calls); step steps dirty chunks only; snapshot/restore round-trips
- * byte-identically, including the tick counter and RNG state.
+ * byte-identically, including the tick counter and RNG state. A restored sim
+ * continues exactly as the one snapshotted would have; restore() never throws,
+ * and reads the snapshots of older formats as well as it can.
  */
 export interface SurfaceSim {
   init(planet: PlanetSpec, universe: UniverseSpec, surface: PlanetSurface): void;
@@ -120,11 +122,49 @@ export interface Village {
   /** 0..100: fed, rich and glad. */
   readonly prosperity: number;
   readonly buildings: readonly Building[];
+  /** True era 0..8 (tech is held at 5 for older readers; see LATE_ERAS). */
+  readonly era?: number;
+  /** Name of the creed kept here, e.g. 'the Patient Tide'. */
+  readonly creed?: string;
+  /** Name of the ruler, if one sits. */
+  readonly ruler?: string;
+  /** What weighs on the village right now. */
+  readonly state?: 'war' | 'plague' | 'tribute' | 'festival' | 'building' | 'heresy';
+  /** The other village of a war or tribute. */
+  readonly stateWith?: number;
+  /** Great works finished here, by name. */
+  readonly works?: readonly string[];
+  /** True when it keeps a school. */
+  readonly school?: boolean;
+}
+/** Eras past star-reaching: tech 6, 7, 8. Village.tech and CivView.era stay at 5 for them. */
+export const LATE_ERAS = ['engines', 'far-speaking', 'leaving'] as const;
+/** A named person other than the notable: a ruler, a heretic. */
+export interface Figure {
+  readonly name: string;
+  readonly title: 'ruler' | 'heretic';
+  readonly villageId: number;
+}
+/** How two villages stand. */
+export interface Relation {
+  readonly a: number;
+  readonly b: number;
+  readonly kind: 'pact' | 'alliance' | 'rivalry' | 'war' | 'tribute';
 }
 export type CivEventKind =
   | 'found' | 'grow' | 'split' | 'die' | 'migrate' | 'light'
   | 'famine' | 'tech' | 'convert' | 'feud' | 'festival' | 'burn' | 'flooded' | 'frozen' | 'launch' | 'merged'
-  | 'born' | 'deed' | 'passed' | 'built' | 'traded' | 'struck' | 'preached' | 'gift' | 'omen' | 'stranger' | 'attack' | 'slain' | 'worship' | 'enlightened' | 'smitten' | 'blessed';
+  | 'born' | 'deed' | 'passed' | 'built' | 'traded' | 'struck' | 'preached' | 'gift' | 'omen' | 'stranger' | 'attack' | 'slain' | 'worship' | 'enlightened' | 'smitten' | 'blessed'
+  // Between villages. villageId acts, `other` is acted on.
+  | 'pact' | 'alliance' | 'wedding' | 'rivalry' | 'raid' | 'war' | 'peace' | 'tribute' | 'razed' | 'absorbed'
+  // Faith.
+  | 'creed' | 'schism' | 'heresy' | 'exile' | 'holy' | 'sign'
+  // Hardship and recovery.
+  | 'plague' | 'plagueEnd' | 'refugees' | 'resettled' | 'recovered'
+  // Culture, works and people.
+  | 'song' | 'wonder' | 'school' | 'invention' | 'ark' | 'voyage' | 'crowned' | 'fell'
+  // The life of the player's body: detail is a deed code particular to sim/civ and sim/chronicle.
+  | 'body';
 export interface CivEvent {
   readonly kind: CivEventKind;
   readonly tick: number;
@@ -134,14 +174,59 @@ export interface CivEvent {
   /** Tech level for 'tech', other village id for 'feud'/'migrate'. */
   readonly detail?: number;
   readonly belief?: Belief;
+  /** The other village of the event (foe, partner, source, the ruin resettled). */
+  readonly other?: number;
+  /** A named figure: ordinal + 4096 * house. The name is a pure function of (planet seed, who). */
+  readonly who?: number;
+  /** Why it happened, as a small code particular to the kind; the chronicle turns it into the reason. */
+  readonly cause?: number;
+  /** Creed id. The creed's name is a pure function of (planet seed, creed, belief). */
+  readonly creed?: number;
+  /** Souls involved: the dead, the refugees, those aboard. */
+  readonly count?: number;
 }
 /** Person roles in CivView.people. */
 export const ROLE = { idle: 0, farm: 1, fish: 2, pray: 3, travel: 4, lamp: 5, attack: 6, kneel: 7, watch: 8, flee: 9, listen: 10, carry: 11, chat: 12, dance: 13, sleep: 14, mine: 15, craft: 16, trade: 17, build: 18 } as const;
 /** Floats per person in CivView.people. */
 export const PERSON_STRIDE = 5;
 /** What the player's body can do. */
-export type BodyAction = 'strike' | 'preach' | 'gift' | 'shine' | 'rest';
+export type BodyAction = 'strike' | 'preach' | 'gift' | 'shine' | 'rest' | BodyDeed;
 export const BODY_ACTIONS: readonly BodyAction[] = ['strike', 'preach', 'gift', 'shine', 'rest'];
+/**
+ * Things a body can do only where they apply (see Avatar.options). heal the sick, work a field or
+ * a great work, trade, teach, speak to a ruler (plead for peace, incite a war, petition against a
+ * tribute), stand between armies, challenge a heretic or side with one, bless or curse a harvest,
+ * keep vigil at a shrine, bury the dead, carry and deliver between villages, found a village with
+ * followers, accept a role, eat at their table, steal.
+ */
+export type BodyDeed =
+  | 'heal' | 'work' | 'trade' | 'teach' | 'plead' | 'incite' | 'petition' | 'stand' | 'challenge' | 'side'
+  | 'blessHarvest' | 'curseHarvest' | 'vigil' | 'bury' | 'carry' | 'deliver' | 'found' | 'role' | 'eat' | 'steal';
+export const BODY_DEEDS: readonly BodyDeed[] = ['heal', 'work', 'trade', 'teach', 'plead', 'incite', 'petition', 'stand', 'challenge', 'side', 'blessHarvest', 'curseHarvest', 'vigil', 'bury', 'carry', 'deliver', 'found', 'role', 'eat', 'steal'];
+/** One thing the body could do now, or why not yet. */
+export interface BodyOption {
+  readonly id: BodyAction;
+  readonly ready: boolean;
+  /** Ticks until it can be used again (0 when it is not cooling). */
+  readonly wait: number;
+  /** Why it cannot be used, when ready is false and it is not only cooling. */
+  readonly reason?: string;
+  /** What it will do here, in a sentence. */
+  readonly does?: string;
+  /** The village it would act on. */
+  readonly villageId?: number;
+}
+/** How a village treats the body. */
+export type StandingLevel = 'hunted' | 'shunned' | 'tolerated' | 'welcome' | 'followed';
+export interface BodyStanding {
+  readonly villageId: number;
+  /** -100..100 */
+  readonly value: number;
+  readonly level: StandingLevel;
+  /** What they remember, most told first, e.g. 'healed their sick'. */
+  readonly remembered: readonly string[];
+}
+export type BodyRole = 'healer' | 'envoy' | 'prophet';
 export interface CivView {
   readonly villages: readonly Village[];
   readonly souls: number;
@@ -162,6 +247,17 @@ export interface CivView {
   readonly notable?: Notable | null;
   /** The player's incarnation on this surface, if any. */
   readonly avatar: Avatar | null;
+  /** True highest era, 0..8 (era stays at 5 past star-reaching). */
+  readonly age?: number;
+  /** Rulers and heretics alive now. */
+  readonly figures?: readonly Figure[];
+  /** Creeds kept by at least one village. */
+  readonly creeds?: readonly { readonly id: number; readonly name: string; readonly belief: Belief; readonly villages: number }[];
+  readonly relations?: readonly Relation[];
+  /** Ghost towns waiting to be resettled. */
+  readonly ruins?: number;
+  /** Colony ships that have left for good (also counted in launches). */
+  readonly arks?: number;
 }
 
 /**
@@ -195,6 +291,36 @@ export interface Avatar {
   /** Last body action and how many ticks ago, for animation. */
   readonly action: BodyAction | null;
   readonly actionAge: number;
+  /** Everything the body can do here, the five old actions first, with readiness. */
+  readonly options?: readonly BodyOption[];
+  /** How each village that knows the body stands toward it. */
+  readonly standing?: readonly BodyStanding[];
+  /** Needs, 0..100. Hunger and weariness hurt mildly above 80. wound lowers the most the body can mend to. */
+  readonly hunger?: number;
+  readonly weariness?: number;
+  readonly wound?: number;
+  /** True while the plague is in the body. */
+  readonly sick?: boolean;
+  /** What the weather is doing to it, if anything. */
+  readonly exposure?: 'cold' | 'storm' | null;
+  /** True when it stands in a village that will let it sleep safely. */
+  readonly sheltered?: boolean;
+  readonly role?: BodyRole | null;
+  /** A role the villagers are offering; the 'role' action accepts it. */
+  readonly roleOffer?: BodyRole | null;
+  readonly followers?: number;
+  /** What it carries for another village, in words. */
+  readonly carrying?: string | null;
+  /** The village a carried message or load is meant for. */
+  readonly carryingTo?: number | null;
+  /** The village whose ruler is hunting it, if any. */
+  readonly huntedBy?: number | null;
+  /** Name of the creed that has formed about the body, if one has. */
+  readonly creed?: string | null;
+  /** How many bodies have walked this world, this one included. */
+  readonly lives?: number;
+  /** What this body has done this life, oldest first, short lines. */
+  readonly log?: readonly string[];
 }
 
 /**
@@ -208,7 +334,8 @@ export const SURFACE_TOOLS: readonly SurfaceTool[] = ['water', 'sand', 'stone', 
 export const SOUL_TOOLS: readonly SoulTool[] = ['bless', 'smite', 'sow', 'whisper', 'merge'];
 /** Villages on the grid. Deterministic like SurfaceSim. Reads the grid, never writes it. */
 export interface Civ {
-  init(planet: PlanetSpec, surface: PlanetSurface): void;
+  /** With the universe, the civ knows every liquid of its law set: it does not found on one, and a village one rises over floods. */
+  init(planet: PlanetSpec, surface: PlanetSurface, universe?: UniverseSpec): void;
   step(ticks: number, grid: GridView, modifiers: SurfaceModifiers, env: SurfaceEnv, surface: readonly SurfaceEvent[]): readonly CivEvent[];
   view(): CivView;
   /** A soul tool, or the omen of a surface tool, at x. */
@@ -221,6 +348,7 @@ export interface Civ {
   ascend(): void;
   /** The body acts: strike attackers, preach, give, shine, or rest. */
   act(action: BodyAction): void;
+  /** Everything, the living body included: a restored civ continues exactly as the one snapshotted would have. */
   snapshot(): Uint8Array;
   restore(snapshot: Uint8Array): void;
 }
@@ -236,6 +364,15 @@ export interface ChronicleEntry {
   readonly year: number;
   readonly event: string;
   readonly reason?: string;
+  /** What kind of event wrote the line: a CivEventKind, a SurfaceEventKind or 'quiet'. */
+  readonly kind?: string;
+  /** Where it happened, in grid cells, when it happened somewhere. */
+  readonly x?: number;
+  readonly y?: number;
+  /** The village it is about. */
+  readonly villageId?: number;
+  /** For kind 'body': which deed, e.g. 'heal', 'death', 'creed'. */
+  readonly deed?: string;
 }
 export interface Chronicle {
   record(events: readonly CivEvent[], year: number, planet: PlanetSpec, surface?: readonly SurfaceEvent[]): void;
@@ -244,6 +381,12 @@ export interface Chronicle {
   /** Newest first. */
   entries(limit?: number): readonly ChronicleEntry[];
   snapshot(): ChronicleEntry[];
-  restore(entries: readonly ChronicleEntry[]): void;
+  /**
+   * What snapshot() leaves out and an exact restore needs (when each line was written, the event
+   * behind it, the phrasing memory), as an opaque string to store beside the entries.
+   */
+  memory?(): string;
+  /** With the memory taken beside these entries, the chronicle goes on exactly as it would have. Without, it goes on plausibly. */
+  restore(entries: readonly ChronicleEntry[], memory?: string): void;
 }
 export type ChronicleFactory = (deps: { names: import('./universe').NameGen }) => Chronicle;

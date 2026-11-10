@@ -6,7 +6,7 @@
 
 **Must not touch.** Anything outside `src/platform/input/`. In particular: `src/contracts`, `src/core`, `src/render/gl`, `src/ui/kit`, `src/ui/tokens.css`, `src/app`, `package.json`, the lockfile, other units. No new dependencies. If the contract blocks you, write `CONTRACT_REQUEST.md` here and work around it.
 
-**Current state.** A trivial deterministic stub that satisfies the contract so the app boots. Replace it.
+**Current state.** Real pointer recogniser (tap / hold..release / drag; only the main mouse button makes a gesture), plus keyboard and standard-gamepad buttons emitted as `{ type: 'key', action, phase, source }` events. The key map is the one source of truth for bindings: `DEFAULT_KEYMAP` (action to `KeyboardEvent.code` list, `Shift+` prefix for shifted keys), changed with `setKeymap()` and read with `keymap()` / `bindings()`; `ACTIONS`, `keyName()` and `clashes()` are exported for a controls page. `intercept(cb)` lets one listener see an event first and consume it (Tab is only taken from the browser when an interceptor consumes it). Keys never fire while focus is in an input, textarea, select or editable element. What an action does on each screen is decided by the listeners (`src/app/plugins/settings.ts` for the first set, `src/app/plugins/desktop.ts` for the desktop additions and remapping).
 
 ## Acceptance criteria
 

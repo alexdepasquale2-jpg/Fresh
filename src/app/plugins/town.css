@@ -1,0 +1,15 @@
+/* The Street page in the hub. Tokens only. */
+.street-sec { display: flex; flex-direction: column; gap: 6px; }
+.street-sec h3 { margin: 8px 0 0; }
+.street-card { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line-dim); }
+.street-card.main { border-color: var(--gold); }
+.street-card.done { border-style: dashed; }
+.street-card b { font: 600 14px var(--font-ui); color: var(--ink-bright); letter-spacing: .04em; }
+.street-card.done b { color: var(--glow); }
+.street-card small { font: italic 14px/1.35 var(--font-voice); color: var(--ink); }
+.street-dim { color: var(--ink-muted); }
+.street-map { width: 320px; height: 320px; max-width: 100%; align-self: center; image-rendering: pixelated; border: 1px solid var(--line-dim); }
+.street-pips { display: flex; flex-wrap: wrap; gap: 3px; margin: 3px 0; }
+.street-pips i { width: 8px; height: 8px; border: 1px solid var(--line-dim); }
+.street-pips i.on { background: var(--gold); border-color: var(--gold); }
+.street-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 6px; }

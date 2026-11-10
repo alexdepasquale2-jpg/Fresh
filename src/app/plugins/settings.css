@@ -1,0 +1,66 @@
+/* Settings page, plus the root classes the settings switch on. */
+
+/* Text size: settings.ts rewrites every px font-size as a multiple of this. */
+:root.sallow-text-s { --sallow-text: .9; }
+:root.sallow-text-l { --sallow-text: 1.14; }
+
+/* High contrast: the same tokens, pushed apart. */
+:root.sallow-contrast {
+  --ink: var(--ink-bright);
+  --ink-muted: color-mix(in srgb, var(--ink-bright) 88%, var(--bg));
+  --ink-off: color-mix(in srgb, var(--ink-bright) 66%, var(--bg));
+  --line: var(--gold);
+  --line-dim: color-mix(in srgb, var(--gold) 62%, var(--bg));
+  --panel: color-mix(in srgb, var(--bg) 82%, var(--raised));
+}
+:root.sallow-contrast .k-btn, :root.sallow-contrast .k-back, :root.sallow-contrast .hub-item, :root.sallow-contrast .set-btn { border-color: var(--ink-bright); }
+/* Thin pixel labels on tool buttons and tags stay dim even with brighter tokens: give them full ink and weight. */
+:root.sallow-contrast .k-tag, :root.sallow-contrast .k-label, :root.sallow-contrast .k-stat span { color: var(--ink-bright); }
+:root.sallow-contrast .k-tag.tool, :root.sallow-contrast .pl-tool, :root.sallow-contrast .sy-cosmic .tool { color: var(--ink-bright); border-color: var(--line); font-weight: 600; }
+:root.sallow-contrast .pl-tool.cooling { color: var(--ink-muted); }
+:root.sallow-contrast .pl-tool[aria-pressed='true'], :root.sallow-contrast .k-tag.tool[aria-pressed='true'] { color: var(--glow); border-color: var(--glow); }
+:root.sallow-contrast .pl-group { color: var(--ink-muted); }
+:root.sallow-contrast .hub-btn i { border-color: var(--ink-bright); color: var(--ink-bright); background: var(--bg); }
+
+/* Reduce motion, asked for here rather than by the OS. */
+:root.sallow-reduce-motion *, :root.sallow-reduce-motion *::before, :root.sallow-reduce-motion *::after {
+  animation-duration: .001ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important; transition-delay: 0s !important; scroll-behavior: auto !important;
+}
+
+/* Keyboard play needs to see where it is. */
+button:focus-visible, .set-code:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
+
+.set-live { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; pointer-events: none; }
+.sky-add.set-armed { outline: 2px solid var(--glow); outline-offset: -2px; }
+
+.set-page { display: flex; flex-direction: column; gap: var(--pad); color: var(--ink); font-family: var(--font-ui); min-width: 0; }
+.set-sec { display: flex; flex-direction: column; gap: var(--gap); padding: 12px; background: var(--panel); border: 2px solid var(--line-dim); min-width: 0; }
+.set-sec h3 { margin: 0 0 2px; font: 600 12px var(--font-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--glow); }
+.set-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px var(--gap); min-height: var(--touch); min-width: 0; }
+.set-text { flex: 1 1 150px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.set-text b { font: 600 14px var(--font-ui); color: var(--ink-bright); }
+.set-text small { font: 400 13px/1.25 var(--font-voice); color: var(--ink-muted); }
+.set-btn { min-height: var(--touch); min-width: var(--touch); padding: 4px 10px; background: var(--raised); border: 2px solid var(--line); color: var(--ink); font: 600 12px/1.15 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; touch-action: manipulation; overflow-wrap: anywhere; }
+.set-btn[aria-pressed='true'], .set-btn.gold { background: var(--gold); border-color: var(--gold); color: var(--bg); }
+.set-btn:active { border-color: var(--glow); }
+.set-toggle { flex: 0 0 64px; }
+.set-choice { display: flex; flex: 0 1 auto; max-width: 100%; }
+.set-choice .set-btn { flex: 1 1 auto; margin-left: -2px; padding: 4px 8px; }
+.set-choice .set-btn:first-child { margin-left: 0; }
+.set-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.set-note { margin: 0; font: 400 14px/1.35 var(--font-voice); color: var(--ink); overflow-wrap: anywhere; }
+.set-note.dim, .set-page p.dim { color: var(--ink-muted); }
+.set-voice { margin: 0; font: italic 16px/1.35 var(--font-voice); color: var(--ink-bright); }
+.set-say { margin: 0; min-height: 18px; font: 400 14px/1.3 var(--font-voice); color: var(--glow); overflow-wrap: anywhere; }
+.set-say.bad { color: var(--ink-bright); border-left: 3px solid var(--gold); padding-left: 8px; }
+.set-code { width: 100%; min-width: 0; resize: none; padding: 8px; background: var(--bg); border: 2px solid var(--line-dim); color: var(--ink-muted); font: 400 11px/1.3 ui-monospace, monospace; word-break: break-all; user-select: text; -webkit-user-select: text; touch-action: pan-y; }
+.set-preview, .set-backup, .set-danger { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--line); background: var(--bg); min-width: 0; }
+.set-preview { border-color: var(--glow); }
+.set-preview[hidden] { display: none; }
+.set-danger { border-style: dashed; }
+.set-preview b, .set-backup b { font: 600 12px var(--font-ui); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-bright); }
+.set-preview p, .set-backup p, .set-danger p { margin: 0; font: 400 14px/1.3 var(--font-voice); overflow-wrap: anywhere; }
+.set-keys { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; margin: 0; }
+.set-keys dt { font: 600 12px var(--font-ui); letter-spacing: .04em; color: var(--ink-bright); margin-top: 6px; }
+.set-keys dd { margin: 0; font: 400 14px/1.3 var(--font-voice); color: var(--ink-muted); }
