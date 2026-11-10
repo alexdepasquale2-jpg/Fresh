@@ -2,11 +2,18 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { fileURLToPath } from 'node:url';
 
+// ARTIFACT=1 builds the game for a claude.ai artifact: relative paths, fonts inlined,
+// no service worker (the artifact frame does not run one).
+const artifact = process.env.ARTIFACT === '1';
+
 export default defineConfig({
+  base: artifact ? './' : '/',
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
-  build: { target: 'es2022', sourcemap: false },
+  build: artifact
+    ? { target: 'es2022', sourcemap: false, outDir: 'dist-artifact', assetsInlineLimit: 300_000 }
+    : { target: 'es2022', sourcemap: false },
   worker: { format: 'es' },
-  plugins: [
+  plugins: artifact ? [] : [
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['fonts/*.woff2', 'icon.svg'],

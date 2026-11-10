@@ -1,10 +1,11 @@
 /* SALLOW design tokens. The only colours and fonts units may use. See docs/DESIGN.md. */
-@font-face { font-family: 'Pixelify Sans'; font-weight: 400; font-display: swap; src: url('/fonts/pixelify-sans-latin-400-normal.woff2') format('woff2'); }
-@font-face { font-family: 'Pixelify Sans'; font-weight: 600; font-display: swap; src: url('/fonts/pixelify-sans-latin-600-normal.woff2') format('woff2'); }
-@font-face { font-family: 'IM Fell English'; font-style: normal; font-display: swap; src: url('/fonts/im-fell-english-latin-400-normal.woff2') format('woff2'); }
-@font-face { font-family: 'IM Fell English'; font-style: italic; font-display: swap; src: url('/fonts/im-fell-english-latin-400-italic.woff2') format('woff2'); }
+@font-face { font-family: 'Pixelify Sans'; font-weight: 400; font-display: swap; src: url('../../public/fonts/pixelify-sans-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Pixelify Sans'; font-weight: 600; font-display: swap; src: url('../../public/fonts/pixelify-sans-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'IM Fell English'; font-style: normal; font-display: swap; src: url('../../public/fonts/im-fell-english-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'IM Fell English'; font-style: italic; font-display: swap; src: url('../../public/fonts/im-fell-english-latin-400-italic.woff2') format('woff2'); }
 
 :root {
+  color-scheme: dark;
   --bg: #17140c;
   --panel: #231f12;
   --raised: #2e2a18;
