@@ -20,6 +20,8 @@ export const SkyStateSchema = z.object({
   pieces: z.array(SkyPieceKindSchema).max(4),
   /** Orbit nudged by the player: negative is closer to the star (hotter), positive further (colder). -3..3. */
   drift: z.number().int().min(-3).max(3).optional(),
+  /** Things its people have put into orbit: lanterns, then stations. 0..12. */
+  built: z.number().int().min(0).max(12).optional(),
   /** Cosmic events waiting to land. */
   queued: z.array(CosmicEventSchema).max(8).optional(),
 });
@@ -56,6 +58,8 @@ export interface SkyGame {
   nudge(planetKey: string, delta: number): SkyState;
   /** Throw a cosmic event at a planet. */
   queue(planetKey: string, event: CosmicEvent): SkyState;
+  /** Its people launched n more things into orbit. */
+  build(planetKey: string, n: number): SkyState;
   /** Take (and clear) the events waiting for a planet. */
   takeQueued(planetKey: string): CosmicEvent[];
   skyOf(planet: PlanetSpec): SkyState;

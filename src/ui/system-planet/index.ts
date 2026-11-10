@@ -44,6 +44,10 @@ const system: ScreenFactory = () => {
   let ctx: AppContext | null = null;
   let drag: { kind: SkyPieceKind; x: number; y: number; overOrbit: number } | null = null;
   let cosmic: Cosmic = 'pieces';
+  let align = 0;
+  const aligned = new Set<string>();
+  let alignLabel: HTMLElement | null = null;
+  let noteEl: HTMLElement | null = null;
   let flare = 0;
   let touch: { x: number; y: number; age: number } | null = null;
   return {
@@ -54,6 +58,8 @@ const system: ScreenFactory = () => {
       const card = el('section', { class: 'detail' });
       const tray = el('div', { class: 'row tray' });
       const note = narration('');
+      noteEl = note;
+      align = Math.min(1, sys.planets.reduce((n, p) => n + (c.sky.skyOf(p).built ?? 0), 0) / 8);
       const local = (e: PointerEvent) => {
         const r = c.gl.canvas.getBoundingClientRect();
         return { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -66,6 +72,7 @@ const system: ScreenFactory = () => {
           el('div', { class: 'row' }, el('div', { class: 'k-title' }, p.name), label(`ORBIT ${c.selection.planetIndex + 1}`)),
           el('div', { class: 'row start' }, ...(sky.pieces.length ? sky.pieces.map((k) => tag(k)) : [label('an empty sky')])),
           narration(says[says.length - 1] ?? 'Nothing moves their sky yet.'),
+          sky.built ? label(`${sky.built} OF THEIR MAKING IN ORBIT`) : null,
           (sky.drift ?? 0) !== 0 || sky.queued?.length ? label(`${sky.drift ? `ORBIT ${sky.drift < 0 ? 'PULLED IN' : 'PUSHED OUT'} ${Math.abs(sky.drift)}` : ''}${sky.drift && sky.queued?.length ? ' · ' : ''}${sky.queued?.length ? `${sky.queued.length} COMING` : ''}`) : null,
         ].filter((x): x is HTMLElement => x !== null));
         const inv = c.sky.inventory();
@@ -149,6 +156,7 @@ const system: ScreenFactory = () => {
         field,
         cosmicRow,
         hint,
+        (alignLabel = label('')),
         card,
         note,
         button('Watch the surface', () => c.go('planet'), { primary: true, id: 'watch' }),
@@ -163,7 +171,19 @@ const system: ScreenFactory = () => {
       const skies = s.system.planets.map((p) => ctx!.sky.skyOf(p));
       flare = Math.max(0, flare - dt / 1500);
       if (touch) { touch = { ...touch, age: touch.age + dt / 700 }; if (touch.age >= 1) touch = null; }
-      ctx.renderers.system.draw({ universe: s.universe, system: s.system, skies, selectedOrbit: s.planetIndex, drag, tick: ctx.clock.tick(), pulse: ctx.pulse().phase(), flare, touch }, dt);
+      const total = skies.reduce((n, k) => n + (k.built ?? 0), 0);
+      const want = Math.min(1, total / 8);
+      align += (want - align) * Math.min(1, dt * 0.001);
+      if (alignLabel) alignLabel.textContent = total ? `IN ORBIT ${total} · ALIGNMENT ${Math.round(align * 100)}%` : '';
+      if (align > 0.97 && !aligned.has(s.system.name)) {
+        // Every world on one line: the whole system rings.
+        aligned.add(s.system.name);
+        ctx.light.addGlow(3000);
+        ctx.sky.grant('sun', 1);
+        ctx.audio.sfx('win');
+        if (noteEl) noteEl.textContent = 'ALIGNMENT. Every world in this system turns as one. Mote brightens, and a new sun is yours.';
+      }
+      ctx.renderers.system.draw({ universe: s.universe, system: s.system, skies, selectedOrbit: s.planetIndex, drag, tick: ctx.clock.tick(), pulse: ctx.pulse().phase(), flare, touch, align }, dt);
     },
     unmount: () => void (ctx = null),
   };
@@ -194,6 +214,21 @@ const TOOLS: { mode: Mode; label: string; r: number; paint: boolean; hint: strin
   { mode: 'quake', label: 'Quake', r: 8, paint: false, hint: 'Split the ground.' },
 ];
 
+// Zoom layers. The first three are the map; the next seven are the close layers before a body's eyes.
+const LAYERS: [number, string, string][] = [
+  [1, 'World', 'The whole slice of their world.'],
+  [3, 'Land', 'Hills, seas and weather.'],
+  [6, 'Valley', 'Villages as clusters of roofs.'],
+  [8, 'Village', 'Doors, chimney smoke, boats, fields and markets.'],
+  [11, 'Street', 'Bricks and shingles, goods on the stalls, sparks from the forge.'],
+  [15, 'Yard', 'Window panes, lanterns, rails, tools in their hands.'],
+  [20, 'Doorstep', 'Faces, planks, crates. You can see who does what.'],
+  [26, 'Workbench', 'Hair and belts, pebbles, the grain of stone.'],
+  [32, 'Hands', 'As close as the sky can come.'],
+  [40, 'Threshold', 'One more step needs a body.'],
+];
+const layerOf = (zoom: number) => { let i = 0; for (let k = 0; k < LAYERS.length; k++) if (zoom >= LAYERS[k]![0] - 0.05) i = k; return i; };
+const MAX_ZOOM = 40;
 const BIG = new Set<string>(['meteor', 'quake', 'lightning', 'smite', 'merge']);
 const SEASON = ['spring', 'summer', 'autumn', 'winter'];
 const tempWord = (t: number) => (t < 96 ? 'freezing' : t < 112 ? 'cold' : t < 145 ? 'mild' : t < 185 ? 'warm' : t < 215 ? 'hot' : 'burning');
@@ -214,6 +249,9 @@ const planet: ScreenFactory = () => {
   const zoomLabel = el('span', { class: 'k-label zoom-label' }, '1×');
   let lastPaint = 0;
   let lastBolt = 9999;
+  let lastLayer = 0;
+  let zoomGoal = 0;
+  const rail = el('div', { class: 'layer-rail' }, ...LAYERS.map((_, k) => el('i', { class: k === 0 ? 'on' : '' })));
   let bodyRow: HTMLElement | null = null;
   let lastHp = 100;
   let walkSent = 0;
@@ -251,11 +289,18 @@ const planet: ScreenFactory = () => {
       // Touch the world.
       view.cx = GRID_W / 2; view.cy = GRID_H / 2; view.zoom = 1; view.fp = null; walking = false; zoomLabel.textContent = '1×';
       const clampView = () => {
-        view.zoom = Math.max(1, Math.min(6, view.zoom));
+        view.zoom = Math.max(1, Math.min(MAX_ZOOM, view.zoom));
+        const li = layerOf(view.zoom);
+        if (li !== lastLayer && !view.fp) {
+          lastLayer = li;
+          c.audio.sfx('zoom', li / LAYERS.length);
+          if (ui) ui.hint.textContent = `${LAYERS[li]![1]}: ${LAYERS[li]![2]}`;
+          rail.querySelectorAll('i').forEach((d, k) => d.classList.toggle('on', k <= li));
+        }
         const hx = GRID_W / (2 * view.zoom), hy = GRID_H / (2 * view.zoom);
         view.cx = Math.max(hx, Math.min(GRID_W - hx, view.cx));
         view.cy = Math.max(hy, Math.min(GRID_H - hy, view.cy));
-        zoomLabel.textContent = view.fp ? 'WALK' : view.zoom < 1.05 ? '1×' : `${view.zoom.toFixed(1)}×`;
+        zoomLabel.textContent = view.fp ? 'EYES' : LAYERS[layerOf(view.zoom)]![1].toUpperCase();
       };
       /** Screen point (px inside the slot) to world cell, through the camera. */
       const toGrid = (px: number, py: number) => {
@@ -270,14 +315,14 @@ const planet: ScreenFactory = () => {
           if (factor < 0.97) { leaveBody(); c.audio.sfx('nav'); }
           return;
         }
-        if (factor > 1.03 && view.zoom >= 5.9) {
+        if (factor > 1.03 && view.zoom >= MAX_ZOOM - 0.1) {
           // Zooming in past the map drops you onto the ground, in first person.
           enterBody();
           return;
         }
+        zoomGoal = 0;
         const before = toGrid(px, py);
-        view.zoom = Math.max(1, Math.min(6, view.zoom * factor));
-        c.audio.sfx('zoom', view.zoom / 6);
+        view.zoom = Math.max(1, Math.min(MAX_ZOOM, view.zoom * factor));
         view.cx = before.gx - (px / r.width - 0.5) * (GRID_W / view.zoom);
         view.cy = before.gy - (py / r.height - 0.5) * (GRID_H / view.zoom);
         clampView();
@@ -300,7 +345,7 @@ const planet: ScreenFactory = () => {
         c.audio.sfx('land');
         clampView();
       };
-      const leaveBody = () => { if (!view.fp) return; view.cx = view.fp.x; view.zoom = 4.5; view.fp = null; walking = false; walkBtn.hidden = true; clampView(); };
+      const leaveBody = () => { if (!view.fp) return; view.cx = view.fp.x; view.zoom = 20; view.fp = null; walking = false; walkBtn.hidden = true; clampView(); };
       const gridAt = (e: PointerEvent) => {
         const r = slotEl.getBoundingClientRect();
         if (!c.sim.latest()) return null;
@@ -387,10 +432,17 @@ const planet: ScreenFactory = () => {
       slotEl.addEventListener('pointerup', stop);
       slotEl.addEventListener('pointercancel', stop);
       slotEl.addEventListener('wheel', (e) => { e.preventDefault(); const p = local(e as unknown as PointerEvent); zoomAt(e.deltaY < 0 ? 1.2 : 1 / 1.2, p.x, p.y); }, { passive: false });
-      const zoomBtn = (text: string, factor: number, id: string) => {
+      const zoomBtn = (text: string, dir: number, id: string) => {
         const b = el('button', { class: 'k-btn zoom-btn', type: 'button', 'data-id': id }, text);
         b.addEventListener('pointerdown', (e) => e.stopPropagation());
-        b.addEventListener('click', () => { const r = slotEl.getBoundingClientRect(); zoomAt(factor, r.width / 2, r.height / 2); });
+        b.addEventListener('click', () => {
+          const r = slotEl.getBoundingClientRect();
+          if (view.fp) { zoomAt(dir > 0 ? 1.2 : 0.8, r.width / 2, r.height / 2); return; }
+          // Step one defined layer at a time; the camera glides there.
+          const li = layerOf(zoomGoal || view.zoom);
+          if (dir > 0 && li >= LAYERS.length - 1) { zoomGoal = 0; zoomAt(1.2, r.width / 2, r.height / 2); return; }
+          zoomGoal = LAYERS[Math.max(0, Math.min(LAYERS.length - 1, li + dir))]![0];
+        });
         return b;
       };
       const walkBtn = el('button', { class: 'k-btn walk-btn', type: 'button', 'data-id': 'walk', hidden: true }, 'WALK');
@@ -400,7 +452,8 @@ const planet: ScreenFactory = () => {
       walkBtn.addEventListener('pointercancel', walkStop);
       walkBtn.addEventListener('contextmenu', (e) => e.preventDefault());
       slotEl.append(walkBtn);
-      slotEl.append(el('div', { class: 'zoom-ctl' }, zoomBtn('−', 1 / 1.6, 'zoom-out'), zoomLabel, zoomBtn('+', 1.6, 'zoom-in')));
+      slotEl.append(el('div', { class: 'zoom-ctl' }, zoomBtn('−', -1, 'zoom-out'), zoomLabel, zoomBtn('+', 1, 'zoom-in')));
+      slotEl.append(rail);
       const palette = el('div', { class: 'tools' }, ...TOOLS.map((t) => {
         const b = el('button', { class: 'k-tag tool', type: 'button', 'aria-pressed': String(t === mode), 'data-id': `tool-${t.mode}` }, t.label);
         b.addEventListener('click', () => {
@@ -462,14 +515,46 @@ const planet: ScreenFactory = () => {
       if (!ctx?.selection.universe || !ui || !planetSpec) return;
       const f = ctx.sim.latest();
       if (!f) return;
+      if (zoomGoal && !view.fp) {
+        const r = ui.slot.getBoundingClientRect();
+        const f = Math.pow(zoomGoal / view.zoom, Math.min(1, dt * 0.007));
+        const before = view.zoom;
+        view.zoom = Math.max(1, Math.min(MAX_ZOOM, view.zoom * f));
+        // Keep the centre fixed while gliding; re-clamp and refresh the label.
+        const hx = GRID_W / (2 * view.zoom), hy = GRID_H / (2 * view.zoom);
+        view.cx = Math.max(hx, Math.min(GRID_W - hx, view.cx)); view.cy = Math.max(hy, Math.min(GRID_H - hy, view.cy));
+        const li = layerOf(view.zoom);
+        if (li !== lastLayer) { lastLayer = li; ctx.audio.sfx('zoom', li / LAYERS.length); ui.hint.textContent = `${LAYERS[li]![1]}: ${LAYERS[li]![2]}`; rail.querySelectorAll('i').forEach((d, k) => d.classList.toggle('on', k <= li)); }
+        zoomLabel.textContent = LAYERS[li]![1].toUpperCase();
+        if (Math.abs(view.zoom - zoomGoal) < 0.03 || Math.abs(view.zoom - before) < 0.0005) { view.zoom = zoomGoal; zoomGoal = 0; }
+        void r;
+      }
+      // Close layers keep their feet on the ground: the camera follows the terrain under its
+      // centre, and while gliding it drifts onto the nearest village.
+      if (!view.fp && view.zoom >= 7) {
+        const g0 = ctx.sim.latest()?.grid;
+        if (g0) {
+          const cx = Math.max(0, Math.min(GRID_W - 1, Math.round(view.cx)));
+          let gy = 0;
+          while (gy < GRID_H - 4 && !(g0.cells[gy * GRID_W + cx] && g0.cells[(gy + 1) * GRID_W + cx] && g0.cells[(gy + 2) * GRID_W + cx])) gy++;
+          const viewH = GRID_H / view.zoom;
+          const k = Math.min(1, dt * 0.006);
+          view.cy += (gy - viewH * 0.24 - view.cy) * k;
+          if (zoomGoal) {
+            const vs = ctx.sim.latest()!.civ.villages;
+            const near = [...vs].sort((p, q) => Math.abs(p.x - view.cx) - Math.abs(q.x - view.cx))[0];
+            if (near && Math.abs(near.x - view.cx) < 40) view.cx += (near.x + 0.5 - view.cx) * k;
+          }
+        }
+      }
       if (view.fp) {
         const p = view.fp;
         const av0 = ctx.sim.latest()?.civ.avatar;
         if (!av0) {
           // The body died (or was given up): you are thrown back into the sky.
-          view.cx = p.x; view.zoom = 4.5; view.fp = null; walking = false;
+          view.cx = p.x; view.zoom = 20; view.fp = null; walking = false;
           ui.slot.querySelector<HTMLElement>('[data-id=walk]')!.hidden = true;
-          zoomLabel.textContent = `${view.zoom.toFixed(1)}×`;
+          zoomLabel.textContent = LAYERS[layerOf(view.zoom)]![1].toUpperCase();
           ui.hint.textContent = 'Your body is gone. You are back above them.';
           flash(ui.slot); shake(ui.slot, true); ctx.audio.sfx('lose');
         } else p.x = av0.x;
@@ -508,7 +593,7 @@ const planet: ScreenFactory = () => {
       const t = tsum / e.temp.length;
       const wx = e.lightning < 40 ? 'storm' : e.rain > 30 ? (e.snowing ? 'snow' : 'rain') : Math.abs(e.wind) > 50 ? 'wind' : 'clear';
       ui.weather.textContent = `${SEASON[Math.floor(e.season / 250)]} ${timeWord(e.day)} · ${tempWord(t)} · ${wx}`.toUpperCase();
-      ui.era.textContent = `ERA ${ERA_NAMES[f.civ.era] ?? ''}`.toUpperCase();
+      ui.era.textContent = `ERA ${ERA_NAMES[f.civ.era] ?? ''} · PROSPERITY ${f.civ.prosperity}${f.civ.launches ? ` · ${f.civ.launches} IN ORBIT` : ''}`.toUpperCase();
       const av = f.civ.avatar;
       ui.body.textContent = av ? `BODY ${av.hp} HP${av.attackers ? ` · ${av.attackers} ATTACKING` : ''}${av.worshippers ? ` · ${av.worshippers} KNEEL` : ''}` : '';
       (ui.body.nextElementSibling as HTMLElement | null)?.toggleAttribute('hidden', !av);
@@ -517,7 +602,7 @@ const planet: ScreenFactory = () => {
       lastHp = av ? av.hp : 100;
       ui.vlist.replaceChildren(...f.civ.villages.slice(0, 4).map((v) => el('div', { class: 'vrow' },
         el('span', { class: 'k-narration' }, ctx!.names.village(child(planetSpec!.seed, v.id + 1))),
-        label(`${v.souls} souls · ${v.belief === 'none' ? 'no faith' : v.belief} · ${ERA_NAMES[v.tech]}${v.enlightenment >= 100 ? ' · enlightened' : v.enlightenment >= 50 ? ' · wondering' : ''} · ${v.food > 300 ? 'fed' : v.food > 60 ? 'lean' : 'hungry'}${v.mood < -30 ? ' · restless' : v.mood > 50 ? ' · joyful' : ''}`),
+        label(`${v.souls} souls · ${v.belief === 'none' ? 'no faith' : v.belief} · ${ERA_NAMES[v.tech]}${v.enlightenment >= 100 ? ' · enlightened' : v.enlightenment >= 50 ? ' · wondering' : ''} · ${v.food > 300 ? 'fed' : v.food > 60 ? 'lean' : 'hungry'}${v.mood < -30 ? ' · restless' : v.mood > 50 ? ' · joyful' : ''}${v.wealth ? ` · ${v.wealth} coin` : ''}`),
       )));
       const items = f.chronicle.slice(0, 8).map((en) => el('li', {}, el('span', { class: 'k-label' }, `Y${en.year}`), ' ', narration(en.event), en.reason ? el('small', {}, en.reason) : null));
       if (!items.length) items.push(el('li', {}, narration('Nothing has happened yet. Watch.')));

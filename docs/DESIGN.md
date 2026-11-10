@@ -123,3 +123,46 @@ Merge universes and pieces from the MERGE chip in the Box.
 - **Around a body:** they flee, listen, watch, kneel or attack.
 
 **Drawing:** people are animated sprites (`render/planet/people.ts`). Each one eases toward its sim cell by stable id, so walking is smooth. Each role has its own pose: swinging legs, a raised club, a load on the head, kneeling, dancing, fishing. The same sprites appear on the map and as depth-tested billboards in first person.
+
+## Zoom layers
+
+The planet has ten named layers. The first three (World, Land, Valley) are the map. Seven close layers follow: Village, Street, Yard, Doorstep, Workbench, Hands, Threshold. Past Threshold you need a body.
+- **Stepping:** the + and − buttons step one layer at a time, and the camera glides. A rail of pips shows the current layer.
+- **Framing:** close layers follow the ground and settle on the nearest village.
+- **Detail per layer:** each layer switches on more detail in the building sprites (`render/planet/structures.ts`), the people and the terrain:
+  1. doors, smoke and boats;
+  2. bricks, shingles, goods and forge sparks;
+  3. window panes, lanterns and tools;
+  4. faces and planks;
+  5. hair, belts and pebbles.
+
+## Economy
+
+Villages build as they grow, and each building creates work:
+- **Buildings:** houses, fire, fields, docks, storehouses, markets, mines, workshops, shrines, bell towers and launch pads.
+- **Work:** farming and fishing, mining ore, crafting goods at the forge, carrying goods to market, trading with the next village, and building.
+- **Coin:** trade brings coin, and coin buys food when stores run low.
+- **Prosperity (0..100):** how well fed, rich and glad a village is.
+
+## Orbit and alignment
+
+- **Launches:** a village with a launch pad and enough coin puts things into orbit. They stay there (`SkyState.built`).
+- **Rewards:** each launch feeds Light, and every third launch sends a sky piece back to you.
+- **Where they show:** as lights round the planet on the solar system, and in the planet's own sky.
+- **Alignment:** the more a system has in orbit, the more its planets' orbits pull into one line. At full alignment the system rewards you once.
+
+## Battles
+
+Each fighter is one of your universes.
+- **Stats:**
+  - Might: souls, era and worlds tended.
+  - Depth: deepest fold.
+  - Radiance: glow and enlightenment.
+  - Guard: colony prosperity.
+  - Speed: orbiters.
+- **Skills:** Strike, an element skill, Fold, Shine and Alignment, paid for with Light. Light builds by one each turn.
+- **Traits:** earned from the universe's history (Thriving, Awake, Reaching, Lamplit, Legion), plus one from its element.
+- **Statuses:** burn, chill, ward, regrowth and exposed.
+- **Reactions:** Kindle shatters the chilled, Rime quenches the burning, and Undertow turns the burning to steam.
+- **Intent:** the rival's next move is shown before you choose, and the faster fighter acts first.
+- **Other moves:** Guard, Swap, and once per battle Fuse. Fuse merges two of your universes into one for the fight, with both sets of skills and traits.

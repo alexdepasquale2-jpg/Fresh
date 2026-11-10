@@ -5,7 +5,7 @@
 // at night, travellers between villages. Feuds, famines, festivals, migrations.
 import type { CivFactory, CivEvent, Village, GridView, Belief, SurfaceEnv, SurfaceEvent, Tool } from '@/contracts/sim';
 import { BELIEFS, ENGINE, FIELD, ROLE, SURFACE_TOOLS, PERSON_STRIDE } from '@/contracts/sim';
-import type { BodyAction } from '@/contracts/sim';
+import type { BodyAction, Building, BuildingKind } from '@/contracts/sim';
 import type { SurfaceModifiers } from '@/contracts/sky';
 import { child, rng } from '@/core/hash';
 import type { Rng } from '@/core/hash';
@@ -14,6 +14,7 @@ type V = {
   id: number; x: number; y: number; souls: number; name: string; tech: number; belief: Belief;
   food: number; mood: number; age: number; scores: number[]; progress: number; wet: number;
   starving: boolean; cold: boolean; lastBurn: number; lastLaunch: number; lastFest?: number; lastMove?: number;
+  wealth?: number; goods?: number; ore?: number; bld?: Building[]; planT?: number;
   enl?: number; lastOmen?: number; sawStranger?: number; festUntil?: number; lastPreach?: number;
 };
 type A = { x: number; y: number; hp: number; tx: number; hitT: number; action: BodyAction | null; actionT: number; preachT: number };
@@ -42,6 +43,8 @@ export const factory: CivFactory = () => {
   let worshippers = 0;
   const peopleBuf = new Int16Array(MAX_PEOPLE * PERSON_STRIDE);
   let nextPid = 1;
+  let launches = 0;
+  let lastLaunchT = -99999;
 
   const at = (g: GridView, x: number, y: number) => (x < 0 || y < 0 || x >= g.width || y >= g.height ? -1 : g.cells[y * g.width + x]!);
   const solidish = (m: number) => m === STONE || m === SAND || m === ENGINE.ice.id || m === ENGINE.snow.id || m === ENGINE.ash.id || m === ENGINE.ore.id;
@@ -83,7 +86,15 @@ export const factory: CivFactory = () => {
     if (p.role === ROLE.sleep || p.role === ROLE.dance || p.role === ROLE.carry || p.role === ROLE.chat || p.role === ROLE.flee || p.role === ROLE.listen) p.role = ROLE.idle;
     if (night && v.tech >= 3 && p.role !== ROLE.lamp && r.chance(1, 4)) p.role = ROLE.lamp;
     else if (night && p.role !== ROLE.lamp) p.role = ROLE.idle;
-    else if (!night && (p.role === ROLE.idle || p.role === ROLE.lamp)) p.role = r.pick([ROLE.farm, ROLE.fish, ROLE.farm, ROLE.idle]);
+    else if (!night && (p.role === ROLE.idle || p.role === ROLE.lamp)) {
+      // The village's buildings decide what work there is.
+      const has = (k: BuildingKind) => v.bld?.some((b) => b.kind === k);
+      const jobs: number[] = [ROLE.farm, ROLE.fish, ROLE.farm, ROLE.idle];
+      if (has('mine')) jobs.push(ROLE.mine, ROLE.mine);
+      if (has('workshop') && (v.ore ?? 0) > 0) jobs.push(ROLE.craft, ROLE.craft);
+      if (has('market') && (v.goods ?? 0) > 0 && vs.length > 1) jobs.push(ROLE.trade, ROLE.trade);
+      p.role = r.pick(jobs);
+    }
     if ((day > 700 && day < 780) || (day > 220 && day < 300)) if (v.belief !== 'none' && r.chance(1, 3)) p.role = ROLE.pray;
     switch (p.role) {
       case ROLE.farm: {
@@ -104,7 +115,17 @@ export const factory: CivFactory = () => {
         p.tx = best >= 0 ? best : v.x;
         break;
       }
-      case ROLE.pray: p.tx = v.x + r.range(-2, 2); break;
+      case ROLE.pray: p.tx = (v.bld?.find((b) => b.kind === 'shrine')?.x ?? v.x) + r.range(-2, 2); break;
+      case ROLE.mine: p.tx = (v.bld?.find((b) => b.kind === 'mine')?.x ?? v.x) + r.range(-1, 1); break;
+      case ROLE.craft: p.tx = (v.bld?.find((b) => b.kind === 'workshop')?.x ?? v.x) + r.range(-1, 1); break;
+      case ROLE.build: break;
+      case ROLE.trade: {
+        // Carry goods to the nearest other village's market.
+        const other = vs.filter((o) => o !== v).sort((a, b) => Math.abs(a.x - v.x) - Math.abs(b.x - v.x))[0];
+        p.tx = other ? (other.bld?.find((b) => b.kind === 'market')?.x ?? other.x) : v.x;
+        if (other) v.goods = Math.max(0, (v.goods ?? 0) - 1);
+        break;
+      }
       case ROLE.lamp: p.tx = v.x + r.range(-12, 12); break;
       default: {
         // Idle hands: some wander, some find a neighbour to talk to.
@@ -114,7 +135,7 @@ export const factory: CivFactory = () => {
       }
     }
     p.tx = Math.max(0, Math.min(g.width - 1, p.tx));
-    p.wait = p.role === ROLE.farm || p.role === ROLE.fish || p.role === ROLE.chat ? r.int(10) : 20 + r.int(60);
+    p.wait = p.role === ROLE.farm || p.role === ROLE.fish || p.role === ROLE.chat || p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.trade ? r.int(10) : 20 + r.int(60);
   };
 
   const enl = (v: V) => v.enl ?? 0;
@@ -175,6 +196,16 @@ export const factory: CivFactory = () => {
         if (p.role === ROLE.attack || p.role === ROLE.kneel || p.role === ROLE.watch) continue;
         const hv = vs.find((v) => v.id === p.home);
         // Work has stages: walk out, work a while, carry it home.
+if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && !p.work) { p.work = 1; p.wait = 40 + r.int(30); continue; }
+        if (p.role === ROLE.mine && hv) { hv.ore = Math.min(99, (hv.ore ?? 0) + 2); p.role = ROLE.carry; p.work = 0; p.tx = hv.bld?.find((b) => b.kind === 'workshop')?.x ?? hv.x; continue; }
+        if (p.role === ROLE.craft && hv) { if ((hv.ore ?? 0) > 0) { hv.ore = (hv.ore ?? 0) - 1; hv.goods = Math.min(99, (hv.goods ?? 0) + 2); hv.wealth = Math.min(999, (hv.wealth ?? 0) + 2); } p.role = ROLE.carry; p.work = 0; p.tx = hv.bld?.find((b) => b.kind === 'market')?.x ?? hv.x; continue; }
+        if (p.role === ROLE.trade && hv) {
+          // Sold: coin for both sides, and a little goodwill.
+          const there = vs.find((o) => o !== hv && Math.abs((o.bld?.find((b) => b.kind === 'market')?.x ?? o.x) - p.x) <= 2);
+          hv.wealth = Math.min(999, (hv.wealth ?? 0) + 22);
+          if (there) { there.wealth = Math.min(999, (there.wealth ?? 0) + 5); there.mood = Math.min(100, there.mood + 1); if (r.chance(1, 12)) pendingEv.push({ kind: 'traded', tick, villageId: hv.id, x: hv.x, y: hv.y, detail: there.id }); }
+          p.role = ROLE.carry; p.work = 0; p.tx = hv.x; continue;
+        }
         if ((p.role === ROLE.farm || p.role === ROLE.fish) && !p.work) { p.work = 1; p.wait = 30 + r.int(30); continue; }
         if ((p.role === ROLE.farm || p.role === ROLE.fish) && hv) { p.role = ROLE.carry; p.work = 0; p.tx = hv.x; continue; }
         if (p.role === ROLE.carry && hv) { hv.food = Math.min(999, hv.food + 3); }
@@ -304,9 +335,44 @@ export const factory: CivFactory = () => {
       for (let k = 1; k < sc.length; k++) { sc[k] = sc[k]! - (sc[k]! >> 5); if (sc[k]! > sc[top]!) top = k; }
       const nb: Belief = sc[top]! > 24 ? BELIEFS[top]! : v.belief;
       if (nb !== v.belief) { v.belief = nb; ev(events, 'convert', v, { belief: nb }); }
+      // What they have built. Each new kind of building is an event, and brings builders.
+      if (tick - (v.planT ?? -9999) >= 100) {
+        v.planT = tick;
+        const old = v.bld ?? [];
+        const bld: Building[] = [];
+        const put = (kind: BuildingKind, x: number, seed = 0) => {
+          const cx = Math.max(2, Math.min(g.width - 3, Math.round(x)));
+          const prev = old.find((b) => b.kind === kind && b.seed === seed);
+          bld.push(prev ?? { kind, x: cx, seed });
+          if (!prev && kind !== 'house' && kind !== 'fire' && old.length) {
+            ev(events, 'built', v, { detail: ['house', 'fire', 'farm', 'dock', 'mine', 'workshop', 'market', 'store', 'shrine', 'tower', 'pad'].indexOf(kind) });
+            let sent = 0;
+            for (const p of people) if (sent < 2 && p.home === v.id && (p.role === ROLE.idle || p.role === ROLE.farm || p.role === ROLE.chat)) { p.role = ROLE.build; p.tx = cx + (sent ? 1 : -1); p.wait = 0; p.work = 0; sent++; }
+          }
+        };
+        const houses = Math.min(7, 1 + (v.souls >> 3));
+        for (let k = 0; k < houses; k++) put('house', v.x + (k % 2 ? -1 : 1) * (4 + (k >> 1) * 7), k);
+        if (v.tech >= 1) put('fire', v.x);
+        const scan = (want: (x: number) => boolean, max: number) => { for (let d = 3; d < max; d++) for (const sx of [v.x + d, v.x - d]) if (sx > 2 && sx < g.width - 3 && want(sx)) return sx; return -1; };
+        const field = scan((x) => at(g, x, ground[x]!) === MOSS && at(g, x + 1, ground[x + 1]!) === MOSS, 34);
+        if (field >= 0) put('farm', field); else { const o = old.find((b) => b.kind === 'farm'); if (o) bld.push(o); }
+        const shore = scan((x) => at(g, x, ground[x]!) !== WATER && (at(g, x + 1, ground[x + 1]!) === WATER || at(g, x - 1, ground[x - 1]!) === WATER), 44);
+        if (shore >= 0) put('dock', shore); else { const o = old.find((b) => b.kind === 'dock'); if (o) bld.push(o); }
+        if (v.tech >= 1) put('store', v.x - 11);
+        if (v.tech >= 1 && v.souls >= 16) put('market', v.x + 11);
+        if (v.tech >= 2) { put('mine', v.x + (v.id % 2 ? 19 : -19)); put('workshop', v.x + (v.id % 2 ? -17 : 17)); }
+        if (v.belief !== 'none') put('shrine', v.x + (v.id % 2 ? 25 : -25));
+        if (v.tech >= 4) put('tower', v.x + 2);
+        if (v.tech >= 2 && ((v.wealth ?? 0) >= 60 || old.some((b) => b.kind === 'pad'))) put('pad', v.x + (v.id % 2 ? -27 : 27));
+        v.bld = bld;
+      }
+      // Markets turn stores into coin; coin feeds craft and learning.
+      if (v.bld?.some((b) => b.kind === 'market') && v.food > 400) { v.food -= 6; v.wealth = Math.min(999, (v.wealth ?? 0) + 1); }
+      // Coin buys food from traders when the stores run low, so craft and trade can feed a village.
+      if (v.food < 120 && (v.wealth ?? 0) >= 4 && v.bld?.some((b) => b.kind === 'market')) { v.wealth = (v.wealth ?? 0) - 4; v.food += 45; }
       // Tech.
       const ore = near(g, v.x, v.y, 30, ENGINE.ore.id, 8) > 0 || m.impacts > 25;
-      v.progress += 1 + (v.souls >> 4) + (v.mood > 30 ? 1 : 0);
+      v.progress += 1 + (v.souls >> 4) + (v.mood > 30 ? 1 : 0) + ((v.wealth ?? 0) >> 6);
       const need = [260, 700, 1300, 2200, 3400][v.tech] ?? Infinity;
       const can = [v.souls >= 14, v.souls >= 22 && ore, v.souls >= 35, v.souls >= 50 && v.mood > 0, totalSouls >= 140 && vs.filter((o) => o.tech >= 4).length >= 2][v.tech] ?? false;
       if (v.progress >= need && can) {
@@ -315,9 +381,13 @@ export const factory: CivFactory = () => {
         era = Math.max(era, v.tech);
         ev(events, 'tech', v, { detail: v.tech });
       }
-      if (v.tech >= 5 && tick - v.lastLaunch > 3200 && night && r.chance(1, 20)) {
+      // A launch pad and enough coin puts something into orbit: first lanterns, later stations.
+      if (v.bld?.some((b) => b.kind === 'pad') && (v.wealth ?? 0) >= 150 && tick - v.lastLaunch > 2400) {
+        v.wealth = (v.wealth ?? 0) - 130;
+        launches++;
+        lastLaunchT = tick;
         v.lastLaunch = tick;
-        ev(events, 'launch', v);
+        ev(events, 'launch', v, { detail: v.tech >= 5 ? 1 : 0 });
       }
       // Enlightenment: high eras, joy, faith, and what they have seen of you.
       const before = enl(v);
@@ -372,6 +442,7 @@ export const factory: CivFactory = () => {
     glow = Math.floor(vs.reduce((n, v) => n + v.souls * (2 + v.tech) * (v.mood > 0 ? 2 : 1) * (enl(v) >= 100 ? 2 : 1), 0) * (100 + nl) / 6400) + worshippers * 2;
   };
 
+  const prosperityOf = (v: V) => Math.round(Math.min(30, (v.food / 600) * 30) + Math.min(40, ((v.wealth ?? 0) / 300) * 40) + ((Math.max(-100, Math.min(100, v.mood)) + 100) / 200) * 30);
   const view = () => {
     const n = Math.min(people.length, MAX_PEOPLE);
     for (let i = 0; i < n; i++) {
@@ -381,12 +452,15 @@ export const factory: CivFactory = () => {
       peopleBuf[k] = p.x; peopleBuf[k + 1] = p.y; peopleBuf[k + 2] = p.role === ROLE.farm && !p.work ? ROLE.idle : p.role; peopleBuf[k + 3] = p.home; peopleBuf[k + 4] = p.id % 30000;
     }
     return {
-      villages: vs.map((v): Village => ({ id: v.id, x: v.x, y: v.y, souls: v.souls, name: v.name, tech: v.tech, belief: v.belief, food: v.food, mood: v.mood, enlightenment: v.enl ?? 0 })),
+      villages: vs.map((v): Village => ({ id: v.id, x: v.x, y: v.y, souls: v.souls, name: v.name, tech: v.tech, belief: v.belief, food: v.food, mood: v.mood, enlightenment: v.enl ?? 0, wealth: v.wealth ?? 0, goods: v.goods ?? 0, prosperity: prosperityOf(v), buildings: v.bld ?? [] })),
       souls: vs.reduce((s, v) => s + v.souls, 0),
       glowPerMinute: glow,
       people: peopleBuf.subarray(0, n * PERSON_STRIDE),
       peopleCount: n,
       era,
+      prosperity: vs.length ? Math.round(vs.reduce((n, v) => n + prosperityOf(v), 0) / vs.length) : 0,
+      launches,
+      launchAge: tick - lastLaunchT,
       avatar: avatar ? { x: avatar.x, y: avatar.y, hp: avatar.hp, attackers, worshippers, action: avatar.action, actionAge: tick - avatar.actionT } : null,
     };
   };
@@ -403,6 +477,8 @@ export const factory: CivFactory = () => {
       nextId = 1;
       glow = 0;
       era = 0;
+      launches = 0;
+      lastLaunchT = -99999;
     },
     step: (ticks, g, m, env, surface) => {
       const events: CivEvent[] = [];

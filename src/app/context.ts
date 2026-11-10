@@ -47,6 +47,8 @@ export const createApp = (gl: GlCore, go: (to: ScreenId) => void, persist: () =>
   // Glow from a watched world refills Light: 50 points per glow per minute (1000 points = 1 pip).
   let lastSimTick = 0;
   let glowAcc = 0;
+  let seenLaunches = 0;
+  let lastOrbitTick = 0;
   const onFrame = (f: SimFrame) => {
     const dt = Math.max(0, f.tick - lastSimTick);
     lastSimTick = f.tick;
@@ -61,7 +63,20 @@ export const createApp = (gl: GlCore, go: (to: ScreenId) => void, persist: () =>
     const civ = f.civ;
     const bestEnl = civ.villages.reduce((n, v) => Math.max(n, v.enlightenment), 0);
     const faith = civ.villages[0]?.belief ?? 'none';
-    box.recordLife(box.selected(), { souls: civ.souls, era: civ.era, belief: faith, enlightenment: bestEnl });
+// What they put into orbit stays there, feeds your light, and sometimes comes back as a gift.
+    if (f.tick < lastOrbitTick) seenLaunches = 0;
+    lastOrbitTick = f.tick;
+    const planet = selection.system?.planets[selection.planetIndex];
+    if (planet && civ.launches > seenLaunches) {
+      const n = civ.launches - seenLaunches;
+      seenLaunches = civ.launches;
+      const st = sky.build(seedToHex(planet.seed), n);
+      light.addGlow(400 * n);
+      if ((st.built ?? 0) % 3 === 0) sky.grant((['moon', 'rings', 'comet', 'belt', 'dust', 'sun'] as const)[(st.built ?? 0) % 6]!, 1);
+      bus.emit('sky:changed', { planetKey: st.planetKey });
+    }
+    const orbiters = selection.system ? selection.system.planets.reduce((n, p) => n + (sky.skyOf(p).built ?? 0), 0) : 0;
+    box.recordLife(box.selected(), { souls: civ.souls, era: civ.era, belief: faith, enlightenment: bestEnl, prosperity: civ.prosperity, orbiters });
     bus.emit('sim:frame', { tick: f.tick });
   };
   const renderers = { dive: R['render/dive'](), system: R['render/system'](), planet: R['render/planet'](), room: R['render/room']() };

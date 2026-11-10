@@ -31,7 +31,7 @@ const BoxEntrySchema = z.object({
   serialNumber: z.number().int(),
   stats: z.object({
     worldsTended: z.number().int(), deepestFold: z.number().int(), lightFromGlow: z.number().int(),
-    souls: z.number().int().optional(), era: z.number().int().optional(), belief: z.string().optional(), enlightenment: z.number().int().optional(),
+    souls: z.number().int().optional(), era: z.number().int().optional(), belief: z.string().optional(), enlightenment: z.number().int().optional(), prosperity: z.number().int().optional(), orbiters: z.number().int().optional(),
   }),
 });
 /**

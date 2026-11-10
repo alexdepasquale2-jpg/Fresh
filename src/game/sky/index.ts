@@ -38,6 +38,12 @@ export const factory: SkyGameFactory = () => {
       skies.set(key, next);
       return next;
     },
+    build: (key, n) => {
+      const sky = get(key);
+      const next = { ...sky, built: Math.max(0, Math.min(12, (sky.built ?? 0) + n)) };
+      skies.set(key, next);
+      return next;
+    },
     takeQueued: (key) => {
       const sky = get(key);
       if (!sky.queued?.length) return [];

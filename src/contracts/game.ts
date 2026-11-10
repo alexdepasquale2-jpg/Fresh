@@ -39,6 +39,10 @@ export interface UniverseStats {
   readonly belief?: string;
   /** 0..100 best enlightenment seen. */
   readonly enlightenment?: number;
+  /** 0..100 how well its watched colony is doing (fed, rich, glad). */
+  readonly prosperity?: number;
+  /** Things its worlds have put into orbit. */
+  readonly orbiters?: number;
 }
 export interface BoxEntry {
   readonly serialNumber: SerialNumber;
@@ -59,7 +63,7 @@ export interface Box {
   remove(slot: number): void;
   /** Replace a slot's stats (used by merging). */
   setStats(slot: number, stats: UniverseStats): void;
-  recordLife(slot: number, life: { souls: number; era: number; belief: string; enlightenment: number }): void;
+  recordLife(slot: number, life: { souls: number; era: number; belief: string; enlightenment: number; prosperity?: number; orbiters?: number }): void;
   snapshot(): (BoxEntry | null)[];
   restore(slots: readonly (BoxEntry | null)[]): void;
 }
