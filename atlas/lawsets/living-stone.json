@@ -1,0 +1,321 @@
+{
+  "id": "living-stone",
+  "name": "Living stone",
+  "tags": [
+    "STONE GROWS",
+    "SUN SEEKING"
+  ],
+  "pulseMilliHz": 400,
+  "hue": 30,
+  "materials": [
+    {
+      "id": 0,
+      "name": "empty",
+      "kind": "empty",
+      "color": 0,
+      "density": 0
+    },
+    {
+      "id": 1,
+      "name": "stone",
+      "kind": "solid",
+      "color": 4,
+      "density": 250
+    },
+    {
+      "id": 2,
+      "name": "sand",
+      "kind": "powder",
+      "color": 6,
+      "density": 150
+    },
+    {
+      "id": 3,
+      "name": "water",
+      "kind": "liquid",
+      "color": 11,
+      "density": 100
+    },
+    {
+      "id": 4,
+      "name": "moss",
+      "kind": "life",
+      "color": 15,
+      "density": 200
+    },
+    {
+      "id": 5,
+      "name": "steam",
+      "kind": "gas",
+      "color": 9,
+      "density": 5
+    },
+    {
+      "id": 6,
+      "name": "bud",
+      "kind": "life",
+      "color": 8,
+      "density": 240
+    },
+    {
+      "id": 7,
+      "name": "spire",
+      "kind": "solid",
+      "color": 3,
+      "density": 245
+    },
+    {
+      "id": 8,
+      "name": "grit",
+      "kind": "powder",
+      "color": 5,
+      "density": 155,
+      "drift": 20
+    }
+  ],
+  "reactions": [
+    {
+      "a": "water",
+      "b": "empty",
+      "becomesA": "steam",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        400
+      ],
+      "needs": {
+        "key": "warmth",
+        "min": 30
+      }
+    },
+    {
+      "a": "steam",
+      "b": "empty",
+      "becomesA": "water",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        200
+      ]
+    },
+    {
+      "a": "stone",
+      "b": "empty",
+      "becomesA": "stone",
+      "becomesB": "bud",
+      "chance": [
+        1,
+        60
+      ],
+      "dir": "up",
+      "light": "day",
+      "depth": {
+        "max": 72
+      },
+      "temp": {
+        "min": 112,
+        "max": 190
+      }
+    },
+    {
+      "a": "stone",
+      "b": "sand",
+      "becomesA": "stone",
+      "becomesB": "bud",
+      "chance": [
+        1,
+        500
+      ],
+      "dir": "up",
+      "light": "day",
+      "depth": {
+        "max": 72
+      },
+      "temp": {
+        "min": 112,
+        "max": 190
+      }
+    },
+    {
+      "a": "spire",
+      "b": "empty",
+      "becomesA": "spire",
+      "becomesB": "bud",
+      "chance": [
+        1,
+        80
+      ],
+      "dir": "up",
+      "light": "day",
+      "temp": {
+        "min": 112,
+        "max": 190
+      }
+    },
+    {
+      "a": "bud",
+      "b": "empty",
+      "becomesA": "spire",
+      "becomesB": "bud",
+      "chance": [
+        1,
+        2
+      ],
+      "dir": "up",
+      "light": "lit",
+      "depth": {
+        "min": 36
+      },
+      "temp": {
+        "min": 108
+      }
+    },
+    {
+      "a": "bud",
+      "b": "sand",
+      "becomesA": "spire",
+      "becomesB": "bud",
+      "chance": [
+        1,
+        2
+      ],
+      "dir": "up",
+      "light": "lit",
+      "temp": {
+        "min": 108
+      }
+    },
+    {
+      "a": "bud",
+      "b": "empty",
+      "becomesA": "spire",
+      "becomesB": "bud",
+      "chance": [
+        1,
+        30
+      ],
+      "dir": "side",
+      "light": "lit",
+      "depth": {
+        "min": 36
+      },
+      "temp": {
+        "min": 108
+      }
+    },
+    {
+      "a": "bud",
+      "b": "*",
+      "becomesA": "spire",
+      "becomesB": "*",
+      "chance": [
+        1,
+        4
+      ],
+      "light": "dark"
+    },
+    {
+      "a": "bud",
+      "b": "water",
+      "becomesA": "spire",
+      "becomesB": "water",
+      "chance": [
+        1,
+        2
+      ]
+    },
+    {
+      "a": "spire",
+      "b": "empty",
+      "becomesA": "grit",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        20
+      ],
+      "temp": {
+        "max": 114
+      }
+    },
+    {
+      "a": "spire",
+      "b": "empty",
+      "becomesA": "grit",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        30
+      ],
+      "wind": {
+        "min": 34
+      }
+    },
+    {
+      "a": "spire",
+      "b": "water",
+      "becomesA": "grit",
+      "becomesB": "water",
+      "chance": [
+        1,
+        10
+      ]
+    },
+    {
+      "a": "grit",
+      "b": "water",
+      "becomesA": "empty",
+      "becomesB": "water",
+      "chance": [
+        1,
+        20
+      ]
+    },
+    {
+      "a": "grit",
+      "b": "grit",
+      "becomesA": "empty",
+      "becomesB": "grit",
+      "chance": [
+        1,
+        60
+      ]
+    },
+    {
+      "a": "grit",
+      "b": "sand",
+      "becomesA": "empty",
+      "becomesB": "sand",
+      "chance": [
+        1,
+        200
+      ]
+    },
+    {
+      "a": "moss",
+      "b": "grit",
+      "becomesA": "moss",
+      "becomesB": "moss",
+      "chance": [
+        1,
+        20
+      ],
+      "needs": {
+        "key": "nightLight",
+        "min": 15
+      }
+    },
+    {
+      "a": "grit",
+      "b": "stone",
+      "becomesA": "stone",
+      "becomesB": "stone",
+      "chance": [
+        1,
+        300
+      ],
+      "depth": {
+        "min": 60
+      }
+    }
+  ]
+}

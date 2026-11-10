@@ -1,0 +1,234 @@
+{
+  "id": "black-water",
+  "name": "Black water",
+  "tags": [
+    "OIL FLOATS",
+    "SLOW BURN"
+  ],
+  "pulseMilliHz": 1400,
+  "hue": 280,
+  "materials": [
+    {
+      "id": 0,
+      "name": "empty",
+      "kind": "empty",
+      "color": 0,
+      "density": 0
+    },
+    {
+      "id": 1,
+      "name": "stone",
+      "kind": "solid",
+      "color": 4,
+      "density": 250
+    },
+    {
+      "id": 2,
+      "name": "sand",
+      "kind": "powder",
+      "color": 6,
+      "density": 150
+    },
+    {
+      "id": 3,
+      "name": "water",
+      "kind": "liquid",
+      "color": 11,
+      "density": 100
+    },
+    {
+      "id": 4,
+      "name": "moss",
+      "kind": "life",
+      "color": 15,
+      "density": 200
+    },
+    {
+      "id": 5,
+      "name": "steam",
+      "kind": "gas",
+      "color": 9,
+      "density": 5
+    },
+    {
+      "id": 6,
+      "name": "oil",
+      "kind": "liquid",
+      "color": 2,
+      "density": 60,
+      "viscosity": 3
+    },
+    {
+      "id": 7,
+      "name": "smoke",
+      "kind": "gas",
+      "color": 3,
+      "density": 3,
+      "drift": 50
+    }
+  ],
+  "reactions": [
+    {
+      "a": "water",
+      "b": "empty",
+      "becomesA": "steam",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        400
+      ],
+      "needs": {
+        "key": "warmth",
+        "min": 30
+      }
+    },
+    {
+      "a": "steam",
+      "b": "empty",
+      "becomesA": "water",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        200
+      ]
+    },
+    {
+      "a": "sand",
+      "b": "water",
+      "becomesA": "sand",
+      "becomesB": "oil",
+      "chance": [
+        1,
+        200
+      ],
+      "dir": "up",
+      "depth": {
+        "min": 50
+      }
+    },
+    {
+      "a": "stone",
+      "b": "empty",
+      "becomesA": "stone",
+      "becomesB": "oil",
+      "chance": [
+        1,
+        600
+      ],
+      "depth": {
+        "min": 62
+      }
+    },
+    {
+      "a": "oil",
+      "b": "fire",
+      "becomesA": "fire",
+      "becomesB": "smoke",
+      "chance": [
+        1,
+        3
+      ],
+      "heat": 3,
+      "vapour": 4
+    },
+    {
+      "a": "oil",
+      "b": "fire",
+      "becomesA": "fire",
+      "becomesB": "fire",
+      "chance": [
+        1,
+        4
+      ],
+      "heat": 2
+    },
+    {
+      "a": "oil",
+      "b": "empty",
+      "becomesA": "fire",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        3000
+      ],
+      "dir": "up",
+      "light": "day",
+      "temp": {
+        "min": 148
+      }
+    },
+    {
+      "a": "oil",
+      "b": "empty",
+      "becomesA": "fire",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        1500
+      ],
+      "needs": {
+        "key": "warmth",
+        "min": 25
+      },
+      "dir": "up",
+      "light": "day"
+    },
+    {
+      "a": "oil",
+      "b": "moss",
+      "becomesA": "oil",
+      "becomesB": "sand",
+      "chance": [
+        1,
+        5
+      ]
+    },
+    {
+      "a": "oil",
+      "b": "empty",
+      "becomesA": "smoke",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        250
+      ],
+      "dir": "up",
+      "light": "day",
+      "temp": {
+        "min": 126
+      },
+      "vapour": 4
+    },
+    {
+      "a": "oil",
+      "b": "sand",
+      "becomesA": "empty",
+      "becomesB": "sand",
+      "chance": [
+        1,
+        900
+      ],
+      "dir": "down"
+    },
+    {
+      "a": "smoke",
+      "b": "empty",
+      "becomesA": "empty",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        70
+      ]
+    },
+    {
+      "a": "smoke",
+      "b": "steam",
+      "becomesA": "smoke",
+      "becomesB": "water",
+      "chance": [
+        1,
+        10
+      ]
+    }
+  ]
+}

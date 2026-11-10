@@ -1,0 +1,244 @@
+{
+  "id": "rust-garden",
+  "name": "Rust garden",
+  "tags": [
+    "RUST EATS",
+    "IRON GREEN"
+  ],
+  "pulseMilliHz": 1100,
+  "hue": 15,
+  "materials": [
+    {
+      "id": 0,
+      "name": "empty",
+      "kind": "empty",
+      "color": 0,
+      "density": 0
+    },
+    {
+      "id": 1,
+      "name": "stone",
+      "kind": "solid",
+      "color": 4,
+      "density": 250
+    },
+    {
+      "id": 2,
+      "name": "sand",
+      "kind": "powder",
+      "color": 6,
+      "density": 150
+    },
+    {
+      "id": 3,
+      "name": "water",
+      "kind": "liquid",
+      "color": 11,
+      "density": 100
+    },
+    {
+      "id": 4,
+      "name": "moss",
+      "kind": "life",
+      "color": 15,
+      "density": 200
+    },
+    {
+      "id": 5,
+      "name": "steam",
+      "kind": "gas",
+      "color": 9,
+      "density": 5
+    },
+    {
+      "id": 6,
+      "name": "rust",
+      "kind": "powder",
+      "color": 14,
+      "density": 135,
+      "drift": 35
+    },
+    {
+      "id": 7,
+      "name": "iron",
+      "kind": "solid",
+      "color": 7,
+      "density": 252
+    }
+  ],
+  "reactions": [
+    {
+      "a": "water",
+      "b": "empty",
+      "becomesA": "steam",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        400
+      ],
+      "needs": {
+        "key": "warmth",
+        "min": 30
+      }
+    },
+    {
+      "a": "steam",
+      "b": "empty",
+      "becomesA": "water",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        200
+      ]
+    },
+    {
+      "a": "stone",
+      "b": "water",
+      "becomesA": "iron",
+      "becomesB": "water",
+      "chance": [
+        1,
+        120
+      ],
+      "temp": {
+        "min": 118
+      }
+    },
+    {
+      "a": "iron",
+      "b": "water",
+      "becomesA": "rust",
+      "becomesB": "water",
+      "chance": [
+        1,
+        10
+      ]
+    },
+    {
+      "a": "ore",
+      "b": "water",
+      "becomesA": "rust",
+      "becomesB": "water",
+      "chance": [
+        1,
+        40
+      ]
+    },
+    {
+      "a": "iron",
+      "b": "empty",
+      "becomesA": "rust",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        60
+      ],
+      "humid": {
+        "min": 40
+      }
+    },
+    {
+      "a": "rust",
+      "b": "iron",
+      "becomesA": "rust",
+      "becomesB": "rust",
+      "chance": [
+        1,
+        15
+      ]
+    },
+    {
+      "a": "sand",
+      "b": "empty",
+      "becomesA": "rust",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        100
+      ],
+      "dir": "up",
+      "humid": {
+        "min": 40
+      }
+    },
+    {
+      "a": "moss",
+      "b": "rust",
+      "becomesA": "moss",
+      "becomesB": "moss",
+      "chance": [
+        1,
+        10
+      ]
+    },
+    {
+      "a": "sand",
+      "b": "rust",
+      "becomesA": "moss",
+      "becomesB": "sand",
+      "chance": [
+        1,
+        60
+      ],
+      "light": "day",
+      "temp": {
+        "min": 112,
+        "max": 180
+      }
+    },
+    {
+      "a": "rust",
+      "b": "water",
+      "becomesA": "empty",
+      "becomesB": "water",
+      "chance": [
+        1,
+        200
+      ]
+    },
+    {
+      "a": "moss",
+      "b": "moss",
+      "becomesA": "sand",
+      "becomesB": "moss",
+      "chance": [
+        1,
+        250
+      ],
+      "temp": {
+        "max": 120
+      }
+    },
+    {
+      "a": "stone",
+      "b": "empty",
+      "becomesA": "iron",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        500
+      ],
+      "needs": {
+        "key": "impacts",
+        "min": 20
+      },
+      "dir": "up",
+      "depth": {
+        "max": 70
+      }
+    },
+    {
+      "a": "rust",
+      "b": "stone",
+      "becomesA": "stone",
+      "becomesB": "stone",
+      "chance": [
+        1,
+        400
+      ],
+      "depth": {
+        "min": 62
+      }
+    }
+  ]
+}

@@ -1,0 +1,182 @@
+{
+  "id": "upward-rain",
+  "name": "Upward rain",
+  "tags": [
+    "RAIN RISES",
+    "ROOF POOLS"
+  ],
+  "pulseMilliHz": 1300,
+  "hue": 220,
+  "materials": [
+    {
+      "id": 0,
+      "name": "empty",
+      "kind": "empty",
+      "color": 0,
+      "density": 0
+    },
+    {
+      "id": 1,
+      "name": "stone",
+      "kind": "solid",
+      "color": 4,
+      "density": 250
+    },
+    {
+      "id": 2,
+      "name": "sand",
+      "kind": "powder",
+      "color": 6,
+      "density": 150
+    },
+    {
+      "id": 3,
+      "name": "water",
+      "kind": "liquid",
+      "color": 11,
+      "density": 100
+    },
+    {
+      "id": 4,
+      "name": "moss",
+      "kind": "life",
+      "color": 15,
+      "density": 200
+    },
+    {
+      "id": 5,
+      "name": "steam",
+      "kind": "gas",
+      "color": 9,
+      "density": 5
+    },
+    {
+      "id": 6,
+      "name": "lift",
+      "kind": "liquid",
+      "color": 10,
+      "density": 20,
+      "rises": true
+    }
+  ],
+  "reactions": [
+    {
+      "a": "water",
+      "b": "empty",
+      "becomesA": "steam",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        400
+      ],
+      "needs": {
+        "key": "warmth",
+        "min": 30
+      }
+    },
+    {
+      "a": "steam",
+      "b": "empty",
+      "becomesA": "water",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        200
+      ]
+    },
+    {
+      "a": "water",
+      "b": "empty",
+      "becomesA": "lift",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        90
+      ],
+      "dir": "up",
+      "light": "night"
+    },
+    {
+      "a": "water",
+      "b": "empty",
+      "becomesA": "lift",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        30
+      ],
+      "needs": {
+        "key": "tide",
+        "min": 20
+      },
+      "dir": "up",
+      "light": "night"
+    },
+    {
+      "a": "lift",
+      "b": "empty",
+      "becomesA": "water",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        2
+      ],
+      "depth": {
+        "max": 4
+      }
+    },
+    {
+      "a": "lift",
+      "b": "stone",
+      "becomesA": "water",
+      "becomesB": "stone",
+      "chance": [
+        1,
+        150
+      ],
+      "dir": "up"
+    },
+    {
+      "a": "lift",
+      "b": "moss",
+      "becomesA": "water",
+      "becomesB": "moss",
+      "chance": [
+        1,
+        6
+      ]
+    },
+    {
+      "a": "moss",
+      "b": "lift",
+      "becomesA": "moss",
+      "becomesB": "moss",
+      "chance": [
+        1,
+        40
+      ]
+    },
+    {
+      "a": "lift",
+      "b": "*",
+      "becomesA": "water",
+      "becomesB": "*",
+      "chance": [
+        1,
+        30
+      ],
+      "light": "day"
+    },
+    {
+      "a": "lift",
+      "b": "sand",
+      "becomesA": "water",
+      "becomesB": "sand",
+      "chance": [
+        1,
+        60
+      ],
+      "dir": "up"
+    }
+  ]
+}
