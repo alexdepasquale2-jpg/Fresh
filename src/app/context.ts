@@ -1,5 +1,5 @@
 /** Builds the AppContext from the registry. */
-import type { AppContext, AppEvents, Screen, ScreenId, Selection } from '@/contracts/app';
+import type { AppContext, AppEvents, Screen, ScreenId, Selection, SimFrame } from '@/contracts/app';
 import type { Pulse } from '@/contracts/time';
 import type { SaveState } from '@/contracts/platform';
 import type { GlCore } from '@/contracts/render';
@@ -44,6 +44,21 @@ export const createApp = (gl: GlCore, go: (to: ScreenId) => void, persist: () =>
     if (!p) pulses.set(k, (p = timebase.pulse({ milliHz: u.pulseMilliHz, seed: u.seed, couplingFx: FX_ONE >> 4 })));
     return p;
   };
+  // Glow from a watched world refills Light: 50 points per glow per minute (1000 points = 1 pip).
+  let lastSimTick = 0;
+  let glowAcc = 0;
+  const onFrame = (f: SimFrame) => {
+    const dt = Math.max(0, f.tick - lastSimTick);
+    lastSimTick = f.tick;
+    glowAcc += (f.civ.glowPerMinute * 50 * dt) / 1200;
+    const whole = Math.floor(glowAcc);
+    if (whole > 0) {
+      glowAcc -= whole;
+      light.addGlow(whole);
+      box.recordGlow(box.selected(), whole);
+    }
+    bus.emit('sim:frame', { tick: f.tick });
+  };
   const renderers = { dive: R['render/dive'](), system: R['render/system'](), planet: R['render/planet'](), room: R['render/room']() };
   for (const r of Object.values(renderers)) r.init(gl);
 
@@ -63,7 +78,7 @@ export const createApp = (gl: GlCore, go: (to: ScreenId) => void, persist: () =>
     dive: R['game/dive']({ fold, light, box }),
     clock,
     pulse,
-    sim: createSimClient({ skyRules, sky, clock, onFrame: (f) => bus.emit('sim:frame', { tick: f.tick }) }),
+    sim: createSimClient({ skyRules, sky, clock, onFrame }),
     input: R['platform/input'](),
     save: R['platform/save'](),
     audio: R['platform/audio'](),

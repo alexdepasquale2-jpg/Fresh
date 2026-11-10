@@ -1,0 +1,162 @@
+{
+  "id": "ash-choir",
+  "name": "Ash choir",
+  "tags": [
+    "ASH",
+    "CHOIR"
+  ],
+  "pulseMilliHz": 1000,
+  "hue": 15,
+  "materials": [
+    {
+      "id": 0,
+      "name": "empty",
+      "kind": "empty",
+      "color": 0,
+      "density": 0
+    },
+    {
+      "id": 1,
+      "name": "stone",
+      "kind": "solid",
+      "color": 4,
+      "density": 250
+    },
+    {
+      "id": 2,
+      "name": "sand",
+      "kind": "powder",
+      "color": 6,
+      "density": 150
+    },
+    {
+      "id": 3,
+      "name": "water",
+      "kind": "liquid",
+      "color": 11,
+      "density": 100
+    },
+    {
+      "id": 4,
+      "name": "moss",
+      "kind": "life",
+      "color": 15,
+      "density": 200
+    },
+    {
+      "id": 5,
+      "name": "steam",
+      "kind": "gas",
+      "color": 9,
+      "density": 5
+    },
+    {
+      "id": 6,
+      "name": "ash",
+      "kind": "powder",
+      "color": 3,
+      "density": 110
+    },
+    {
+      "id": 7,
+      "name": "ember",
+      "kind": "fire",
+      "color": 14,
+      "density": 4
+    }
+  ],
+  "reactions": [
+    {
+      "a": "moss",
+      "b": "water",
+      "becomesA": "moss",
+      "becomesB": "moss",
+      "chance": [
+        1,
+        60
+      ]
+    },
+    {
+      "a": "water",
+      "b": "empty",
+      "becomesA": "steam",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        400
+      ],
+      "needs": {
+        "key": "warmth",
+        "min": 30
+      }
+    },
+    {
+      "a": "steam",
+      "b": "empty",
+      "becomesA": "water",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        200
+      ]
+    },
+    {
+      "a": "moss",
+      "b": "empty",
+      "becomesA": "moss",
+      "becomesB": "moss",
+      "chance": [
+        1,
+        300
+      ],
+      "needs": {
+        "key": "nightLight",
+        "min": 20
+      }
+    },
+    {
+      "a": "ember",
+      "b": "moss",
+      "becomesA": "ember",
+      "becomesB": "ember",
+      "chance": [
+        1,
+        8
+      ]
+    },
+    {
+      "a": "ember",
+      "b": "empty",
+      "becomesA": "ash",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        30
+      ]
+    },
+    {
+      "a": "ash",
+      "b": "water",
+      "becomesA": "moss",
+      "becomesB": "water",
+      "chance": [
+        1,
+        400
+      ]
+    },
+    {
+      "a": "moss",
+      "b": "empty",
+      "becomesA": "moss",
+      "becomesB": "ember",
+      "chance": [
+        1,
+        4000
+      ],
+      "needs": {
+        "key": "impacts",
+        "min": 10
+      }
+    }
+  ]
+}
