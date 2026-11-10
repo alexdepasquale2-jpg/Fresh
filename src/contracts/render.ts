@@ -1,7 +1,7 @@
 import type { DiveView } from './game';
 import type { SystemSpec } from './system';
 import type { SkyState, SkyPieceKind } from './sky';
-import type { GridView, CivView } from './sim';
+import type { GridView, CivView, SurfaceEnv } from './sim';
 import type { UniverseSpec } from './universe';
 import type { Fx } from '@/core/fixed';
 
@@ -65,7 +65,12 @@ export interface PlanetRenderView {
   readonly universe: UniverseSpec;
   readonly grid: GridView;
   readonly civ: CivView;
+  readonly env: SurfaceEnv;
+  readonly sky: SkyState;
+  readonly modifiers: import('./sky').SurfaceModifiers;
   readonly pulse: Fx;
+  /** CSS px rect to draw the surface into. */
+  readonly rect: { x: number; y: number; w: number; h: number };
 }
 export type PlanetRenderer = Renderer<PlanetRenderView>;
 

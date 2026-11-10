@@ -18,7 +18,11 @@ void main(){
   vec2 fc = vec2(v_uv.x * u_res.x, (1.0 - v_uv.y) * u_res.y);
   vec3 col = u_bg;
   float d = length(fc - u_c);
-  col += u_gold * smoothstep(26.0 + 3.0 * sin(u_pulse * 6.2831), 0.0, d) * 1.2;
+  float sr = 18.0 + u_heat * 14.0 + 3.0 * sin(u_pulse * 6.2831);
+  vec3 sc = mix(u_glow, u_gold, u_heat);
+  col += sc * smoothstep(sr, 0.0, d) * 1.2 + sc * exp(-d * 0.03) * 0.15;
+  float ang = atan(fc.y - u_c.y, fc.x - u_c.x);
+  col += sc * smoothstep(sr * 2.2, sr, d) * pow(abs(sin(ang * 6.0 + u_pulse * 3.0)), 12.0) * 0.25;
   col += u_gold * smoothstep(90.0, 0.0, d) * 0.12 * (0.6 + u_heat);
   for (int i = 0; i < 4; i++) {
     if (i >= u_n) break;
@@ -31,8 +35,21 @@ void main(){
   for (int i = 0; i < 16; i++) {
     vec4 p = u_piece[i];
     if (p.w < 0.5) continue;
-    float pd = length(fc - p.xy);
-    col = mix(col, u_gold, smoothstep(3.5, 2.0, pd));
+    vec2 r = fc - p.xy; float pd = length(r); int k = int(p.z + 0.5);
+    if (k == 1) { // comet: head and a tail pointing away from the star
+      vec2 away = normalize(p.xy - u_c); float al = dot(r, away); float ac = length(r - away * al);
+      col = mix(col, u_glow, smoothstep(2.6, 1.4, pd) + smoothstep(0.0, 2.0, al) * smoothstep(16.0, 0.0, al) * smoothstep(1.2 + al * 0.12, 0.0, ac) * 0.7);
+    } else if (k == 2) { // moon: shaded disc
+      col = mix(col, mix(u_line, u_ink, smoothstep(-2.0, 2.0, dot(r, normalize(u_c - p.xy)))), smoothstep(3.6, 2.6, pd));
+    } else if (k == 3) { // belt: scattered glints in a ring
+      float a = atan(r.y, r.x); col += u_gold * smoothstep(1.2, 0.0, abs(pd - 4.0)) * step(0.5, fract(a * 2.5)) * 0.9;
+    } else if (k == 4) { // second sun
+      col += u_gold * (smoothstep(3.8, 2.4, pd) * 1.3 + exp(-pd * 0.35) * 0.4);
+    } else if (k == 5) { // rings: a tilted ellipse
+      vec2 e = vec2(r.x, r.y * 3.0); col = mix(col, u_ink, smoothstep(1.4, 0.4, abs(length(e) - 7.0)) * 0.8);
+    } else { // dust: a soft haze
+      col = mix(col, u_line * 1.3, smoothstep(9.0, 0.0, pd) * 0.45 * (0.7 + 0.3 * sin(pd * 2.0 + u_pulse * 6.28)));
+    }
   }
   if (u_ghost.z > 0.5) col = mix(col, u_glow, smoothstep(9.0, 7.0, length(fc - u_ghost.xy)) * 0.8);
   o = vec4(col, 1.0);

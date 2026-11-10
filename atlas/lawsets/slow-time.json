@@ -60,13 +60,17 @@
   "reactions": [
     {
       "a": "moss",
-      "b": "water",
+      "b": "sand",
       "becomesA": "moss",
       "becomesB": "moss",
       "chance": [
         1,
-        60
-      ]
+        900
+      ],
+      "needs": {
+        "key": "tide",
+        "min": 10
+      }
     },
     {
       "a": "water",

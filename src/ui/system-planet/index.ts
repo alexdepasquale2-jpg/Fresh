@@ -103,21 +103,35 @@ const system: ScreenFactory = () => {
   };
 };
 
+const SEASON = ['spring', 'summer', 'autumn', 'winter'];
+const tempWord = (t: number) => (t < 96 ? 'freezing' : t < 112 ? 'cold' : t < 145 ? 'mild' : t < 185 ? 'warm' : t < 215 ? 'hot' : 'burning');
+const timeWord = (d: number) => (d < 200 || d > 800 ? 'night' : d < 300 ? 'dawn' : d < 700 ? 'day' : 'dusk');
+const ERA_NAMES = ['huts', 'fire', 'iron', 'lamps', 'bells', 'star-reaching'];
+
 const planet: ScreenFactory = () => {
   let ctx: AppContext | null = null;
-  let ui: { souls: ReturnType<typeof stat>; villages: ReturnType<typeof stat>; glow: ReturnType<typeof stat>; chron: HTMLElement; when: HTMLElement } | null = null;
+  let ui: {
+    souls: ReturnType<typeof stat>; villages: ReturnType<typeof stat>; glow: ReturnType<typeof stat>;
+    chron: HTMLElement; when: HTMLElement; weather: HTMLElement; vlist: HTMLElement; slot: HTMLElement; era: HTMLElement;
+  } | null = null;
   let lastTick = -1;
+  let planetSpec: import('@/contracts/system').PlanetSpec | null = null;
   return {
     id: 'planet',
     mount: (root, c) => {
       ctx = c;
       const { u, sys } = ensureSystem(c);
       const p = sys.planets[c.selection.planetIndex] ?? sys.planets[0]!;
+      planetSpec = p;
       c.sim.open(u, p);
       c.box.recordTended(c.box.selected());
       c.persist();
       const sky = c.sky.skyOf(p);
-      ui = { souls: stat(0, 'souls'), villages: stat(0, 'villages'), glow: stat(0, 'glow to you'), chron: el('ol', { class: 'chronicle' }), when: label('') };
+      ui = {
+        souls: stat(0, 'souls'), villages: stat(0, 'villages'), glow: stat(0, 'glow to you'),
+        chron: el('ol', { class: 'chronicle' }), when: label(''), weather: label(''), vlist: el('div', { class: 'vlist' }),
+        slot: el('div', { class: 'surface-slot big' }), era: label('ERA HUTS'),
+      };
       const speeds = el('div', { class: 'row nowrap' }, ...([0, 1, 3] as const).map((s) => {
         const b = button(s === 0 ? 'Pause' : `${s}x`, () => {
           c.clock.setSpeed(s);
@@ -128,9 +142,11 @@ const planet: ScreenFactory = () => {
       }));
       root.append(
         el('header', { class: 'row' }, backChip('SKY', () => c.go('system')), el('div', { class: 'col right' }, el('span', { class: 'k-title small' }, p.name), ui.when)),
-        el('div', { class: 'surface-slot' }),
+        ui.slot,
+        el('div', { class: 'row' }, ui.weather, ui.era),
         el('div', { class: 'row start' }, label('THEIR SKY'), ...(sky.pieces.length ? sky.pieces.map((k) => tag(k)) : [label('empty')])),
         el('div', { class: 'row' }, ui.souls.el, ui.villages.el, ui.glow.el),
+        ui.vlist,
         label('THEIR CHRONICLE'),
         ui.chron,
         speeds,
@@ -139,17 +155,35 @@ const planet: ScreenFactory = () => {
       lastTick = -1;
     },
     frame: (dt) => {
-      if (!ctx?.selection.universe || !ui) return;
+      if (!ctx?.selection.universe || !ui || !planetSpec) return;
       const f = ctx.sim.latest();
       if (!f) return;
-      ctx.renderers.planet.draw({ universe: ctx.selection.universe, grid: f.grid, civ: f.civ, pulse: ctx.pulse().phase() }, dt);
+      const cr = ctx.gl.canvas.getBoundingClientRect();
+      const sr = ui.slot.getBoundingClientRect();
+      const sky = ctx.sky.skyOf(planetSpec);
+      ctx.renderers.planet.draw({
+        universe: ctx.selection.universe, grid: f.grid, civ: f.civ, env: f.env, sky,
+        modifiers: ctx.skyRules.effects(sky, planetSpec), pulse: ctx.pulse().phase(),
+        rect: { x: sr.left - cr.left, y: sr.top - cr.top, w: sr.width, h: sr.height },
+      }, dt);
       if (f.tick === lastTick) return;
       lastTick = f.tick;
+      const e = f.env;
       ui.souls.update(f.civ.souls);
       ui.villages.update(f.civ.villages.length);
       ui.glow.update(f.civ.glowPerMinute);
       ui.when.textContent = `${ctx.clock.ageName()} · YEAR ${ctx.clock.year()}`;
-      const items = f.chronicle.slice(0, 5).map((e) => el('li', {}, el('span', { class: 'k-label' }, `Y${e.year}`), ' ', narration(e.event), e.reason ? el('small', {}, e.reason) : null));
+      let tsum = 0;
+      for (let i = 0; i < e.temp.length; i++) tsum += e.temp[i]!;
+      const t = tsum / e.temp.length;
+      const wx = e.lightning < 40 ? 'storm' : e.rain > 30 ? (e.snowing ? 'snow' : 'rain') : Math.abs(e.wind) > 50 ? 'wind' : 'clear';
+      ui.weather.textContent = `${SEASON[Math.floor(e.season / 250)]} ${timeWord(e.day)} · ${tempWord(t)} · ${wx}`.toUpperCase();
+      ui.era.textContent = `ERA ${ERA_NAMES[f.civ.era] ?? ''}`.toUpperCase();
+      ui.vlist.replaceChildren(...f.civ.villages.slice(0, 4).map((v) => el('div', { class: 'vrow' },
+        el('span', { class: 'k-narration' }, ctx!.names.village(child(planetSpec!.seed, v.id + 1))),
+        label(`${v.souls} souls · ${v.belief === 'none' ? 'no faith' : v.belief} · ${ERA_NAMES[v.tech]} · ${v.food > 300 ? 'fed' : v.food > 60 ? 'lean' : 'hungry'}${v.mood < -30 ? ' · restless' : v.mood > 50 ? ' · joyful' : ''}`),
+      )));
+      const items = f.chronicle.slice(0, 8).map((en) => el('li', {}, el('span', { class: 'k-label' }, `Y${en.year}`), ' ', narration(en.event), en.reason ? el('small', {}, en.reason) : null));
       if (!items.length) items.push(el('li', {}, narration('Nothing has happened yet. Watch.')));
       ui.chron.replaceChildren(...items);
     },

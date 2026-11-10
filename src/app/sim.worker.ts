@@ -24,10 +24,15 @@ const post = () => {
     cells: new Uint8Array(g.cells),
     dirty: new Uint8Array(g.dirty),
     civ: civ.view(),
-    chronicle: chronicle.entries(30) as FromWorker['chronicle'],
+    chronicle: chronicle.entries(40) as FromWorker['chronicle'],
+    env: (() => {
+      const e = sim.env();
+      return { day: e.day, season: e.season, fieldW: e.fieldW, fieldH: e.fieldH, temp: new Uint8Array(e.temp), humidity: new Uint8Array(e.humidity), wind: e.wind, rain: e.rain, snowing: e.snowing, lightning: e.lightning };
+    })(),
   };
   g.clearDirty();
-  (self as unknown as DedicatedWorkerGlobalScope).postMessage(msg, [msg.cells.buffer, msg.dirty.buffer]);
+  const env = msg.env as { temp: Uint8Array; humidity: Uint8Array };
+  (self as unknown as DedicatedWorkerGlobalScope).postMessage(msg, [msg.cells.buffer, msg.dirty.buffer, env.temp.buffer, env.humidity.buffer]);
 };
 
 self.onmessage = (e: MessageEvent<ToWorker>) => {
@@ -42,8 +47,9 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     post();
   } else if (m.type === 'step' && open && planetRef) {
     sim.step(m.ticks, m.modifiers);
-    const events = civ.step(m.ticks, sim.grid(), m.modifiers);
-    chronicle.record(events, m.year, planetRef);
+    const surface = sim.drainEvents();
+    const events = civ.step(m.ticks, sim.grid(), m.modifiers, sim.env(), surface);
+    chronicle.record(events, m.year, planetRef, surface);
     chronicle.explain(m.sky, m.modifiers, m.skySays);
     post();
   } else if (m.type === 'close') {

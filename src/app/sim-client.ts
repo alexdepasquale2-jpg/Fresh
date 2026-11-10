@@ -22,9 +22,10 @@ export const createSimClient = (deps: { skyRules: SkyRules; sky: SkyGame; clock:
           tick: m.tick,
           civ: m.civ,
           chronicle: m.chronicle,
+          env: m.env,
           grid: { width: m.width, height: m.height, cells: m.cells, chunksX: Math.ceil(m.width / 32), chunksY: Math.ceil(m.height / 32), dirty, clearDirty: () => dirty.fill(0) },
         };
-        deps.onFrame(latest);
+        deps.onFrame(latest!);
       };
       planet = p;
       latest = null;
