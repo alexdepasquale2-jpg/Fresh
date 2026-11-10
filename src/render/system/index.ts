@@ -21,6 +21,8 @@ const STAR_RGB: Record<string, readonly [number, number, number, number, number,
 };
 const KIND_SIZE: Record<string, number> = { dwarf: 0.7, giant: 1.25, pulsar: 0.4, main: 1 };
 const TAU = Math.PI * 2;
+/** The orrery's frame: the clear band of the system screen round the star (below the star's name, above the ORRERY row). */
+const FRAME_R = 118;
 
 const FS = `#version 300 es
 precision highp float;
@@ -35,6 +37,8 @@ uniform vec3 u_pcol[4]; uniform vec4 u_psea[4]; uniform vec4 u_pinfo[4];
 uniform vec4 u_moon[12];
 uniform vec4 u_rogue; uniform vec4 u_rogueAt; uniform vec3 u_rogueCol;
 uniform vec4 u_cpath; uniform vec4 u_comet;
+uniform vec3 u_fit;    // x scale that fits the whole system in its frame, y radius (layout px) past which nothing but the star's glow and the comet is drawn, z 0 at the lowest quality
+uniform ivec2 u_cnt;   // moon slots and piece slots in use
 const vec3 MOONC[6] = vec3[6](vec3(0.93, 0.92, 0.86), vec3(0.8, 0.78, 0.72), vec3(0.95, 0.82, 0.62), vec3(0.72, 0.84, 0.92), vec3(0.9, 0.66, 0.56), vec3(0.74, 0.9, 0.78));
 float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -42,14 +46,18 @@ float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
 // Distance in px to an axis-aligned ellipse with radii ab, centred on the origin (first order).
 float ell(vec2 q, vec2 ab){ vec2 k = q / ab; float e = length(k); float g = length(k / ab) / max(e, 0.0001); return abs(e - 1.0) / max(g, 0.0001); }
 void main(){
-  vec2 fc = vec2(v_uv.x * u_res.x, (1.0 - v_uv.y) * u_res.y);
+  vec2 fs = vec2(v_uv.x * u_res.x, (1.0 - v_uv.y) * u_res.y);
   vec3 col = u_bg;
+  // Far stars.
+  float sh = h21(floor(fs / 3.0));
+  if (sh > 0.9965) col += u_line * (0.4 + 0.3 * sin(u_time * (0.6 + sh * 2.0) + sh * 40.0));
+  // Everything below is laid out in its own px and scaled about the star so the widest system fits its frame.
+  vec2 fc = u_c + (fs - u_c) / u_fit.x;
   vec2 rc = fc - u_c;
   float d = length(rc);
   float ang = atan(rc.y, rc.x);
-  // Far stars.
-  float sh = h21(floor(fc / 3.0));
-  col += u_line * step(0.9965, sh) * (0.4 + 0.3 * sin(u_time * (0.6 + sh * 2.0) + sh * 40.0));
+  bool near = d < u_fit.y;
+  if (near) {
   // The habitable band: a faint wash where the star's warmth is kind.
   if (u_hz.y > 0.0) col += u_glow * 0.05 * smoothstep(u_hz.x - 8.0, u_hz.x + 2.0, d) * smoothstep(u_hz.y + 8.0, u_hz.y - 2.0, d);
   // Debris disc: a broad pale band of dust beyond the last world.
@@ -57,12 +65,13 @@ void main(){
     float t = (d - u_disc.x) / (u_disc.y - u_disc.x);
     col += mix(u_gold, u_line, 0.5) * smoothstep(0.0, 0.3, t) * smoothstep(1.0, 0.45, t) * u_disc.z * (0.07 + 0.16 * vn(vec2(ang * 7.0 + u_time * 0.008, d * 0.3)));
   }
+  }
   // The star.
   float sr = u_star.x;
   vec3 sc = u_starCol;
   int state = int(u_star.y + 0.5);
   col += sc * smoothstep(sr, 0.0, d) * 1.2 + sc * exp(-d * 0.03) * 0.15;
-  col += sc * smoothstep(sr * 2.2, sr, d) * pow(abs(sin(ang * 6.0 + u_pulse * 3.0)), 12.0) * 0.25;
+  if (d < sr * 2.2) col += sc * smoothstep(sr * 2.2, sr, d) * pow(abs(sin(ang * 6.0 + u_pulse * 3.0)), 12.0) * 0.25;
   col += u_gold * smoothstep(90.0, 0.0, d) * 0.1 * (0.4 + sr / 26.0);
   if (state == 3) { // dying: it sheds itself in slow shells
     for (int k = 0; k < 2; k++) { float s = fract(u_time * 0.03 + float(k) * 0.5); col += sc * smoothstep(4.0, 0.0, abs(d - sr - s * 30.0)) * (1.0 - s) * 0.24; }
@@ -70,8 +79,9 @@ void main(){
     col += sc * smoothstep(5.0, 0.0, abs(d - 27.0 - 5.0 * vn(vec2(ang * 3.0, 1.0)))) * 0.2 * (0.4 + vn(vec2(ang * 7.0, u_time * 0.04)));
     col += vec3(1.0) * smoothstep(3.0, 0.5, d) * 0.7;
   }
-  if (u_star.w > 0.01) col += sc * u_star.w * pow(abs(sin(ang * 2.5 + 1.3)), 22.0) * smoothstep(sr * 3.4, sr * 0.8, d);
-  if (u_star.z > -5.0) col += sc * pow(abs(cos(ang - u_star.z)), 240.0) * smoothstep(175.0, 6.0, d) * 0.6;
+  if (u_star.w > 0.01 && d < sr * 3.4) col += sc * u_star.w * pow(abs(sin(ang * 2.5 + 1.3)), 22.0) * smoothstep(sr * 3.4, sr * 0.8, d);
+  if (u_star.z > -5.0 && d < 175.0) col += sc * pow(abs(cos(ang - u_star.z)), 240.0) * smoothstep(175.0, 6.0, d) * 0.6;
+  if (near) {
   // Companion sun, and the road a far one keeps.
   if (u_comp.z > 0.0) {
     if (u_comp.w > 0.0) col = mix(col, u_compCol, smoothstep(1.0, 0.0, abs(d - u_comp.w)) * 0.3 * step(0.5, fract(ang * 3.8)));
@@ -84,6 +94,7 @@ void main(){
     vec3 B = u_belt[b];
     float off = d - B.x;
     if (B.y <= 0.0 || abs(off) > B.z + 2.0) continue;
+    if (u_fit.z < 0.5) { col += u_gold * smoothstep(B.z, B.z * 0.3, abs(off)) * (0.045 + 0.1) * B.y; continue; }
     float a2 = (ang + u_time * 0.012 * (b == 0 ? 1.0 : -0.7)) * B.x / 3.2;
     float hh = h21(vec2(floor(a2), floor(off / 2.6)) + float(b) * 17.0);
     float env = smoothstep(B.z, B.z * 0.3, abs(off));
@@ -95,7 +106,7 @@ void main(){
     if (i >= u_n) break;
     bool hov = i == u_hover;
     vec3 lc = hov ? u_glow : (i == u_sel ? u_glow * 0.7 : u_line);
-    float w = hov ? 2.2 : 1.2;
+    float w = (hov ? 2.2 : 1.2) / max(u_fit.x, 0.6);
     float beat = (u_reso[i] > 0.5 && !hov) ? 0.45 + 0.55 * step(0.22, fract(ang * u_reso[i] * 0.955 + u_time * 0.02)) : 1.0;
     col = mix(col, lc, smoothstep(w, 0.0, abs(d - u_rings[i])) * beat);
   }
@@ -104,10 +115,12 @@ void main(){
     float cs = cos(u_rogue.z), sn = sin(u_rogue.z); vec2 q = vec2(rc.x * cs + rc.y * sn, rc.y * cs - rc.x * sn);
     col = mix(col, u_rogueCol, smoothstep(1.2, 0.0, ell(q, u_rogue.xy)) * 0.45 * step(0.45, fract(atan(q.y, q.x) * 2.3)));
   }
+  }
   if (u_comet.w > 0.5) {
     float cs = cos(u_cpath.z), sn = sin(u_cpath.z); vec2 q = vec2(rc.x * cs + rc.y * sn, rc.y * cs - rc.x * sn) + vec2(u_cpath.w, 0.0);
     col = mix(col, u_glow, smoothstep(1.0, 0.0, ell(q, u_cpath.xy)) * 0.14);
   }
+  if (near) {
   // Worlds: a lit side to the star, a face from biome and form, rings where they were born with them.
   for (int i = 0; i < 4; i++) {
     if (i >= u_n) break;
@@ -143,6 +156,7 @@ void main(){
   }
   // Moons the worlds were born with.
   for (int j = 0; j < 12; j++) {
+    if (j >= u_cnt.x) break;
     vec4 M = u_moon[j];
     if (M.w < 0.5) continue;
     vec2 r = fc - M.xy; float md = length(r);
@@ -159,10 +173,12 @@ void main(){
       col = mix(col, u_rogueCol * (0.55 + 0.45 * vn(n2 * 3.0 + 4.0)) * (0.14 + 0.9 * lit), smoothstep(u_rogueAt.z, u_rogueAt.z - 1.0, rd));
     }
   }
+  }
   if (u_comet.w > 0.5) {
     vec2 r = fc - u_comet.xy; float pd = length(r); vec2 away = normalize(u_comet.xy - u_c); float al = dot(r, away); float ac = length(r - away * al);
     col += mix(u_glow, vec3(0.8, 0.95, 1.0), 0.5) * (smoothstep(3.2, 1.2, pd) + exp(-pd * 0.5) * 0.5 + smoothstep(0.0, 2.0, al) * smoothstep(u_comet.z, 0.0, al) * smoothstep(1.5 + al * 0.16, 0.0, ac) * 0.75);
   }
+  if (near) {
   // What each world has put into orbit: small lights circling it, blinking on the pulse.
   for (int i = 0; i < 4; i++) {
     if (i >= u_n) break;
@@ -182,6 +198,7 @@ void main(){
   }
   // Pieces the player hung.
   for (int i = 0; i < 16; i++) {
+    if (i >= u_cnt.y) break;
     vec4 p = u_piece[i];
     if (p.w < 0.5) continue;
     vec2 r = fc - p.xy; float pd = length(r);
@@ -202,14 +219,15 @@ void main(){
       col = mix(col, u_line * 1.3, smoothstep(9.0, 0.0, pd) * 0.45 * (0.7 + 0.3 * sin(pd * 2.0 + u_pulse * 6.28)));
     }
   }
-  col += u_gold * u_flare * 0.35 * exp(-d * 0.006);
+  }
+  if (u_flare > 0.0) col += u_gold * u_flare * 0.35 * exp(-d * 0.006);
   if (u_touch.z > 0.0) { float tr = (1.0 - u_touch.z) * 46.0; col = mix(col, u_glow, smoothstep(2.0, 0.0, abs(length(fc - u_touch.xy) - tr)) * u_touch.z); }
   if (u_ghost.z > 0.5) col = mix(col, u_glow, smoothstep(9.0, 7.0, length(fc - u_ghost.xy)) * 0.8);
   o = vec4(col, 1.0);
 }`;
 
 const UNIFORMS = ['u_res', 'u_c', 'u_rings', 'u_n', 'u_sel', 'u_hover', 'u_planet', 'u_piece', 'u_ghost', 'u_bg', 'u_line', 'u_ink', 'u_gold', 'u_glow', 'u_pulse', 'u_flare', 'u_touch', 'u_built', 'u_align', 'u_time',
-  'u_star', 'u_starCol', 'u_comp', 'u_compCol', 'u_belt', 'u_disc', 'u_hz', 'u_reso', 'u_pcol', 'u_psea', 'u_pinfo', 'u_moon', 'u_rogue', 'u_rogueAt', 'u_rogueCol', 'u_cpath', 'u_comet'] as const;
+  'u_star', 'u_starCol', 'u_comp', 'u_compCol', 'u_belt', 'u_disc', 'u_hz', 'u_reso', 'u_pcol', 'u_psea', 'u_pinfo', 'u_moon', 'u_rogue', 'u_rogueAt', 'u_rogueCol', 'u_cpath', 'u_comet', 'u_fit', 'u_cnt'] as const;
 
 export const factory: SystemRendererFactory = () => {
   let core: GlCore | null = null;
@@ -240,7 +258,7 @@ export const factory: SystemRendererFactory = () => {
   const pinfo = new Float32Array(16);
   const prad = new Float32Array(4);
   const moonSpec = new Float32Array(36); // per planet, 3 x (radius px, look + 1, turns)
-  const S = { starR: 20, state: 0, pulsar: false, compR: 0, compOrbit: 0, compPeriod: 1, compClose: false, rogueA: 0, rogueB: 0, roguePhi: 0, roguePeriod: 1, roguePhase: 0, rogueR: 4, cometA: 0, cometB: 0, cometE: 0, cometAxis: 0, cometPeriod: 1, cometPhase: 0 };
+  const S = { starR: 20, state: 0, pulsar: false, compR: 0, compOrbit: 0, compPeriod: 1, compClose: false, rogueA: 0, rogueB: 0, roguePhi: 0, roguePeriod: 1, roguePhase: 0, rogueR: 4, cometA: 0, cometB: 0, cometE: 0, cometAxis: 0, cometPeriod: 1, cometPhase: 0, fit: 1, far: 192 };
 
   const build = () => {
     prog = core!.program(FULLSCREEN_VS, FS);
@@ -337,6 +355,14 @@ export const factory: SystemRendererFactory = () => {
       S.cometPeriod = comet.periodTicks;
       S.cometPhase = comet.phase / 255;
     }
+    // How far out anything reaches (the comet's long road aside, which is meant to leave), and the scale that fits it.
+    let ext = last + 30;
+    for (let i = 0; i < 2; i++) if (belts[i * 3 + 1]! > 0) ext = Math.max(ext, belts[i * 3]! + belts[i * 3 + 2]! + 3);
+    if (disc[2]! > 0) ext = Math.max(ext, disc[1]! + 2);
+    if (S.compR > 0) ext = Math.max(ext, S.compOrbit + S.compR * 2.4);
+    if (S.rogueA > 0) ext = Math.max(ext, S.rogueA + S.rogueR + 3);
+    S.fit = Math.min(1, Math.min(w / 2 - 6, FRAME_R) / ext);
+    S.far = Math.max(ext + 30, 192);
     cachedSystem = sys;
     cachedPalette = p;
     cachedW = w;
@@ -354,9 +380,12 @@ export const factory: SystemRendererFactory = () => {
     orbitAt: (x, y) => {
       if (!core) return -1;
       const L = systemLayout(core.width());
-      const d = Math.hypot(x - L.cx, y - L.cy);
-      for (let i = 0; i < n; i++) if (Math.abs(d - ringR[i]!) <= 16) return i;
-      return -1;
+      // Layout px: the same scale the shader draws with. The reach is 16 screen px, less where the rings sit closer than that.
+      const d = Math.hypot(x - L.cx, y - L.cy) / S.fit;
+      const reach = Math.min(16 / S.fit, 17);
+      let best = -1, bd = reach;
+      for (let i = 0; i < n; i++) { const e = Math.abs(d - ringR[i]!); if (e <= bd) { bd = e; best = i; } }
+      return best;
     },
     draw: (v) => {
       if (!core || !prog || core.lost()) return;
@@ -371,7 +400,7 @@ export const factory: SystemRendererFactory = () => {
       pieces.fill(0);
       moons.fill(0);
       built.fill(0);
-      let pc = 0;
+      let pc = 0, mc = 0;
       const k = Math.max(0, Math.min(1, v.align ?? 0));
       const p0 = orbits[0]!.periodTicks * 2;
       const shared = ((tick % p0) / p0) * TAU;
@@ -397,6 +426,7 @@ export const factory: SystemRendererFactory = () => {
           const at = (i * 3 + j) * 4;
           moons[at] = px + Math.cos(ma) * mo; moons[at + 1] = py + Math.sin(ma) * mo * 0.8; moons[at + 2] = mr; moons[at + 3] = moonSpec[i * 9 + j * 3 + 1]!;
           nm++;
+          mc = i * 3 + j + 1;
         }
         if (sky) {
           const pr2 = Math.max(14, pr + 6 + nm * 3.4);
@@ -419,7 +449,10 @@ export const factory: SystemRendererFactory = () => {
       gl.uniform1i(loc.u_hover!, v.drag?.overOrbit ?? -1);
       gl.uniform3fv(loc.u_planet!, planets);
       gl.uniform4fv(loc.u_piece!, pieces);
-      gl.uniform3f(loc.u_ghost!, v.drag?.x ?? 0, v.drag?.y ?? 0, v.drag ? 1 : 0);
+      const fitK = S.fit;
+      gl.uniform3f(loc.u_ghost!, v.drag ? cx + (v.drag.x - cx) / fitK : 0, v.drag ? cy + (v.drag.y - cy) / fitK : 0, v.drag ? 1 : 0);
+      gl.uniform3f(loc.u_fit!, fitK, S.far, (v.quality ?? 1) < 0.52 ? 0 : 1);
+      gl.uniform2i(loc.u_cnt!, mc, pc);
       gl.uniform3f(loc.u_bg!, pal[0]!, pal[1]!, pal[2]!);
       gl.uniform3f(loc.u_line!, pal[3]!, pal[4]!, pal[5]!);
       gl.uniform3f(loc.u_ink!, pal[6]!, pal[7]!, pal[8]!);
@@ -430,7 +463,7 @@ export const factory: SystemRendererFactory = () => {
       gl.uniform1fv(loc.u_built!, built);
       gl.uniform2f(loc.u_align!, k, shared);
       gl.uniform1f(loc.u_time!, time);
-      gl.uniform3f(loc.u_touch!, v.touch?.x ?? 0, v.touch?.y ?? 0, v.touch ? 1 - v.touch.age : 0);
+      gl.uniform3f(loc.u_touch!, v.touch ? cx + (v.touch.x - cx) / fitK : 0, v.touch ? cy + (v.touch.y - cy) / fitK : 0, v.touch ? 1 - v.touch.age : 0);
       gl.uniform4f(loc.u_star!, sr, S.state, S.pulsar ? (time * 2.4) % TAU : -9, fit + (S.state === 2 ? 0.12 : 0));
       gl.uniform3fv(loc.u_starCol!, starCol);
       if (S.compR > 0) {

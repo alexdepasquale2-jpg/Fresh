@@ -178,6 +178,27 @@ export const createPeople = (core: GlCore) => {
     s.seen = frame;
   };
 
+  // Map walks through callbacks made once: iterating [id, soul] pairs would allocate one array per soul per frame.
+  type PeopleFpArg = { ro: [number, number, number]; yaw: number; pitch: number; depth: WebGLTexture; place: (s: Soul) => readonly [number, number, number]; tw?: number; th?: number; far?: number };
+  const sweep = (s: Soul, id: number) => { if (s.seen !== frame) souls.delete(id); };
+  let n = 0;
+  let fillFp: PeopleFpArg | null = null;
+  const fill = (s: Soul, id: number) => {
+    if (n >= MAXN || s.role === ROLE.sleep) return;
+    const fp = fillFp;
+    if (fp && id === AVATAR) return;       // you do not see your own body
+    const k = n * 8;
+    if (fp) {
+      const p = fp.place(s);
+      const rx = p[0] - fp.ro[0], rz = p[2] - fp.ro[2], far = fp.far ?? 260;
+      if (rx * rx + rz * rz > far * far) return;
+      data[k] = p[0]; data[k + 1] = p[1]; data[k + 2] = p[2];
+    }
+    else { data[k] = s.x; data[k + 1] = s.y; data[k + 2] = 0; }
+    data[k + 3] = id === notableId ? s.role + 100 : s.role; data[k + 4] = s.phase; data[k + 5] = s.face * (1 + s.tag); data[k + 6] = s.moving; data[k + 7] = s.seed;
+    n++;
+  };
+
   return {
     /** Ease every person toward where the sim has them. */
     update: (civ: CivView, dt: number) => {
@@ -201,7 +222,7 @@ export const createPeople = (core: GlCore) => {
         if (!s) souls.set(AVATAR, (s = { x: av.x + 0.5, y: av.y + 1, face: 1, phase: 0, moving: 0, seen: frame, role: 99, seed: 0.5, z: 0, tag: 0 }));
         ease(s, av.x + 0.5, av.y + 1, 99, dt);
       }
-      for (const [id, s] of souls) if (s.seen !== frame) souls.delete(id);
+      souls.forEach(sweep);
     },
     /** Smoothed avatar position (cell coords, feet), or null. */
     avatar: () => souls.get(AVATAR) ?? null,
@@ -210,25 +231,20 @@ export const createPeople = (core: GlCore) => {
      * place() gives each soul its 3D ground position.
      */
     draw: (o: {
-      fp: null | { ro: [number, number, number]; yaw: number; pitch: number; depth: WebGLTexture; place: (s: Soul) => [number, number, number] };
+      fp: null | PeopleFpArg;
       view: { cx: number; cy: number; zoom: number };
       rect: { x: number; y: number; w: number; h: number };
       W: number; H: number; time: number; amb: number; night: number; pal: WebGLTexture;
     }) => {
-      let n = 0;
-      for (const [id, s] of souls) {
-        if (n >= MAXN || s.role === ROLE.sleep) continue;
-        if (o.fp && id === AVATAR) continue;       // you do not see your own body
-        const k = n * 8;
-        if (o.fp) { const [x, y, z] = o.fp.place(s); data[k] = x; data[k + 1] = y; data[k + 2] = z; }
-        else { data[k] = s.x; data[k + 1] = s.y; data[k + 2] = 0; }
-        data[k + 3] = id === notableId ? s.role + 100 : s.role; data[k + 4] = s.phase; data[k + 5] = s.face * (1 + s.tag); data[k + 6] = s.moving; data[k + 7] = s.seed;
-        n++;
-      }
+      n = 0;
+      fillFp = o.fp;
+      souls.forEach(fill);
+      fillFp = null;
       if (!n) return;
       const sx = core.canvas.width / Math.max(1, core.width()), sy = core.canvas.height / Math.max(1, core.height());
-      const vx = Math.round(o.rect.x * sx), vw = Math.round(o.rect.w * sx), vh = Math.round(o.rect.h * sy);
-      const vy = Math.round(core.canvas.height - (o.rect.y + o.rect.h) * sy);
+      let vx = Math.round(o.rect.x * sx), vw = Math.round(o.rect.w * sx), vh = Math.round(o.rect.h * sy);
+      let vy = Math.round(core.canvas.height - (o.rect.y + o.rect.h) * sy);
+      if (o.fp && o.fp.tw) { vx = 0; vy = 0; vw = o.fp.tw; vh = o.fp.th!; }
       gl.viewport(vx, vy, vw, vh);
       gl.enable(gl.SCISSOR_TEST);
       gl.scissor(vx, vy, vw, vh);

@@ -65,6 +65,8 @@ export interface SystemRenderView {
   readonly flare?: number;
   /** Ripple at a touched point, 0..1 age. */
   readonly touch?: { x: number; y: number; age: number } | null;
+  /** 0.5..1 from Perf.resolutionScale(); at the bottom the renderer drops its finest detail. */
+  readonly quality?: number;
 }
 export interface SystemRenderer extends Renderer<SystemRenderView> {
   /** Orbit index under a CSS px point, or -1. */

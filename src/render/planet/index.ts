@@ -8,7 +8,7 @@
 // Buildings, people and ambient life are instanced sprites drawn over it.
 import type { PlanetRendererFactory, GlCore } from '@/contracts/render';
 import { ENGINE, FIELD, ROLE } from '@/contracts/sim';
-import { FULLSCREEN_VS } from '@/render/gl';
+import { FULLSCREEN_VS, hexToRgb } from '@/render/gl';
 import { createFirstPerson } from './first-person';
 import { createPeople } from './people';
 import { createStructures } from './structures';
@@ -31,18 +31,21 @@ precision highp float; precision highp usampler2D;
 in vec2 v_uv; out vec4 o;
 uniform vec2 u_res; uniform vec4 u_rect; uniform vec2 u_grid; uniform vec3 u_view;
 uniform usampler2D u_cells, u_mat, u_top;
-uniform sampler2D u_temp, u_hum, u_pal;
+uniform sampler2D u_temp, u_hum;
 uniform float u_day, u_season, u_time, u_pulse, u_nl, u_dim, u_warm, u_dust, u_wind, u_rain, u_flash;
 uniform float u_moons, u_suns, u_orb;
+uniform vec3 u_palc[16];   // the palette, as uniforms: no fetch per colour
+uniform int u_oct;         // cloud octaves, by quality (5 at full)
+uniform float u_fx;        // 0 at the lowest quality: the far dark, smoke and drifting dust are not drawn
 uniform vec4 u_pl;   // this planet: x 1 = tidally locked, y land form (1 canyon, 2 crater, 3 ice shell, 4 highlands), z gravity -1..1
 uniform float u_wet, u_snowc, u_snowing, u_fog, u_life; uniform vec4 u_bolt; uniform vec2 u_road[6]; uniform int u_nroad;
 ${HEAVENS_GLSL}
 uniform vec4 u_vill[12]; uniform int u_nvill;
-vec3 pal(int i){ return texelFetch(u_pal, ivec2(i & 15, 0), 0).rgb; }
+vec3 pal(int i){ return u_palc[i & 15]; }
 float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + 1.0), f.x), f.y); }
-float fbm(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++) { s += a * noise(p); p = p * 2.03 + 7.1; a *= 0.5; } return s; }
+float fbm(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++) { if (i >= u_oct) break; s += a * noise(p); p = p * 2.03 + 7.1; a *= 0.5; } return s; }
 float disc(vec2 p, vec2 c, float r){ return smoothstep(r, r - 1.2, length(p - c)); }
 void main(){
   vec2 fc = vec2(v_uv.x * u_res.x, (1.0 - v_uv.y) * u_res.y);
@@ -66,7 +69,8 @@ void main(){
   float autumn = smoothstep(0.45, 0.6, u_season) * smoothstep(0.85, 0.7, u_season);
   float winter = smoothstep(0.62, 0.75, u_season) * smoothstep(0.98, 0.85, u_season);
   float spring = smoothstep(0.0, 0.05, u_season) * smoothstep(0.3, 0.15, u_season);
-  float amb = mix(0.24 + u_nl * 0.4 + u_moons * 0.08, 1.0, daylight) * (1.0 - u_dim * 0.45) * (1.0 - hum * 0.22);
+  // Night is dim and blue, never black: the stars and whatever is in the sky give enough to read the ground by.
+  float amb = mix(min(0.46 + u_nl * 0.4 + u_moons * 0.07 + float(u_nb) * 0.015, 0.8), 1.0, daylight) * (1.0 - u_dim * 0.45) * (1.0 - hum * 0.22);
 
   // ---------- sky ----------
   vec3 dayTop = mix(pal(12), pal(9), 0.25);
@@ -75,19 +79,22 @@ void main(){
   vec3 skyNight = mix(pal(0) * 0.7, pal(2), wq.y * 0.8);
   vec3 sky = mix(skyNight, skyDay, daylight) + pal(14) * dusk * 0.3 * smoothstep(0.15, 0.6, wq.y);
   sky = mix(sky, pal(14) * 0.6 + pal(7) * 0.2, u_dust * 0.55);
+  vec2 sun0 = vec2((dayS - 0.25) * 2.0 * u_grid.x, (0.62 - sin(3.14159 * clamp((dayS - 0.25) * 2.0, 0.0, 1.0)) * 0.5) * u_grid.y);
+  vec3 cloudCol = mix(pal(2), pal(9), daylight * 0.85) * (1.0 - hum * 0.45) + pal(14) * dusk * 0.25;
+  // The sky is only worked out where it can be seen: in the air, and in water and puddles near the top of the ground.
+  if (gp.y < topY + 4.0) {
   // stars
   float st = h21(floor(gp * 0.7));
   float pin = mix(1.0, smoothstep(0.3, 0.05, length(fract(gp * 0.7) - 0.5)) * 2.0, det); // stars stay points up close
   if (st > 0.985) sky += pin * pal(9) * (1.0 - daylight) * (1.0 - hum) * (0.4 + 0.6 * sin(u_time * 3.0 + st * 400.0)) * (1.0 - u_dust);
   // the far dark of this system
-  { float nb = fbm(gp * 0.035 + u_hv.y); sky += mix(pal(int(u_hv.x)), pal(11), fbm(gp.yx * 0.06 + 7.0)) * pow(smoothstep(0.4, 0.9, nb), 2.0) * u_hv.z * 0.3 * (1.0 - daylight) * (1.0 - hum) * (1.0 - u_dust); }
+  if (u_fx > 0.5 && u_hv.z > 0.0 && daylight < 0.999) { float nb = fbm(gp * 0.035 + u_hv.y); sky += mix(pal(int(u_hv.x)), pal(11), fbm(gp.yx * 0.06 + 7.0)) * pow(smoothstep(0.4, 0.9, nb), 2.0) * u_hv.z * 0.3 * (1.0 - daylight) * (1.0 - hum) * (1.0 - u_dust); }
   // belt: a dusty band of glints
   if (u_arc.z > 0.01) { float by = abs(gp.y - (18.0 + sin(gp.x * 0.03) * 4.0 + (gp.x - u_grid.x * 0.5) * u_arc.w * 0.08)); sky += pal(7) * smoothstep(2.0 + u_arc.z * 2.0, 0.0, by) * (0.12 + 0.5 * step(0.95 - u_arc.z * 0.06, h21(floor(gp)))) * (0.4 + 0.6 * (1.0 - daylight)); }
   // rings: a wide arc
   if (u_arc.x > 0.01) { float ry = 34.0 + pow((gp.x - u_grid.x * 0.5) / u_grid.x, 2.0) * 120.0 + (gp.x - u_grid.x * 0.5) * u_arc.y * 0.12; float rd = abs(gp.y - ry);
     sky = mix(sky, mix(pal(8), pal(9), 0.5) * (0.5 + 0.5 * daylight + u_nl * 0.4), (smoothstep(2.6, 0.6, rd) * 0.5 + smoothstep(5.0, 3.6, rd) * smoothstep(3.4, 3.8, rd) * 0.25 + smoothstep(1.0, 0.2, abs(rd - 7.0)) * 0.3 * step(0.9, u_arc.x)) * (0.6 + 0.5 * u_arc.x)); }
   // suns: the first is this system's star
-  vec2 sun0 = vec2((dayS - 0.25) * 2.0 * u_grid.x, (0.62 - sin(3.14159 * clamp((dayS - 0.25) * 2.0, 0.0, 1.0)) * 0.5) * u_grid.y);
   vec3 starCol = mix(pal(9), u_star.rgb, 0.65) * (u_hv.w > 0.5 ? 0.7 + 0.5 * sin(u_time * 9.0) : 1.0);
   for (int s = 0; s < 3; s++) {
     if (float(s) >= 1.0 + u_suns) break;
@@ -126,10 +133,12 @@ void main(){
   for (int j = 0; j < 8; j++) { if (float(j) >= u_orb) break; float ox = fract(u_time * 0.012 + float(j) * 0.13); vec2 op = vec2(ox * u_grid.x, 22.0 + sin(ox * 3.14159) * -12.0 + float(j));
     sky += pal(10) * smoothstep(1.3, 0.2, length(gp - op)) * (0.8 + 0.4 * sin(u_pulse * 6.2831 + float(j))); }
   // clouds driven by humidity, pushed by the wind
-  float cn = fbm(vec2(gp.x * 0.045 - u_time * u_wind * 0.02, gp.y * 0.11 + u_time * 0.01));
-  float cloud = smoothstep(0.42, 0.75, cn + hum * 1.3 - 0.3) * smoothstep(0.6, 0.05, wq.y);
-  vec3 cloudCol = mix(pal(2), pal(9), daylight * 0.85) * (1.0 - hum * 0.45) + pal(14) * dusk * 0.25;
-  sky = mix(sky, cloudCol, cloud * 0.9);
+  float cloud = 0.0;
+  if (wq.y < 0.6) {
+    float cn = fbm(vec2(gp.x * 0.045 - u_time * u_wind * 0.02, gp.y * 0.11 + u_time * 0.01));
+    cloud = smoothstep(0.42, 0.75, cn + hum * 1.3 - 0.3) * smoothstep(0.6, 0.05, wq.y);
+    sky = mix(sky, cloudCol, cloud * 0.9);
+  }
   sky += pal(9) * u_flash * (0.3 + cloud * 0.6) * (0.3 + 0.7 * exp(-abs(gp.x - u_bolt.x) / 55.0));   // the flash is brightest round the bolt
   // lightning: a bolt that wanders down to where it strikes, and forks on the way
   if (u_bolt.z > 0.01 && gp.y < u_bolt.w) {
@@ -140,6 +149,7 @@ void main(){
     float df = abs(gp.x - bx - fdir * fl * 0.6 - (noise(vec2(yy * 0.5, u_bolt.y + 9.0)) - 0.5) * 6.0 * clamp(fl / 6.0, 0.0, 1.0));
     float bolt = smoothstep(1.1, 0.25, db) + smoothstep(0.9, 0.2, df) * step(0.0, fl) * smoothstep(34.0, 10.0, fl) * 0.7;
     sky += (pal(9) * bolt * 2.4 + mix(pal(9), pal(12), 0.5) * exp(-db * 0.2) * 0.45) * u_bolt.z * smoothstep(6.0, 15.0, yy);
+  }
   }
 
   // ---------- surface ----------
@@ -179,15 +189,15 @@ void main(){
     float n = h21(vec2(g));
     float fine = h21(floor(gp * 4.0)) - 0.5; // 4x4 grains per cell, visible when zoomed
     float det2 = smoothstep(8.0, 11.0, u_view.z), det3 = smoothstep(20.0, 26.0, u_view.z);
-    fine += det2 * (h21(floor(gp * 16.0)) - 0.5) * 0.8 + det3 * (noise(gp * 70.0) - 0.5) * 0.9;   // pebbles, then the grain of the grains
+    if (det2 > 0.0) { fine += det2 * (h21(floor(gp * 16.0)) - 0.5) * 0.8; if (det3 > 0.0) fine += det3 * (noise(gp * 70.0) - 0.5) * 0.9; }   // pebbles, then the grain of the grains
     if (kind <= 2u && det2 > 0.0) base *= 1.0 - det2 * 0.35 * smoothstep(0.18, 0.1, length(fract(gp * 3.0 + h21(floor(gp * 3.0)) * 0.6) - 0.5)) * step(0.7, h21(floor(gp * 3.0) + 3.0));
-    if (kind == 1u) { base *= 0.82 + 0.18 * noise(vec2(g) * vec2(0.18, 0.9)) + 0.12 * n; base *= 1.0 + det * (fine * 0.16 - 0.3 * step(0.8, noise(gp * vec2(2.3, 3.1)) * noise(gp.yx * 1.7 + 9.0) * 2.2)); } // strata, cracks
+    if (kind == 1u) { base *= 0.82 + 0.18 * noise(vec2(g) * vec2(0.18, 0.9)) + 0.12 * n; if (det > 0.0) base *= 1.0 + det * (fine * 0.16 - 0.3 * step(0.8, noise(gp * vec2(2.3, 3.1)) * noise(gp.yx * 1.7 + 9.0) * 2.2)); } // strata, cracks
     else if (kind == 2u) base *= 0.85 + 0.3 * n + det * fine * 0.4;                              // grains
     else if (kind == 3u) {                                                                       // water
       base = mix(base, pal(12) * 0.6, clamp(depth / 45.0, 0.0, 0.85));
       base = mix(base, sky, 0.18 * smoothstep(3.0, 0.0, depth));
       base += pal(9) * 0.18 * smoothstep(1.5, 0.0, depth) * (0.5 + 0.5 * sin(gp.x * 0.9 + u_time * 2.5 + sin(gp.x * 0.13) * 3.0));
-      base += pal(10) * 0.05 * step(0.8, noise(gp * 0.4 + u_time * 0.6)) * smoothstep(20.0, 2.0, depth);
+      if (depth < 20.0) base += pal(10) * 0.05 * step(0.8, noise(gp * 0.4 + u_time * 0.6)) * smoothstep(20.0, 2.0, depth);
       base += pal(9) * det * 0.07 * sin(gp.y * 9.0 + sin(gp.x * 2.0 + u_time * 1.7) * 2.0) * smoothstep(12.0, 0.0, depth);
       if (depth < 1.0) {
         // Foam where the water meets a bank, and a thin bright line along the top.
@@ -255,8 +265,8 @@ void main(){
         base += pal(10) * 0.14 * step(0.9, noise(gp * vec2(0.45, 0.1) + 3.0)) * smoothstep(2.0, 8.0, depth);
       } else base *= 1.0 + skin * facing * 0.35;   // highlands: hard light on the heights
     }
-    float lit = kind == 3u ? 1.0 : clamp(1.0 - max(depth - 3.0, 0.0) / 70.0, u_pl.y > 0.5 && u_pl.y < 1.5 ? 0.55 : 0.35, 1.0);
-    col = emissive > 0.5 ? base * 1.25 : base * amb * lit;
+    float lit = kind == 3u ? 1.0 : clamp(1.0 - max(depth - 3.0, 0.0) / 70.0, max(u_pl.y > 0.5 && u_pl.y < 1.5 ? 0.55 : 0.35, 0.5 * (1.0 - daylight)), 1.0);
+    col = emissive > 0.5 ? base * 1.25 : base * amb * lit * mix(vec3(0.82, 0.92, 1.2), vec3(1.0), daylight);
     float hot = smoothstep(0.76, 0.95, T);
     col += pal(13) * hot * 0.4 * (0.7 + 0.3 * sin(u_time * 4.0 + gp.x));
     float cold = smoothstep(0.42, 0.33, T);
@@ -268,9 +278,9 @@ void main(){
   if (m == 0u && hh > 0.0) {
     // Heavy worlds hold their air low and thick; on light ones the dust never quite comes down.
     if (u_pl.z > 0.2) col = mix(col, horizon * (0.3 + 0.7 * daylight), smoothstep(8.0, 0.0, hh) * 0.42 * u_pl.z);
-    if (u_pl.z < -0.2 && hh < 48.0) { vec2 dq = vec2(gp.x * 0.55 + u_time * 0.04, gp.y * 0.55 + sin(u_time * 0.2 + gp.x * 0.1) * 0.6);
+    if (u_fx > 0.5 && u_pl.z < -0.2 && hh < 48.0) { vec2 dq = vec2(gp.x * 0.55 + u_time * 0.04, gp.y * 0.55 + sin(u_time * 0.2 + gp.x * 0.1) * 0.6);
       col += pal(7) * step(0.982, h21(floor(dq))) * smoothstep(0.42, 0.1, length(fract(dq) - 0.5)) * (-u_pl.z) * 0.55 * (0.3 + 0.7 * daylight) * smoothstep(48.0, 20.0, hh); }
-    if (hh < 20.0) {
+    if (u_fx > 0.5 && hh < 20.0) {
       // Smoke and glow over anything hot enough: lava, fires, scorched ground. It leans with the wind.
       float Tb = texture(u_temp, vec2(gp.x - u_wind * hh * 0.7, topY + 1.5) / u_grid).r;
       float hotb = smoothstep(0.78, 0.95, Tb);
@@ -347,6 +357,24 @@ export const factory: PlanetRendererFactory = () => {
   const structFrame = { view: mapCam, wind: 0, season: 0, snow: 0 } as unknown as Parameters<Structures['draw']>[0];
   const peopleFrame = { fp: null, view: mapCam } as unknown as Parameters<People['draw']>[0];
   const mat = new Uint8Array(512);
+  const palF = new Float32Array(48);   // the palette as floats, for the shaders that take it as uniforms
+  // First-person records, reused every frame.
+  const fpArgs = { view: null, W: 0, H: 0, top: null, matTex: null, palTex: null, palF, time: 0, flash: 0, eyeX: 0, wet: 0, snow: 0, fog: 0, bolt: 0, boltX: 0, boltSeed: 0 } as unknown as Parameters<ReturnType<typeof createFirstPerson>['draw']>[0];
+  type PeopleFp = NonNullable<Parameters<People['draw']>[0]['fp']>;
+  const placeOut: [number, number, number] = [0, 0, 0];
+  let placeZ = 0;
+  // Those who come for you (or to you) step out of the slice toward where you stand.
+  const placeFn: PeopleFp['place'] = (s) => {
+    const near = s.role === ROLE.attack || s.role === ROLE.kneel || s.role === ROLE.watch || s.role === ROLE.listen;
+    const z = near ? placeZ + (s.seed - 0.5) * 8 : s.z;
+    // Nobody stands inside your head: keep them at arm's length.
+    let x = s.x;
+    const dx = x - fpCam.ro[0];
+    if (near && Math.abs(dx) < 2.4) x = fpCam.ro[0] + (dx >= 0 ? 1 : -1) * (2.6 + fract(s.seed * 5.3) * 2.2);
+    placeOut[0] = x; placeOut[1] = fpCam.ground(x, z); placeOut[2] = z;
+    return placeOut;
+  };
+  const peopleFp: PeopleFp = { ro: [0, 0, 0], yaw: 0, pitch: 0, depth: null as unknown as WebGLTexture, place: placeFn, tw: 0, th: 0, far: 260 };
   const vill = new Float32Array(48);
   let matKey = '';
   let lastTick = -1;
@@ -378,7 +406,7 @@ export const factory: PlanetRendererFactory = () => {
   const build = () => {
     const gl = core!.gl;
     prog = core!.program(FULLSCREEN_VS, FS);
-    for (const k of ['u_res', 'u_rect', 'u_grid', 'u_view', 'u_cells', 'u_mat', 'u_top', 'u_temp', 'u_hum', 'u_pal', 'u_day', 'u_season', 'u_time', 'u_pulse', 'u_nl', 'u_dim', 'u_warm', 'u_dust', 'u_wind', 'u_rain', 'u_flash', 'u_moons', 'u_suns', 'u_orb', 'u_pl', 'u_vill', 'u_nvill', 'u_wet', 'u_snowc', 'u_snowing', 'u_fog', 'u_life', 'u_bolt', 'u_road', 'u_nroad', ...HEAVENS_UNIFORMS]) loc[k] = gl.getUniformLocation(prog, k);
+    for (const k of ['u_res', 'u_rect', 'u_grid', 'u_view', 'u_cells', 'u_mat', 'u_top', 'u_temp', 'u_hum', 'u_day', 'u_season', 'u_time', 'u_pulse', 'u_nl', 'u_dim', 'u_warm', 'u_dust', 'u_wind', 'u_rain', 'u_flash', 'u_moons', 'u_suns', 'u_orb', 'u_palc', 'u_oct', 'u_fx', 'u_pl', 'u_vill', 'u_nvill', 'u_wet', 'u_snowc', 'u_snowing', 'u_fog', 'u_life', 'u_bolt', 'u_road', 'u_nroad', ...HEAVENS_UNIFORMS]) loc[k] = gl.getUniformLocation(prog, k);
     W = H = 0;
     matKey = '';
     fp = null;
@@ -420,6 +448,7 @@ export const factory: PlanetRendererFactory = () => {
         for (const [id, c, k] of eng) { mat[id * 2] = c; mat[id * 2 + 1] = k; }
         upload(tex.mat!, 256, 1, gl.RG_INTEGER, mat);
         tex.pal = core.paletteTexture(v.universe.palette);
+        for (let i = 0; i < 16; i++) { const c = hexToRgb(v.universe.palette[i] ?? '#000000'); palF[i * 3] = c[0] / 255; palF[i * 3 + 1] = c[1] / 255; palF[i * 3 + 2] = c[2] / 255; }
         let h = 2166136261;
         for (let i = 0; i < matKey.length; i++) h = Math.imul(h ^ matKey.charCodeAt(i), 16777619);
         wx.seed = h >>> 0;
@@ -495,36 +524,32 @@ export const factory: PlanetRendererFactory = () => {
       const sunUp = pl.locked ? Math.max(-1, Math.min(1, (camX / Math.max(1, W) - 0.5) * 2.7)) : -Math.cos((env.day / 1000) * Math.PI * 2);
       const lockDay = pl.locked ? (Math.acos(-sunUp) / (Math.PI * 2)) * 1000 : 0;
       const dayl = Math.max(0, Math.min(1, (sunUp + 0.3) / 0.65));
-      const ambP = (0.32 + Math.max(0, v.modifiers.nightLight) / 250 + (1 - 0.32) * dayl) * (1 - Math.max(0, v.modifiers.dimming) / 220);
+      const ambP = (0.44 + Math.max(0, v.modifiers.nightLight) / 250 + (1 - 0.44) * dayl) * (1 - Math.max(0, v.modifiers.dimming) / 220);
       if (v.view?.fp) {
         fp ??= createFirstPerson(core);
         const body = people.avatar();
         const view3 = v.view.fp;
         let fv: PlanetRenderView = v;
         if (pl.locked) { Object.assign(lockEnv, env); lockEnv.day = lockDay; Object.assign(lockView, v); lockView.env = lockEnv; fv = lockView; }
-        const cam = fp.draw({ view: fv, W, H, top, matTex: tex.mat!, palTex: tex.pal!, time, flash, eyeX: body ? body.x : view3.x, wet: wx.wet, snow: wx.snow, fog: wx.fog, bolt: wx.bolt, boltX: wx.boltX, boltSeed: wx.boltSeed });
+        // Quality reaches everything here: target size, shader detail, and how far away things are still drawn.
+        const ql = v.quality ?? 1;
+        const far = ql >= 0.9 ? 260 : ql >= 0.7 ? 170 : ql >= 0.52 ? 130 : 100;
+        fpArgs.view = fv; fpArgs.W = W; fpArgs.H = H; fpArgs.top = top; fpArgs.matTex = tex.mat!; fpArgs.palTex = tex.pal!; fpArgs.time = time; fpArgs.flash = flash;
+        fpArgs.eyeX = body ? body.x : view3.x; fpArgs.wet = wx.wet; fpArgs.snow = wx.snow; fpArgs.fog = wx.fog; fpArgs.bolt = wx.bolt; fpArgs.boltX = wx.boltX; fpArgs.boltSeed = wx.boltSeed;
+        const cam = fp.draw(fpArgs);
         lifeFrame.civ = v.civ; lifeFrame.env = env; lifeFrame.top = top; lifeFrame.kind = colKind; lifeFrame.W = W; lifeFrame.H = H;
         lifeFrame.seed = siteSeed; lifeFrame.day = (pl.locked ? lockDay : wx.day) / 1000; lifeFrame.time = time; lifeFrame.dt = dt; lifeFrame.snow = wx.snow; lifeFrame.dry = wx.dry; lifeFrame.leaf = wx.leaf;
-        fpCam.ro = cam.ro; fpCam.yaw = cam.yaw; fpCam.pitch = cam.pitch; fpCam.depth = cam.depth; fpCam.ground = cam.ground;
-        lifeFrame.fp = fpCam; lifeFrame.rect = v.rect; lifeFrame.amb = ambP; lifeFrame.night = 1 - dayl; lifeFrame.pal = tex.pal!;
+        fpCam.ro = cam.ro; fpCam.yaw = cam.yaw; fpCam.pitch = cam.pitch; fpCam.depth = cam.depth; fpCam.ground = cam.ground; fpCam.tw = cam.tw; fpCam.th = cam.th;
+        lifeFrame.fp = fpCam; lifeFrame.rect = v.rect; lifeFrame.amb = ambP; lifeFrame.night = 1 - dayl; lifeFrame.pal = tex.pal!; lifeFrame.far = far; lifeFrame.quality = ql;
         story ??= createStory(core);
         story.back(lifeFrame);
-        people.draw({
-          fp: { ro: cam.ro, yaw: cam.yaw, pitch: cam.pitch, depth: cam.depth,
-            // Those who come for you (or to you) step out of the slice toward where you stand.
-            place: (s) => {
-              const near = s.role === ROLE.attack || s.role === ROLE.kneel || s.role === ROLE.watch || s.role === ROLE.listen;
-              const z = near ? view3.z + (s.seed - 0.5) * 8 : s.z;
-              // Nobody stands inside your head: keep them at arm's length.
-              let x = s.x;
-              const dx = x - cam.ro[0];
-              if (near && Math.abs(dx) < 2.4) x = cam.ro[0] + (dx >= 0 ? 1 : -1) * (2.6 + fract(s.seed * 5.3) * 2.2);
-              return [x, cam.ground(x, z), z];
-            } },
-          view: { cx: 0, cy: 0, zoom: 1 }, rect: v.rect, W, H, time, amb: ambP, night: 1 - dayl, pal: tex.pal!,
-        });
+        placeZ = view3.z;
+        peopleFp.ro = cam.ro; peopleFp.yaw = cam.yaw; peopleFp.pitch = cam.pitch; peopleFp.depth = cam.depth; peopleFp.tw = cam.tw; peopleFp.th = cam.th; peopleFp.far = far;
+        peopleFrame.fp = peopleFp; peopleFrame.view = mapCam; peopleFrame.rect = v.rect; peopleFrame.W = W; peopleFrame.H = H; peopleFrame.time = time; peopleFrame.amb = ambP; peopleFrame.night = 1 - dayl; peopleFrame.pal = tex.pal!;
+        people.draw(peopleFrame);
         life ??= createLife(core);
         life.draw(lifeFrame);
+        fp.present();
         return;
       }
       // ---- villages: light halos, and the paths worn between neighbours ----
@@ -555,13 +580,15 @@ export const factory: PlanetRendererFactory = () => {
       // ---- draw ----
       core.clear(v.universe.palette[0]!);
       gl.useProgram(prog);
-      const bind = (unit: number, t: WebGLTexture, name: string) => {
-        gl.activeTexture(gl.TEXTURE0 + unit);
-        gl.bindTexture(gl.TEXTURE_2D, t);
-        gl.uniform1i(loc[name]!, unit);
-      };
-      bind(0, tex.cells!, 'u_cells'); bind(1, tex.pal!, 'u_pal'); bind(2, tex.mat!, 'u_mat'); bind(3, tex.top!, 'u_top');
-      bind(4, tex.temp!, 'u_temp'); bind(5, tex.hum!, 'u_hum');
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex.cells!); gl.uniform1i(loc.u_cells!, 0);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, tex.mat!); gl.uniform1i(loc.u_mat!, 2);
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, tex.top!); gl.uniform1i(loc.u_top!, 3);
+      gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, tex.temp!); gl.uniform1i(loc.u_temp!, 4);
+      gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, tex.hum!); gl.uniform1i(loc.u_hum!, 5);
+      const ql = v.quality ?? 1;
+      gl.uniform3fv(loc.u_palc!, palF);
+      gl.uniform1i(loc.u_oct!, ql >= 0.7 ? 5 : ql >= 0.52 ? 4 : 3);
+      gl.uniform1f(loc.u_fx!, ql >= 0.52 ? 1 : 0);
       const R = v.rect;
       gl.uniform2f(loc.u_res!, core.width(), core.height());
       gl.uniform4f(loc.u_rect!, R.x, R.y, R.w, R.h);
@@ -596,12 +623,19 @@ export const factory: PlanetRendererFactory = () => {
       gl.uniform4f(loc.u_bolt!, wx.boltX, wx.boltSeed, wx.bolt, top[wx.boltX | 0] ?? H);
       gl.uniform2fv(loc.u_road!, roads);
       gl.uniform1i(loc.u_nroad!, nr);
-      core.quad(prog);
+      {
+        // Only the surface rect is shaded, not the whole canvas.
+        const sx = core.canvas.width / Math.max(1, core.width()), sy = core.canvas.height / Math.max(1, core.height());
+        gl.enable(gl.SCISSOR_TEST);
+        gl.scissor(Math.floor(R.x * sx), Math.floor(core.canvas.height - (R.y + R.h) * sy), Math.ceil(R.w * sx) + 1, Math.ceil(R.h * sy) + 1);
+        core.quad(prog);
+        gl.disable(gl.SCISSOR_TEST);
+      }
       mapCam.cx = v.view?.cx ?? W / 2; mapCam.cy = v.view?.cy ?? H / 2; mapCam.zoom = Math.max(1, v.view?.zoom ?? 1);
       life ??= createLife(core);
       lifeFrame.civ = v.civ; lifeFrame.env = env; lifeFrame.top = top; lifeFrame.kind = colKind; lifeFrame.W = W; lifeFrame.H = H;
       lifeFrame.seed = siteSeed; lifeFrame.day = (pl.locked ? lockDay : wx.day) / 1000; lifeFrame.time = time; lifeFrame.dt = dt; lifeFrame.snow = wx.snow; lifeFrame.dry = wx.dry; lifeFrame.leaf = wx.leaf;
-      lifeFrame.fp = null; lifeFrame.view = mapCam; lifeFrame.rect = v.rect; lifeFrame.amb = ambP; lifeFrame.night = 1 - dayl; lifeFrame.pal = tex.pal!;
+      lifeFrame.fp = null; lifeFrame.far = 260; lifeFrame.quality = ql; lifeFrame.view = mapCam; lifeFrame.rect = v.rect; lifeFrame.amb = ambP; lifeFrame.night = 1 - dayl; lifeFrame.pal = tex.pal!;
       life.draw(lifeFrame);
       story ??= createStory(core);
       story.back(lifeFrame);
@@ -611,7 +645,7 @@ export const factory: PlanetRendererFactory = () => {
       structFrame.wind = env.wind / 100; structFrame.season = env.season / 1000; structFrame.snow = wx.snow;
       structures.draw(structFrame);
       story.front(lifeFrame);
-      peopleFrame.view = mapCam; peopleFrame.rect = v.rect; peopleFrame.W = W; peopleFrame.H = H; peopleFrame.time = time; peopleFrame.amb = ambP; peopleFrame.night = 1 - dayl; peopleFrame.pal = tex.pal!;
+      peopleFrame.fp = null; peopleFrame.view = mapCam; peopleFrame.rect = v.rect; peopleFrame.W = W; peopleFrame.H = H; peopleFrame.time = time; peopleFrame.amb = ambP; peopleFrame.night = 1 - dayl; peopleFrame.pal = tex.pal!;
       people.draw(peopleFrame);
     },
     dispose: () => { core = null; },
