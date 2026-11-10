@@ -24,7 +24,10 @@ export const boot = async (host: HTMLElement) => {
   const navCbs: ((from: ScreenId | null, to: ScreenId) => void)[] = [];
   let transition: ((from: ScreenId | null, to: ScreenId, swap: () => void) => void) | null = null;
   let swapping = false;
+  let queued: ScreenId | null = null;
   const go = (to: ScreenId) => {
+    // A navigation that lands while one is animating waits for it, then runs.
+    if (swapping) { queued = to; return; }
     const from = currentId;
     let done = false;
     const swap = () => {
@@ -42,9 +45,11 @@ export const boot = async (host: HTMLElement) => {
       app.ctx.audio.sfx('nav');
       persist();
       for (const cb of navCbs) cb(from, to);
+      const next = queued;
+      queued = null;
+      if (next && next !== currentId) go(next);
     };
-    // A second navigation while one is animating finishes at once.
-    if (transition && from && !swapping) {
+    if (transition && from) {
       swapping = true;
       try { transition(from, to, swap); } catch { swap(); }
     } else swap();
