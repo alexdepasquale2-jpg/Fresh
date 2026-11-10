@@ -24,6 +24,7 @@ const EVENT: Partial<Record<Kind, string[]>> = {
   tech: ['%v learned %t.', '%v came into the age of %t.'],
   launch: ['From %v a small light rose and did not come down.', '%v sent a lamp into the sky.', '%v put a new star into your sky.'],
   light: ['%v sang toward the sky.'],
+  born: ['A child was born in %v.'], deed: ['Someone in %v did a thing worth remembering.'], passed: ['An elder of %v died.'],
   traded: ['Traders from %v sold their wares in %o.', '%v and %o struck a bargain.'],
   struck: ['The stranger struck back at %v, and they ran.', 'Those of %v who raised their hands against the stranger fell.'],
   preached: ['The stranger spoke at %v, and some stayed to listen.', 'In %v they sat down around the stranger and heard it speak.'],

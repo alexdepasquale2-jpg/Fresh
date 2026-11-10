@@ -383,7 +383,7 @@ export const createFirstPerson = (core: GlCore) => {
 
       // ---- target ----
       const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const q = Math.max(0.9, 0.7 * dpr);
+      const q = Math.max(0.45, Math.max(0.9, 0.7 * dpr) * Math.max(0.4, Math.min(1, v.quality ?? 1)));
       const w = Math.max(64, Math.round(v.rect.w * q)), h = Math.max(48, Math.round(v.rect.h * q));
       if (w !== fw || h !== fh) {
         fw = w; fh = h;

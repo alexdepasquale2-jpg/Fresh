@@ -578,6 +578,7 @@ const planet: ScreenFactory = () => {
         modifiers: ctx.skyRules.effects(sky, planetSpec), pulse: ctx.pulse().phase(),
         rect: { x: sr.left - cr.left, y: sr.top - cr.top, w: sr.width, h: sr.height },
         view,
+        quality: ctx.perf.resolutionScale(),
       }, dt);
       if (f.tick === lastTick) return;
       lastTick = f.tick;

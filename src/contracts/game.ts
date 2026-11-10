@@ -88,6 +88,10 @@ export interface DiveView {
   /** Star the player stopped at, or is near enough to stop at. */
   readonly star: StarRef | null;
   readonly narration: string;
+  /** Folds until the bottom of this universe (0 = you are at the bottom). Every universe has one, seeded. */
+  readonly toBottom?: number;
+  /** True once the fall has reached the bottom: the room where someone keeps a box. */
+  readonly bottom?: boolean;
 }
 export type CaptureResult =
   | { ok: true; serialNumber: SerialNumber; slot: number }
