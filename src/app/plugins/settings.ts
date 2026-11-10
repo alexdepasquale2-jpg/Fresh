@@ -23,7 +23,7 @@ interface Settings {
   haptics: boolean;
 }
 const DEFAULTS: Settings = { text: 1, contrast: false, reduceMotion: false, confirmLight: false, speed: -1, haptics: false };
-const GUIDE_KEY = 'sallow-guide-v1';
+const GUIDE_KEY = 'sallow-guide';
 /** Device preferences: a new game does not forget them. */
 const KEEP_ON_RESET = ['sallow-settings', 'sallow-quality-mode', 'sallow-sound', 'sallow-muted'];
 const SCREEN_NAMES: Record<ScreenId, string> = { bedroom: 'The bedroom', box: 'The Box', dive: 'A dive', system: 'A star and its worlds', planet: 'A world', outside: 'Outside', battle: 'A battle', mirror: 'The mirror' };
@@ -345,11 +345,11 @@ export const plugin: Plugin = (shell: Shell) => {
       row('High contrast', 'Brighter ink, harder edges.', toggle('set-contrast', () => st.contrast, (v) => set('contrast', v))),
       row('Reduce motion', 'Stills the drifting, sliding and flashing.', toggle('set-motion', () => st.reduceMotion, (v) => set('reduceMotion', v))),
     );
-    const guideState = (): { status?: string; stage?: number } => { try { return (JSON.parse(localStorage.getItem(GUIDE_KEY) ?? 'null') as { status?: string; stage?: number } | null) ?? {}; } catch { return {}; } };
-    const hintsOn = () => { const s = guideState().status; return s === undefined || s === 'new' || s === 'active'; };
-    disp.append(row('Show hints', 'Mote walks you through it. Changing this reloads the game.', toggle('set-hints', hintsOn, (v) => {
-      const g = guideState();
-      const next = v ? { status: 'active', stage: g.status === 'skipped' && typeof g.stage === 'number' ? g.stage : 0, collapsed: false } : { status: 'skipped', stage: typeof g.stage === 'number' ? g.stage : 0, collapsed: false };
+    // The tutorial keeps its state in the 'sallow-guide' store; only its `hints` flag is ours to flip.
+    const guideState = (): Record<string, unknown> => { try { return (JSON.parse(localStorage.getItem(GUIDE_KEY) ?? 'null') as Record<string, unknown> | null) ?? {}; } catch { return {}; } };
+    const hintsOn = () => guideState().hints !== false;
+    disp.append(row('Show hints', 'Mote tells you things as you come to them. Changing this reloads the game.', toggle('set-hints', hintsOn, (v) => {
+      const next = { ...guideState(), hints: v };
       ctx.persist();
       void sleep(500).then(() => {
         try { localStorage.setItem(GUIDE_KEY, JSON.stringify(next)); } catch { /* storage blocked */ }
