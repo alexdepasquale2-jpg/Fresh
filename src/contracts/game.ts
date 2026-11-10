@@ -1,6 +1,6 @@
 import type { SerialNumber, FoldAddress } from './seed';
 import type { UniverseSpec } from './universe';
-import type { FoldNode, StarRef } from './fold';
+import type { FoldNode, StarRef, Stratum, FoldThingKind } from './fold';
 
 export const LIGHT_MAX_PIPS = 8;
 /**
@@ -92,10 +92,55 @@ export interface DiveView {
   readonly toBottom?: number;
   /** True once the fall has reached the bottom: the room where someone keeps a box. */
   readonly bottom?: boolean;
+  /** The stratum the fall is in, and the universe's whole ordered set. */
+  readonly stratum?: Stratum | null;
+  readonly strata?: readonly Stratum[];
+  /** Consecutive folds fallen without stopping, and the multiplier it earns (1..5). */
+  readonly streak?: number;
+  readonly multiplier?: number;
+  /** What this dive has gathered so far; part of it comes back as Light when the dive ends. */
+  readonly haul?: number;
+  /** 0 = nothing follows; otherwise how many folds behind it is (1 = at your heels). */
+  readonly follower?: number;
+  /** True while an undertow has the steering. */
+  readonly steerLocked?: boolean;
+  /** Set once the dive has ended (star, surface or floor), until the next start. */
+  readonly summary?: DiveSummary | null;
 }
+export interface DiveSummary {
+  readonly reason: 'star' | 'surface' | 'floor';
+  readonly depth: number;
+  readonly best: number;
+  readonly newBest: boolean;
+  /** Folds fallen in this dive. */
+  readonly folds: number;
+  /** Names of the strata this dive passed through, in order (the first is where it began). */
+  readonly strata: readonly string[];
+  readonly pieces: number;
+  readonly wells: number;
+  readonly echoes: number;
+  readonly wrecks: number;
+  readonly flickers: number;
+  readonly hazardsHit: number;
+  readonly hazardsDodged: number;
+  readonly bestStreak: number;
+  readonly haul: number;
+  /** Glow points (1000 = one pip) carried back up as Light. */
+  readonly lightBack: number;
+}
+/** Things that happened since the last takeEvents(). The HUD says them and applies what the dive cannot reach (sky pieces). */
+export type DiveEvent =
+  | { readonly type: 'stratum'; readonly stratum: Stratum }
+  | { readonly type: 'pickup'; readonly kind: FoldThingKind; readonly key: number; readonly power: number; readonly reward: 'piece' | 'light' | 'reliquary' | 'voice' }
+  | { readonly type: 'hazard'; readonly kind: FoldThingKind }
+  | { readonly type: 'dodge'; readonly kind: FoldThingKind }
+  | { readonly type: 'follower'; readonly state: 'caught' | 'lost' }
+  | { readonly type: 'milestone'; readonly depth: number; readonly key: number; readonly reward: 'piece' | 'light' | 'reliquary' }
+  | { readonly type: 'streak'; readonly multiplier: number }
+  | { readonly type: 'streak-lost'; readonly streak: number };
 export type CaptureResult =
   | { ok: true; serialNumber: SerialNumber; slot: number }
-  | { ok: false; reason: 'no-reliquary' | 'no-flicker' | 'box-full' | 'duplicate' };
+  | { ok: false; reason: 'no-reliquary' | 'no-flicker' | 'box-full' | 'duplicate' | 'missed' | 'grazed' };
 
 /**
  * Dive state machine: hold to fall, release to hover, release near a star to
@@ -106,12 +151,20 @@ export interface Dive {
   hold(): void;
   release(): void;
   /** Throw a reliquary at child index (1..6 or 0). */
-  throwAt(childIndex: number): CaptureResult;
+  /**
+   * With accuracy (0..1000, how well the throw was timed) the catch is a skill moment: a poor throw is
+   * 'missed' (the reliquary is spent, the flicker stays), a near one 'grazed' (nothing is spent). Without it, as before.
+   */
+  throwAt(childIndex: number, accuracy?: number): CaptureResult;
   /** Steer the fall into child index 0..6. Falling into a star lands on it. */
   aim(childIndex: number): void;
   update(ticks: number): void;
   surface(): void;
   view(): DiveView;
+  /** Drain what happened since the last call. */
+  takeEvents?(): readonly DiveEvent[];
+  /** Things (by FoldThing.key) already taken from this universe on earlier dives; they are gone from the folds. */
+  bindTaken?(taken: { has(key: number): boolean } | null): void;
 }
 export type DiveFactory = (deps: {
   fold: import('./fold').FoldGen;

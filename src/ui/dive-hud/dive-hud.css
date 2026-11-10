@@ -1,5 +1,38 @@
-/* Dive HUD: the floor of a universe, shown on the depth bar once it is near. */
+/* Dive HUD. Tokens only. */
+/* The floor of a universe, shown on the depth bar once it is near. */
 .depth-bar .bar-floor { position: absolute; top: -5px; bottom: -5px; width: 4px; margin-left: -4px; background: var(--ink-bright); box-shadow: 0 0 8px var(--gold); animation: bar-floor 1.1s steps(2) infinite; }
 .depth-bar.near-floor { border-color: var(--line); }
+/* Where each stratum begins. */
+.depth-bar .bar-stratum { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--ink-muted); }
 @keyframes bar-floor { 50% { opacity: .35; } }
-@media (prefers-reduced-motion: reduce) { .depth-bar .bar-floor { animation: none; } }
+
+.screen .dive-status { min-height: 14px; }
+.screen .dive-status > .dive-stratum { flex: 1 1 auto; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.screen .dive-status > .dive-streak { flex: 0 0 auto; text-align: right; white-space: nowrap; }
+.dive-streak.hot { color: var(--glow); }
+.dive-threat { display: block; min-height: 20px; padding: 2px 6px; margin: -4px 0; border: 1px solid transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dive-threat.on { border-color: var(--gold); color: var(--ink-bright); background: var(--panel); }
+.dive-say { min-height: 44px; margin: 0; }
+
+.fold-field { position: relative; min-height: 0; overflow: hidden; }
+.fold-tag { position: absolute; left: 0; top: 0; padding: 1px 4px; font: 600 9px var(--font-ui); letter-spacing: .1em; font-style: normal; white-space: nowrap; color: var(--ink-bright); background: var(--bg); border: 1px solid var(--line-dim); pointer-events: none; transition: opacity .15s; }
+.fold-tag.bad { color: var(--bg); background: var(--ink-bright); border-color: var(--gold); }
+
+.stratum-banner { position: absolute; left: 0; right: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; pointer-events: none; opacity: 0; transform: translateY(-6px); transition: opacity .5s, transform .5s; }
+.stratum-banner.on { opacity: 1; transform: none; }
+.stratum-banner b { font: 400 24px var(--font-voice); color: var(--ink-bright); padding: 0 8px; background: var(--bg); }
+.stratum-banner span { font: italic 14px var(--font-voice); color: var(--ink); padding: 0 6px; background: var(--bg); }
+
+.dive-summary { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; padding: var(--pad); }
+.dive-summary[hidden] { display: none; }
+.dive-summary .sum-panel { width: 100%; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); background: var(--panel); border: 2px solid var(--line); animation: sum-in .35s ease-out; }
+.dive-summary .k-title { margin: 0; }
+.dive-summary .sum-line { margin: 0; display: flex; flex-direction: column; gap: 2px; font: italic 15px/1.3 var(--font-voice); color: var(--ink); }
+.dive-summary .k-btn { min-height: var(--btn-primary); min-width: 200px; }
+@keyframes sum-in { from { opacity: 0; transform: translateY(10px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .depth-bar .bar-floor, .dive-summary .sum-panel { animation: none; }
+  .stratum-banner, .fold-tag { transition: none; }
+  .stratum-banner { transform: none; }
+}
