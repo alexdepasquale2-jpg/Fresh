@@ -8,6 +8,7 @@ import { createApp, STARTER_SERIALS } from './context';
 import { createHub } from './hub';
 import { plugins } from './plugins';
 import type { Shell } from './plugins';
+import { stage } from './plugins/desktop';
 
 export const boot = async (host: HTMLElement) => {
   const canvas = document.createElement('canvas');
@@ -16,7 +17,8 @@ export const boot = async (host: HTMLElement) => {
   layer.className = 'screen';
   host.append(canvas, layer);
 
-  const gl = createGlCore(canvas);
+  // Desktop mode caps the drawing buffer through this; in the phone layout it is always 1.
+  const gl = createGlCore(canvas, { resolutionScale: () => stage.glScale });
   let current: Screen | null = null;
   let saveTimer = 0;
 

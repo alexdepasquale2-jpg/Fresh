@@ -15,9 +15,14 @@ export type InputEvent =
 /** What a key or pad button means. tool1..tool9 are the number keys. */
 export type InputAction =
   | 'left' | 'right' | 'up' | 'down' | 'hold' | 'confirm' | 'back' | 'menu' | 'pause' | 'slower' | 'faster'
-  | 'tool1' | 'tool2' | 'tool3' | 'tool4' | 'tool5' | 'tool6' | 'tool7' | 'tool8' | 'tool9';
-/** One row of the bindings list shown in Settings. */
-export interface InputBinding { readonly action: InputAction; readonly does: string; readonly keys: string; readonly pad: string }
+  | 'tool1' | 'tool2' | 'tool3' | 'tool4' | 'tool5' | 'tool6' | 'tool7' | 'tool8' | 'tool9'
+  /** Desktop additions. A listener that does not know one of these must ignore it. */
+  | 'zoomIn' | 'zoomOut' | 'tabNext' | 'tabPrev' | 'journal' | 'codex' | 'almanac' | 'box' | 'eyes' | 'guard' | 'fuse'
+  | 'help' | 'speed0' | 'speed1' | 'speed3' | 'fullscreen';
+/** One row of the bindings list shown in Settings. `where` (optional) names the only screen the action lives on. */
+export interface InputBinding { readonly action: InputAction; readonly does: string; readonly keys: string; readonly pad: string; readonly where?: string }
+/** Key codes per action: KeyboardEvent.code, with a "Shift+" prefix for a shifted key ("Shift+Tab"). */
+export type InputKeymap = Readonly<Partial<Record<InputAction, readonly string[]>>>;
 /**
  * Pointer gestures. Coordinates are CSS px relative to the attached element.
  * Invariants: a press becomes exactly one of tap / hold..release / drag;
@@ -30,6 +35,16 @@ export interface Input {
   on(cb: (e: InputEvent) => void): () => void;
   /** Optional: the keyboard and gamepad bindings this input knows, for a help page. */
   bindings?(): readonly InputBinding[];
+  /** Optional: the key codes bound to every action right now, and the defaults. */
+  keymap?(): InputKeymap;
+  defaultKeymap?(): InputKeymap;
+  /** Optional: rebind. Actions left out keep their default; null puts every default back. */
+  setKeymap?(map: InputKeymap | null): void;
+  /**
+   * Optional: see an event before the subscribers do. Returning true consumes it (no subscriber hears it).
+   * Tab is only taken from the browser when an interceptor consumes it.
+   */
+  intercept?(cb: (e: InputEvent) => boolean): () => void;
 }
 export type InputFactory = () => Input;
 

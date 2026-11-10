@@ -1,0 +1,157 @@
+/* Desktop mode. Every layout rule sits under :root.sallow-desktop, so the phone layout never sees it.
+   The only unscoped rules are this plugin's own dt-* pieces (the Controls page works on a phone too).
+   Stage variables (set by desktop.ts while the mode is on): --stage-w --stage-h --panel-w --play-w --ui-scale. */
+
+/* ---------- the stage ---------- */
+.sallow-desktop.sallow-theatre #app { inset: 0; margin: auto; width: min(100vw, calc(var(--theatre-h) * 16 / 9)); height: min(100dvh, var(--theatre-h)); outline: 2px solid var(--line-dim); overflow: hidden; }
+.sallow-desktop #app { place-items: stretch; overflow: hidden; }
+.sallow-desktop .screen { position: absolute; inset: 0; width: 100%; height: 100%; padding: 16px 20px; isolation: isolate; }
+/* Two-pane screens: the play surface on the left, a panel on the right. */
+.sallow-desktop .screen[data-screen='bedroom'], .sallow-desktop .screen[data-screen='mirror'], .sallow-desktop .screen[data-screen='planet'], .sallow-desktop .screen[data-screen='system'] { padding-left: calc(var(--play-w) + 20px); overflow: hidden; }
+.sallow-desktop .screen[data-screen='bedroom']::before, .sallow-desktop .screen[data-screen='mirror']::before, .sallow-desktop .screen[data-screen='planet']::before, .sallow-desktop .screen[data-screen='system']::before { content: ''; position: absolute; z-index: -1; left: var(--play-w); top: 0; right: 0; bottom: 0; background: var(--panel); border-left: 2px solid var(--line-dim); }
+
+/* ---------- things every screen shares ---------- */
+.sallow-desktop * { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.sallow-desktop ::-webkit-scrollbar { display: block; width: 8px; height: 8px; }
+.sallow-desktop ::-webkit-scrollbar-thumb { background: var(--line); }
+.sallow-desktop ::-webkit-scrollbar-track { background: transparent; }
+.sallow-desktop button:not(:disabled), .sallow-desktop [role='button'], .sallow-desktop summary { cursor: pointer; }
+.sallow-desktop button:disabled { cursor: default; }
+.sallow-desktop button:not(:disabled):hover { filter: brightness(1.22); }
+.sallow-desktop .k-slot:not(:disabled):hover, .sallow-desktop .k-tile:not(:disabled):hover, .sallow-desktop .hub-item:hover, .sallow-desktop .sp-tab:hover { border-color: var(--glow); }
+.sallow-desktop :focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
+.sallow-desktop [data-drag] { cursor: grab; }
+.sallow-desktop [data-drag]:active { cursor: grabbing; }
+
+/* ---------- hub: a centred dialog with a left nav; notices top right ---------- */
+.sallow-desktop .hub-frame { left: 0; top: 0; width: 100%; height: 100%; transform: none; }
+.sallow-desktop .hub-frame.open { pointer-events: auto; background: color-mix(in srgb, var(--bg) 74%, transparent); }
+.sallow-desktop .hub-btn { right: 10px; top: 10px; }
+.sallow-desktop .hub-btn i { width: 30px; height: 30px; font-size: 16px; }
+.sallow-desktop .hub-sheet { inset: 0; margin: auto; width: min(1080px, calc(92% / var(--ui-scale, 1))); height: min(820px, calc(90% / var(--ui-scale, 1))); zoom: var(--ui-scale, 1); border: 2px solid var(--line); box-shadow: 0 0 0 6px var(--bg); grid-template-columns: 236px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+.sallow-desktop .hub-frame.open .hub-sheet { display: grid; }
+.sallow-desktop .hub-head { grid-column: 1 / -1; padding: 10px var(--pad); }
+.sallow-desktop .hub-head [data-id='hub-back'] { display: none; }
+.sallow-desktop .hub-body { grid-column: 2; padding: 20px 28px; }
+.sallow-desktop .hub-body > * { width: 100%; max-width: 760px; margin-inline: auto; }
+.sallow-desktop .hub-toasts { left: auto; right: 16px; top: 62px; width: 340px; zoom: var(--ui-scale, 1); }
+.dt-nav { display: none; }
+.sallow-desktop .dt-nav { grid-column: 1; display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; overflow-y: auto; border-right: 1px solid var(--line-dim); background: var(--panel); }
+.dt-nav-item { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 10px; background: transparent; border: 1px solid transparent; border-left: 3px solid transparent; color: var(--ink-muted); font: 600 12px var(--font-ui); letter-spacing: .08em; text-transform: uppercase; text-align: left; }
+.dt-nav-item span { flex: 1; }
+.dt-nav-item b { color: var(--glow); font-weight: 600; }
+.dt-nav-item[aria-current='true'] { background: var(--raised); border-left-color: var(--glow); color: var(--ink-bright); }
+
+/* ---------- bedroom: the room on the left, what to do on the right ---------- */
+.sallow-desktop .screen[data-screen='bedroom'] > .rb-floor { position: absolute; left: 0; top: 0; width: var(--play-w); height: 100%; cursor: pointer; }
+.sallow-desktop .screen[data-screen='bedroom'] > .rb-head { margin-right: 44px; }
+.sallow-desktop .screen[data-screen='bedroom'] > .rb-info { margin-top: auto; }
+.sallow-desktop .screen[data-screen='bedroom'] > .hint { text-align: left; }
+
+/* ---------- mirror ---------- */
+.sallow-desktop .screen[data-screen='mirror'] > .mr-stage { position: absolute; left: 0; top: 0; width: var(--play-w); height: 100%; }
+.sallow-desktop .screen[data-screen='mirror'] > .mr-head { margin-right: 44px; }
+.sallow-desktop .screen[data-screen='mirror'] > .mr-says { margin-top: auto; background: transparent; }
+
+/* ---------- box: the grid on the left, the card always open on the right ---------- */
+.sallow-desktop .screen[data-screen='box'] { padding-inline: max(20px, calc((100% - 1500px) / 2)); }
+.sallow-desktop .rb-box > .rb-head { margin-right: 44px; }
+.sallow-desktop .rb-box .rb-scroll { display: grid; grid-template-columns: minmax(0, 1fr) minmax(400px, 42%); column-gap: 28px; row-gap: 0; align-content: start; grid-auto-rows: max-content; scrollbar-width: thin; }
+.sallow-desktop .rb-box .rb-scroll > * { grid-column: 1; margin-bottom: 12px; min-width: 0; }
+.sallow-desktop .rb-box .rb-scroll > .rb-detail { grid-column: 2; grid-row: 1 / span 40; align-self: start; position: sticky; top: 0; max-height: calc(var(--stage-h) - 96px); overflow-y: auto; margin-bottom: 0; }
+.sallow-desktop .rb-box .rb-grid { width: min(100%, 640px); }
+.sallow-desktop .rb-box .rb-bar { flex-wrap: wrap; overflow: visible; margin: 0 0 12px; padding: 0; }
+
+/* ---------- dive: the fold field is the whole stage, the HUD sits at its edges ---------- */
+.sallow-desktop .screen[data-screen='dive'] > .dive-head { margin-right: 48px; }
+.sallow-desktop .screen[data-screen='dive'] > .row:not(.dive-head), .sallow-desktop .screen[data-screen='dive'] > .depth-bar, .sallow-desktop .screen[data-screen='dive'] > .dive-status, .sallow-desktop .screen[data-screen='dive'] > .dive-threat { width: min(460px, 100%); flex: none; }
+.sallow-desktop .screen[data-screen='dive'] > .dive-say { align-self: center; width: min(640px, 100%); text-align: center; }
+.sallow-desktop .screen[data-screen='dive'] .fold-field { cursor: crosshair; }
+.sallow-desktop .dive-summary .sum-panel { width: min(520px, 100%); }
+
+/* ---------- system: the orrery large, worlds beside it ---------- */
+.sallow-desktop .screen[data-screen='system'] .sy > header { position: absolute; left: 20px; top: 16px; width: calc(var(--play-w) - 40px); }
+.sallow-desktop .screen[data-screen='system'] .sy > .sy-title { position: absolute; left: 20px; top: 66px; width: min(calc(var(--play-w) - 40px), 620px); pointer-events: none; }
+.sallow-desktop .screen[data-screen='system'] .sy > .sy-field { position: absolute; left: 20px; top: 136px; width: calc(var(--play-w) - 40px); bottom: 132px; }
+.sallow-desktop .screen[data-screen='system'] .sy > .sy-field.dt-over-orbit { cursor: pointer; }
+.sallow-desktop .screen[data-screen='system'] .sy > .sy-note { position: absolute; left: 20px; bottom: 106px; width: calc(var(--play-w) - 40px); }
+.sallow-desktop .screen[data-screen='system'] .sy > .sy-trayrow { position: absolute; left: 20px; bottom: 16px; width: min(calc(var(--play-w) - 40px), 560px); }
+.sallow-desktop .screen[data-screen='system'] .sy > .sp-tabs { margin-right: 44px; }
+.sallow-desktop .screen[data-screen='system'] .sy > .sy-panel { flex: 1; height: auto; min-height: 0; scrollbar-width: thin; }
+
+/* ---------- planet: the surface large, the six pages a side panel ---------- */
+.sallow-desktop .screen[data-screen='planet'] .pl > .pl-header { position: absolute; left: 20px; top: 12px; width: calc(var(--play-w) - 40px); padding-right: 0; }
+.sallow-desktop .screen[data-screen='planet'] .pl > .surface-slot { position: absolute; left: 20px; top: 64px; width: calc(var(--play-w) - 40px); height: auto; bottom: 80px; margin: 0; border: 1px solid var(--line-dim); }
+.sallow-desktop .screen[data-screen='planet'] .pl > .surface-slot:has([data-id='tool-chip'][hidden]) { cursor: grab; }
+.sallow-desktop .screen[data-screen='planet'] .pl > .surface-slot:has([data-id='tool-chip'][hidden]):active, .sallow-desktop .screen[data-screen='planet'] .pl > .surface-slot.dt-grabbing { cursor: grabbing; }
+.sallow-desktop .screen[data-screen='planet'] .pl > .pl-ticker { position: absolute; left: 20px; bottom: 16px; width: calc(var(--play-w) - 40px); min-height: 52px; }
+.sallow-desktop .screen[data-screen='planet'] .pl > .pl-status { margin-right: 44px; }
+.sallow-desktop .screen[data-screen='planet'] .pl-status .k-stat span { letter-spacing: 0; font-size: 9px; }
+.sallow-desktop .screen[data-screen='planet'] .pl > .pl-pager { scrollbar-width: thin; padding-right: 6px; }
+.sallow-desktop .screen[data-screen='planet'] .pl-pager::-webkit-scrollbar { display: block; }
+
+/* ---------- outside: the ladder and the team side by side ---------- */
+.sallow-desktop .screen[data-screen='outside'] { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(360px, 1fr); grid-template-rows: auto auto auto auto minmax(0, 1fr); column-gap: 28px; padding-inline: max(20px, calc((100% - 1400px) / 2)); overflow: hidden; }
+.sallow-desktop .screen[data-screen='outside'] > * { grid-column: 1; min-width: 0; }
+.sallow-desktop .screen[data-screen='outside'] > header { grid-column: 1 / -1; margin-right: 44px; }
+.sallow-desktop .screen[data-screen='outside'] > .team { grid-column: 2; grid-row: 2 / -1; align-self: start; max-height: 100%; overflow-y: auto; }
+.sallow-desktop .screen[data-screen='outside'] > .rivals { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-content: start; }
+.sallow-desktop .screen[data-screen='outside'] > .rivals > .tier-head { grid-column: 1 / -1; }
+
+/* ---------- battle: the two creatures face each other, moves along the bottom, the log at the side ---------- */
+.sallow-desktop .screen[data-screen='battle'] { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(280px, 26%); grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto; column-gap: 20px; row-gap: 8px; padding-inline: max(20px, calc((100% - 1500px) / 2)); overflow: hidden; }
+.sallow-desktop .screen[data-screen='battle'] > * { grid-column: 1 / 3; min-width: 0; }
+.sallow-desktop .screen[data-screen='battle'] > header { grid-column: 1 / -1; grid-row: 1; margin-right: 48px; }
+.sallow-desktop .screen[data-screen='battle'] > .row.field { grid-row: 2; }
+.sallow-desktop .screen[data-screen='battle'] > .fighter { grid-row: 3; align-self: center; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px; }
+.sallow-desktop .screen[data-screen='battle'] > .fighter.side-you { grid-column: 1; }
+.sallow-desktop .screen[data-screen='battle'] > .fighter.side-them { grid-column: 2; }
+.sallow-desktop .screen[data-screen='battle'] > .fighter .f-pet { order: -1; zoom: 1.5; }
+.sallow-desktop .screen[data-screen='battle'] > .fighter .f-info { width: 100%; }
+.sallow-desktop .screen[data-screen='battle'] > .row:has(> [data-id='intent']) { grid-column: 2; grid-row: 4; }
+.sallow-desktop .screen[data-screen='battle'] > span.k-label { grid-column: 1; grid-row: 4; align-self: center; }
+.sallow-desktop .screen[data-screen='battle'] > .skills { grid-row: 5; }
+.sallow-desktop .screen[data-screen='battle'] > .row.bench { grid-row: 6; }
+.sallow-desktop .screen[data-screen='battle'] > .tool-hint { grid-row: 7; }
+.sallow-desktop .screen[data-screen='battle'] > .battle-log { grid-column: 3; grid-row: 2 / -1; align-self: stretch; height: auto; max-height: none; justify-content: flex-start; gap: 8px; overflow-y: auto; padding: 12px 14px; border: 1px solid var(--line-dim); }
+.sallow-desktop .screen[data-screen='battle'] > .battle-log li { font-size: 15px; }
+.sallow-desktop .screen[data-screen='battle'] > [data-id='summary'] { grid-column: 1 / -1; grid-row: 2 / -1; align-self: center; justify-self: center; width: min(640px, 100%); max-height: 100%; overflow-y: auto; }
+
+/* ---------- town: the whole stage is its play area ---------- */
+.sallow-desktop .screen[data-screen='town'] > header { margin-right: 48px; }
+
+/* ---------- this plugin's own pieces ---------- */
+.dt-tip { position: absolute; z-index: 90; max-width: 300px; padding: 5px 8px; background: var(--bg); border: 1px solid var(--line); color: var(--ink); font: 400 14px/1.25 var(--font-voice); pointer-events: none; zoom: var(--ui-scale, 1); }
+.dt-help { position: absolute; inset: 0; z-index: 85; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 78%, transparent); font-family: var(--font-ui); }
+.dt-help-card { width: min(980px, 94%); max-height: 90%; overflow-y: auto; padding: 18px 22px; background: var(--panel); border: 2px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+.dt-help-card h2 { margin: 0; font: 600 14px var(--font-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-bright); }
+.dt-help-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 18px; }
+.dt-help-col { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.dt-help-col h3, .dt-sec h3 { margin: 0 0 4px; font: 600 11px var(--font-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--glow); }
+.dt-help-row { display: flex; align-items: baseline; gap: 10px; font: 400 15px/1.25 var(--font-voice); color: var(--ink); }
+.dt-help-row kbd, .dt-pad kbd { flex: none; min-width: 74px; padding: 2px 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink-bright); font: 600 11px var(--font-ui); letter-spacing: .04em; text-align: center; }
+.dt-help-foot { margin: 0; font: italic 14px var(--font-voice); color: var(--ink-muted); }
+.dt-pad { display: none; }
+.sallow-desktop .dt-pad:not([hidden]) { position: absolute; z-index: 40; left: 12px; bottom: 6px; display: flex; gap: 12px; padding: 4px 8px; background: color-mix(in srgb, var(--bg) 80%, transparent); border: 1px solid var(--line-dim); font: 400 11px var(--font-ui); color: var(--ink-muted); pointer-events: none; }
+.dt-pad span { display: flex; align-items: center; gap: 5px; }
+.dt-pad kbd { min-width: 0; }
+
+.dt-page { display: flex; flex-direction: column; gap: 18px; font-family: var(--font-ui); }
+.dt-sec { display: flex; flex-direction: column; gap: 8px; }
+.dt-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--line-dim); }
+.dt-text { flex: 1 1 160px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dt-text b { font: 600 13px var(--font-ui); letter-spacing: .06em; color: var(--ink-bright); }
+.dt-text small, .dt-note { margin: 0; font: 400 14px/1.3 var(--font-voice); color: var(--ink-muted); }
+.dt-choice { display: flex; flex-wrap: wrap; gap: 4px; }
+.dt-btn { min-height: var(--touch); min-width: var(--touch); padding: 0 10px; background: var(--panel); border: 2px solid var(--line); color: var(--ink); font: 600 12px var(--font-ui); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; touch-action: manipulation; }
+.dt-btn[aria-pressed='true'] { border-color: var(--glow); color: var(--glow); }
+.dt-say { margin: 0; min-height: 20px; font: italic 15px var(--font-voice); color: var(--glow); }
+.dt-say.bad { color: var(--gold); }
+.dt-keytable { display: flex; flex-direction: column; }
+.dt-keyrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px solid var(--line-dim); }
+.dt-does { flex: 1 1 150px; font: 400 15px/1.25 var(--font-voice); color: var(--ink); }
+.dt-keys { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.dt-btn.dt-key { text-transform: none; letter-spacing: .02em; }
+.dt-btn.dt-key.add { color: var(--ink-off); border-style: dashed; }
+.dt-btn.dt-key.listening { border-color: var(--gold); color: var(--gold); }
+.dt-padkey { margin-left: 6px; font: 400 11px var(--font-ui); color: var(--ink-off); text-transform: uppercase; letter-spacing: .06em; }
