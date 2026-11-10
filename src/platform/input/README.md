@@ -6,7 +6,7 @@
 
 **Must not touch.** Anything outside `src/platform/input/`. In particular: `src/contracts`, `src/core`, `src/render/gl`, `src/ui/kit`, `src/ui/tokens.css`, `src/app`, `package.json`, the lockfile, other units. No new dependencies. If the contract blocks you, write `CONTRACT_REQUEST.md` here and work around it.
 
-**Current state.** A trivial deterministic stub that satisfies the contract so the app boots. Replace it.
+**Current state.** Real pointer recogniser (tap / hold..release / drag), plus keyboard and standard-gamepad buttons emitted as `{ type: 'key', action, phase, source }` events. `bindings()` lists them. What an action does on each screen is decided by the listener (today: `src/app/plugins/settings.ts`).
 
 ## Acceptance criteria
 
