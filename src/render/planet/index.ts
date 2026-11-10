@@ -70,7 +70,7 @@ void main(){
   float winter = smoothstep(0.62, 0.75, u_season) * smoothstep(0.98, 0.85, u_season);
   float spring = smoothstep(0.0, 0.05, u_season) * smoothstep(0.3, 0.15, u_season);
   // Night is dim and blue, never black: the stars and whatever is in the sky give enough to read the ground by.
-  float amb = mix(min(0.46 + u_nl * 0.4 + u_moons * 0.07 + float(u_nb) * 0.015, 0.8), 1.0, daylight) * (1.0 - u_dim * 0.45) * (1.0 - hum * 0.22);
+  float amb = mix(min(0.58 + u_nl * 0.35 + u_moons * 0.06 + float(u_nb) * 0.015, 0.85), 1.0, daylight) * (1.0 - u_dim * 0.45) * (1.0 - hum * 0.22);
 
   // ---------- sky ----------
   vec3 dayTop = mix(pal(12), pal(9), 0.25);
