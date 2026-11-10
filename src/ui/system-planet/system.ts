@@ -286,7 +286,7 @@ export const system: ScreenFactory = () => {
       const now = ctx.clock.tick();
       if (orrery === 1) visTick += now - lastClock; else visTick += (dt / 50) * orrery;
       lastClock = now;
-      ctx.renderers.system.draw({ universe: s.universe, system: s.system, skies, selectedOrbit: s.system.orbits.find((o) => o.planet === s.planetIndex)?.index ?? s.planetIndex, drag, tick: Math.floor(visTick), pulse: ctx.pulse().phase(), flare, touch, align }, dt);
+      ctx.renderers.system.draw({ universe: s.universe, system: s.system, skies, selectedOrbit: s.system.orbits.find((o) => o.planet === s.planetIndex)?.index ?? s.planetIndex, drag, tick: Math.floor(visTick), pulse: ctx.pulse().phase(), flare, touch, align, quality: ctx.perf.resolutionScale() }, dt);
     },
     unmount: () => void (ctx = null),
   };

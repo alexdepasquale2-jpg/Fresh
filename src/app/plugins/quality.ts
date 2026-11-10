@@ -12,7 +12,7 @@ const BARS = 96;
 /** Top of the sparkline, in ms. Anything slower is drawn full height. */
 const SPARK_MAX_MS = 50;
 const SLOW_MS = 22;
-const MODES: readonly (readonly [PerfMode, string])[] = [['auto', 'Auto'], ['low', 'Low'], ['medium', 'Med'], ['high', 'High']];
+const MODES: readonly (readonly [PerfMode, string])[] = [['auto', 'Auto'], ['minimal', 'Min'], ['low', 'Low'], ['medium', 'Med'], ['high', 'High']];
 const NAMES = ['Low', 'Medium', 'High'] as const;
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] => {
@@ -79,7 +79,7 @@ export const plugin: Plugin = (shell) => {
       const mode = perfControl.mode();
       const a = `${Math.round(s.fps)}`;
       const b = `avg ${s.avgMs.toFixed(1)} ms  worst ${Math.round(s.worstMs)} ms`;
-      const c = `${NAMES[s.quality]}${mode === 'auto' ? ' (auto)' : ''}  render ${Math.round(s.scale * 100)}%`;
+      const c = `${s.scale < 0.52 ? 'Minimal' : NAMES[s.quality]}${mode === 'auto' ? ' (auto)' : ''}  render ${Math.round(s.scale * 100)}%`;
       const key = `${a}|${b}|${c}|${mode}`;
       if (key !== lastText) {
         lastText = key;
