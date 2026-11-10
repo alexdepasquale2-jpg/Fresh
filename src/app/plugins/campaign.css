@@ -1,6 +1,6 @@
 /* The campaign: the chapter card over the room, and the Journal page in the hub. Tokens only. */
 .camp-frame { position: absolute; left: 50%; top: 50%; width: min(100vw, var(--screen-w)); height: min(100dvh, var(--screen-h)); transform: translate(-50%, -50%); z-index: 45; pointer-events: none; display: flex; align-items: center; }
-.camp-card { pointer-events: auto; width: 100%; margin: 0; padding: 22px var(--pad) 18px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; background: color-mix(in srgb, var(--bg) 94%, transparent); border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); box-shadow: 0 0 40px 20px color-mix(in srgb, var(--bg) 70%, transparent); color: var(--ink); cursor: pointer; touch-action: manipulation; animation: camp-in .7s ease-out both; }
+.camp-card { pointer-events: auto; width: 100%; margin: 0; padding: 22px var(--pad) 18px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; background: var(--bg); border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); box-shadow: 0 0 40px 20px color-mix(in srgb, var(--bg) 70%, transparent); color: var(--ink); cursor: pointer; touch-action: manipulation; animation: camp-in .7s ease-out both; }
 .camp-card[hidden] { display: none; }
 .camp-card.end { border-color: var(--glow); }
 .camp-kicker { color: var(--ink-off); }
@@ -42,3 +42,26 @@
 
 @keyframes camp-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .camp-card { animation: none; } .camp-bar i { transition: none; } }
+
+/* The Journal's top: the next step, and its three pages. */
+.camp-next { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; background: var(--panel); border: 1px solid var(--glow); }
+.camp-next p { margin: 0; }
+.camp-next-what { font: 400 18px/1.25 var(--font-voice); color: var(--ink-bright); text-wrap: pretty; }
+.camp-next-how { font: 400 13px/1.35 var(--font-ui); color: var(--ink-muted); text-wrap: pretty; }
+.camp-next-how b { font-weight: 600; color: var(--gold); }
+.camp-tabs { position: sticky; top: calc(var(--pad) * -1); z-index: 1; display: flex; gap: 6px; padding: 6px 0; background: var(--bg); }
+.camp-tab { flex: 1 1 auto; min-width: 0; min-height: var(--touch); padding: 0 6px; background: transparent; border: 1px solid var(--line-dim); color: var(--ink-muted); font: 600 11px var(--font-ui); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; touch-action: manipulation; }
+.camp-tab[aria-selected=true] { background: var(--panel); border-color: var(--glow); color: var(--ink-bright); }
+.camp-page { display: flex; flex-direction: column; gap: var(--gap); }
+.camp-page > * { flex: none; }
+.camp-lead { color: var(--ink-muted); }
+.camp-chapter.side { border-width: 1px; }
+.camp-chapter.side .camp-title { font-size: 22px; }
+.camp-chapter.told { border-color: var(--glow); }
+.camp-side-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.camp-side-head .k-label { flex: none; color: var(--gold); }
+.camp-row.told .k-label:last-child { color: var(--glow); }
+.camp-epi { margin: 0; font: 400 15px/1.4 var(--font-voice); color: var(--ink-bright); text-wrap: pretty; }
+.camp-quote { padding-left: 10px; border-left: 2px solid var(--glow); }
+.camp-remains { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.camp-remains li { padding: 8px 0; border-top: 1px solid var(--line-dim); font: 400 14px/1.35 var(--font-ui); color: var(--ink); text-wrap: pretty; }
