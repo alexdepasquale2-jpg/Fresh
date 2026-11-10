@@ -27,3 +27,5 @@ A life in a body: per-village standing (-100..100: hunted, shunned, tolerated, w
 ## Snapshots (format 2)
 
 The snapshot is JSON with `v: 2` and, beside the villages, people and wider world: the rng stream where it stood (`rng.ts` is the core sfc32 with readable state), the ground as last scanned, surface events not yet weighed, events not yet handed out, the living body with its whole life (needs, role, followers, carried goods, log, cooldowns), who is striking and kneeling, and which columns were wet. A restored civ continues exactly; the body survives leaving a world and a reload. A snapshot without `v` restores as it always did: no body, the stream begun again from the planet seed.
+
+`init(planet, surface, universe?)`: with the universe the civ knows every falling liquid of the law set, not only water. It does not found on liquid, people do not walk into it, and a village with liquid at its doors or under its floor is wet: it climbs to dry ground within 30 columns or is flooded, as before.

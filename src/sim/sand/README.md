@@ -35,3 +35,15 @@ A reaction whose `becomesB` is `"*"` leaves the neighbour as it is. Use it with 
 ## Snapshots (format 2)
 
 `snapshot()` carries everything a step reads, so a world restored into a fresh sim goes on cell for cell as one that never stopped: tick, rng word, wind, rain, lightning age, the last tally, the modifiers last stepped with, surface events not yet drained, the chunks awake next tick, cells, temperature, humidity, heat not yet folded in (sparse), and each cell's move stamp as an age (run-length coded over non-empty cells). It starts with a magic word. `restore()` never throws: a format 1 snapshot (tick, rng, cells, climate fields) still wakes whole and goes on plausibly, and anything unreadable is left alone (the caller compares `tick()`).
+
+## Water finds its level
+
+Every falling liquid (water, oil, magma, a powder in its flowing half of the day) moves like a liquid, not a slow powder:
+
+- It falls; failing that it slips diagonally either way; failing that it looks up to 6 cells sideways each way (2 for a liquid with `viscosity`) for an edge to pour over and goes there.
+- With nowhere to fall, the loose top layer gathers to one side of its row (even rows left, odd rows right, so loose cells and the gaps in the row below meet). Then nothing moves, nothing wakes, and the lake's chunks sleep. Under a tide the loose layer follows the tide instead, back and forth: a change of level along the shore, not a standing slope.
+- Joined vessels: a resting surface cell with air above reads through its own body of liquid (at most 3,000 cells) for a cell two or more rows higher, and that cell comes to lie on top of it. The gap it leaves rises through the high side as a bubble. A column that finds nothing lets 40 chances pass before it looks again (`calm`, one byte per column, kept in the snapshot after the stamps).
+- A face of water open to the side is not "deep": only cells with liquid above and below and something on both sides are skipped 15 ticks in 16.
+- Only water lying on something evaporates. A falling drop is rain and reaches the ground.
+
+This changed how every world runs: grids are not cell-for-cell what they were before it, in any law set.

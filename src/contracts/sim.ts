@@ -334,7 +334,8 @@ export const SURFACE_TOOLS: readonly SurfaceTool[] = ['water', 'sand', 'stone', 
 export const SOUL_TOOLS: readonly SoulTool[] = ['bless', 'smite', 'sow', 'whisper', 'merge'];
 /** Villages on the grid. Deterministic like SurfaceSim. Reads the grid, never writes it. */
 export interface Civ {
-  init(planet: PlanetSpec, surface: PlanetSurface): void;
+  /** With the universe, the civ knows every liquid of its law set: it does not found on one, and a village one rises over floods. */
+  init(planet: PlanetSpec, surface: PlanetSurface, universe?: UniverseSpec): void;
   step(ticks: number, grid: GridView, modifiers: SurfaceModifiers, env: SurfaceEnv, surface: readonly SurfaceEvent[]): readonly CivEvent[];
   view(): CivView;
   /** A soul tool, or the omen of a surface tool, at x. */

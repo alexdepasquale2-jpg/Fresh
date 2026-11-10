@@ -171,6 +171,10 @@ export const factory: CivFactory = () => {
   let nTrade = 0;
 
   const at = (g: GridView, x: number, y: number) => (x < 0 || y < 0 || x >= g.width || y >= g.height ? -1 : g.cells[y * g.width + x]!);
+  // What counts as water to stand in or build on: every liquid of this universe that falls (water alone until init is told the universe).
+  const liquid = new Uint8Array(256);
+  liquid[WATER] = 1;
+  const isLiquid = (m: number) => m >= 0 && liquid[m] === 1;
   const solidish = (m: number) => m === STONE || m === SAND || m === ENGINE.ice.id || m === ENGINE.snow.id || m === ENGINE.ash.id || m === ENGINE.ore.id;
   const scanGround = (g: GridView) => {
     if (ground.length !== g.width) ground = new Int16Array(g.width);
@@ -283,7 +287,7 @@ export const factory: CivFactory = () => {
     if (avatar.x !== avatar.tx && tick % 2 === 0) {
       const nx = avatar.x + (avatar.tx > avatar.x ? 1 : -1);
       const ny = ground[nx]! - 1;
-      if (Math.abs(ny - avatar.y) <= 5 && at(g, nx, ny + 1) !== WATER) { avatar.x = nx; avatar.y = ny; }
+      if (Math.abs(ny - avatar.y) <= 5 && !isLiquid(at(g, nx, ny + 1))) { avatar.x = nx; avatar.y = ny; }
       else avatar.tx = avatar.x;
     }
     if (ground.length && at(g, avatar.x, avatar.y) !== 0) avatar.y = ground[avatar.x]! - 1;
@@ -367,7 +371,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       const ny = ground[nx]! - 1;
       const c = at(g, nx, ny + 1);
       // People wade in shallows but do not walk into deep water or up cliffs.
-      if (c === WATER && at(g, nx, ny + 3) === WATER) { p.tx = p.x; continue; }
+      if (isLiquid(c) && isLiquid(at(g, nx, ny + 3))) { p.tx = p.x; continue; }
       if (Math.abs(ny - p.y) > 4) { p.tx = p.x; continue; }
       p.x = nx;
       p.y = ny;
@@ -390,8 +394,8 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       for (let k = 0; k < 30; k++) {
         const x = r.range(8, g.width - 9);
         const ru = k === 0 ? w.ruins[0] : undefined;
-        if (ru && at(g, ru.x, ground[ru.x]!) !== WATER) { w.ruins.shift(); pending.push({ x: ru.x, belief: 'none', tech: Math.max(0, Math.min(5, era) - 2), ruin: ru.id }); break; }
-        if (at(g, x, ground[x]!) !== WATER && Math.abs(ground[x - 2]! - ground[x + 2]!) <= 2) { pending.push({ x, belief: 'none', tech: Math.max(0, Math.min(5, era) - 2) }); break; }
+        if (ru && !isLiquid(at(g, ru.x, ground[ru.x]!))) { w.ruins.shift(); pending.push({ x: ru.x, belief: 'none', tech: Math.max(0, Math.min(5, era) - 2), ruin: ru.id }); break; }
+        if (!isLiquid(at(g, x, ground[x]!)) && Math.abs(ground[x - 2]! - ground[x + 2]!) <= 2) { pending.push({ x, belief: 'none', tech: Math.max(0, Math.min(5, era) - 2) }); break; }
       }
     }
     // Found waiting sites.
@@ -399,7 +403,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       const s = pending.shift()!;
       const x = Math.max(2, Math.min(g.width - 3, s.x));
       const y = ground[x]! - 1;
-      if (y > 0 && at(g, x, y + 1) !== WATER && vs.length < 12) {
+      if (y > 0 && !isLiquid(at(g, x, y + 1)) && !isLiquid(at(g, x, y)) && vs.length < 12) {
         const v: V = { id: nextId++, x, y, souls: 10, name: `#${nextId - 1}`, tech: s.tech, belief: s.belief, food: 120, mood: 20, age: 0, scores: BELIEFS.map(() => 0), progress: 0, wet: 0, starving: false, cold: false, lastBurn: -9999, lastLaunch: -99999, enl: 0 };
         if (s.belief !== 'none') v.scores[BELIEFS.indexOf(s.belief)] = 50;
         if (s.creed && w.creeds.some((c) => c.id === s.creed && c.belief === s.belief)) v.creed = s.creed;
@@ -422,14 +426,15 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
         const ny = ground[v.x]! - 1;
         if (ny > 0 && Math.abs(ny - v.y) < 8) v.y = ny;
       }
-      if (at(g, v.x, v.y) === WATER) v.wet++;
+      // Water at the doors, or under them: a village does not stand on a lake.
+      if (isLiquid(at(g, v.x, v.y)) || isLiquid(at(g, v.x, v.y + 1))) v.wet++;
       else v.wet = 0;
       // A sea wall keeps shallow water out of the doors.
       if (v.wet >= (work(v, 1) ? 6 : 2)) {
         // Climb to the nearest dry high ground if there is any; otherwise the water wins.
         let best = -1;
         for (let d = 1; d < 30 && best < 0; d++) for (const sx of [v.x - d, v.x + d]) {
-          if (sx > 2 && sx < g.width - 3 && at(g, sx, ground[sx]!) !== WATER && ground[sx]! < v.y) { best = sx; break; }
+          if (sx > 2 && sx < g.width - 3 && !isLiquid(at(g, sx, ground[sx]!)) && ground[sx]! <= v.y) { best = sx; break; }
         }
         if (best >= 0 && v.wet < 8) { v.x = best; v.y = ground[best]! - 1; v.souls = Math.max(1, v.souls - 2); v.mood -= 10; hardship(v, 2); v.songOf = 6; if (v.wet === 2 || v.wet === 6) ev(events, 'migrate', v, { detail: v.id }); }
         else if (v.wet >= 8 || best < 0) { ev(events, 'flooded', v); remove(v); flee(v, v.souls >> 2, events); continue; }
@@ -967,7 +972,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
     if (!w.ruins.length) return;
     const ru = w.ruins[dice(36, w.ruins.length)]!;
     if (vs.some((v) => Math.abs(v.x - ru.x) <= 12) || pending.some((s) => Math.abs(s.x - ru.x) <= 12) || tick - ru.t > 40000) { w.ruins = w.ruins.filter((o) => o !== ru); return; }
-    if (tick - ru.t <= 3200 || vs.length + pending.length >= 10 || !ground.length || at(g, ru.x, ground[ru.x]!) === WATER) return;
+    if (tick - ru.t <= 3200 || vs.length + pending.length >= 10 || !ground.length || isLiquid(at(g, ru.x, ground[ru.x]!))) return;
     const from = vs.filter((v) => v.souls >= 26 && v.mood > 0 && !sick(v) && Math.abs(v.x - ru.x) < 170).sort((a, b) => Math.abs(a.x - ru.x) - Math.abs(b.x - ru.x) || a.id - b.id)[0];
     if (from && dv(from, 37, 10) === 0) {
       from.souls -= 8;
@@ -1314,7 +1319,10 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
   };
 
   return {
-    init: (p, surface) => {
+    init: (p, surface, universe) => {
+      liquid.fill(0);
+      liquid[WATER] = 1;
+      if (universe) for (const mt of universe.materialTable) if (mt.kind === 'liquid' && !mt.rises) liquid[mt.id] = 1;
       r = savedRng(child(p.seed, 'civ'));
       pseed = p.seed;
       nseed = child(p.seed, 'notable');

@@ -30,6 +30,13 @@ const SNAP_MAGIC = 0xff534e44;
 const MOD_KEYS: readonly ModifierKey[] = ['tide', 'nightLight', 'impacts', 'seasons', 'dimming', 'warmth', 'dust'];
 const EVENT_KINDS: readonly SurfaceEventKind[] = ['impact', 'flood', 'drought', 'freeze', 'thaw', 'fire', 'storm', 'bloom', 'blight', 'ore', 'lightning', 'quake'];
 
+/** How far a liquid cell looks sideways in one tick for somewhere to fall; thick liquids look less far. */
+const FLOW = 6, FLOW_THICK = 2;
+/** The most cells of one body a resting surface reads when it looks for higher water joined to it. */
+const REACH_CELLS = 3000;
+/** Chances a column lets pass after it looked and found its water level. */
+const CALM_FOR = 40;
+
 /** sin of a 0..999 phase, as -1000..1000 integer. */
 const isin = (phase: number) => Math.trunc((fxSin(Math.trunc((phase * FX_ONE) / 1000)) * 1000) / FX_ONE);
 
@@ -55,6 +62,12 @@ export const factory: SurfaceSimFactory = () => {
   const heat = new Int16Array(FW * FH); // per-tick heat sources (fire) accumulated in the pass
   const hum = new Uint8Array(FW);
   const humTmp = new Uint8Array(FW);
+  // Liquids finding their level. calm[x]: how many chances a column's resting surface lets pass
+  // before it looks again for higher water joined to it (it found none last time). Part of the snapshot.
+  const calm = new Uint8Array(W);
+  const seen = new Uint16Array(W * H);
+  const queue = new Int32Array(REACH_CELLS);
+  let seenGen = 0;
   let rx: Rx[][] = [];
   let tick = 0;
   let seed = 0x9e3779b9;
@@ -120,6 +133,63 @@ export const factory: SurfaceSimFactory = () => {
       y++;
     }
     return y;
+  };
+
+  /**
+   * A liquid cell that cannot fall or slip diagonally. It looks sideways, a few cells each way,
+   * for an edge to pour over; failing that the loose top layer gathers to one side of its row
+   * (side: -1 or 1), so a lake comes to rest flat and then sleeps. True if it moved.
+   */
+  const flowSide = (i: number, x: number, y: number, c: number, s: number, side: number, reach: number) => {
+    let dest = -1;
+    for (let pass = 0; pass < 2 && dest < 0; pass++) {
+      const d = pass === 0 ? s : -s;
+      for (let k = 1; k <= reach; k++) {
+        const nx = x + d * k;
+        if (nx < 0 || nx >= W) break;
+        const j = i + d * k;
+        if (!canSink(c, cells[j]!)) break;
+        if (y < H - 1 && canSink(c, cells[j + W]!)) { dest = j; break; }
+      }
+    }
+    if (dest < 0) {
+      for (let k = 1; k <= reach; k++) {
+        const nx = x + side * k;
+        if (nx < 0 || nx >= W || !canSink(c, cells[i + side * k]!)) break;
+        dest = i + side * k;
+      }
+    }
+    if (dest < 0) return false;
+    swap(i, dest);
+    return true;
+  };
+  /**
+   * Joined vessels. A resting surface cell reads through its own body of liquid for a cell at
+   * least two rows higher, and that cell comes to lie on top of this one: the high side sinks,
+   * the low side rises, with no slope in between. Bounded; true if a cell was moved.
+   */
+  const level = (i: number, y: number, c: number) => {
+    if (++seenGen > 0xffff) { seen.fill(0); seenGen = 1; }
+    const gen = seenGen, lim = y - 2;
+    let head = 0, tail = 0;
+    queue[tail++] = i;
+    seen[i] = gen;
+    while (head < tail) {
+      const p = queue[head++]!;
+      const py = (p / W) | 0;
+      if (py <= lim) { swap(p, i - W); return true; }
+      if (tail > REACH_CELLS - 4) continue;
+      const px = p - py * W;
+      let n = p + W;
+      if (py < H - 1 && cells[n] === c && seen[n] !== gen) { seen[n] = gen; queue[tail++] = n; }
+      n = p - 1;
+      if (px > 0 && cells[n] === c && seen[n] !== gen) { seen[n] = gen; queue[tail++] = n; }
+      n = p + 1;
+      if (px < W - 1 && cells[n] === c && seen[n] !== gen) { seen[n] = gen; queue[tail++] = n; }
+      n = p - W;
+      if (py > 0 && cells[n] === c && seen[n] !== gen) { seen[n] = gen; queue[tail++] = n; }
+    }
+    return false;
   };
 
   const react = (i: number, x: number, y: number) => {
@@ -273,7 +343,8 @@ export const factory: SurfaceSimFactory = () => {
       const y = surfaceY(x);
       if (y >= H - 1) continue;
       const i = y * W + x;
-      if (cells[i] === WATER && tAt(x, y) > 112 && ri(3) === 0) {
+      // Only water that lies on something: a falling drop is rain, and rain reaches the ground.
+      if (cells[i] === WATER && cells[i + W] !== 0 && tAt(x, y) > 112 && ri(3) === 0) {
         set(i, 0);
         const cx = (x / FIELD) | 0;
         hum[cx] = Math.min(255, hum[cx]! + 4);
@@ -396,19 +467,27 @@ export const factory: SurfaceSimFactory = () => {
             }
           }
         } else if (kd === K.liquid) {
-          // Deep water (liquid above and below) rarely needs to move.
-          if (y > 0 && y < H - 1 && cells[i - W] === c && cells[i + W] === c && ((i + tick) & 15) !== 0) continue;
+          // Deep water (liquid above, below and beside) rarely needs to move.
+          // Only water with nowhere to go: a face open to the side is not deep, it pours.
+          if (y > 0 && y < H - 1 && cells[i - W] === c && cells[i + W] === c && (x === 0 || cells[i - 1] !== 0) && (x === W - 1 || cells[i + 1] !== 0) && ((i + tick) & 15) !== 0) continue;
           if (!tryMove(i, x, y, 0, 1, false)) {
-            let s = ri(2) ? 1 : -1;
-            if (m.tide > 0 && ri(100) < m.tide) s = tideDir;
-            if (visc[c] !== 0 && (i + tick) % visc[c]! !== 0) { /* thick: it waits */ }
-            else if (!tryMove(i, x, y, s, 1, false)) {
+            const s = ri(2) ? 1 : -1;
+            const thick = visc[c]!;
+            if (thick !== 0 && (i + tick) % thick !== 0) { /* thick: it waits */ }
+            else if (!tryMove(i, x, y, s, 1, false) && !tryMove(i, x, y, -s, 1, false)) {
               const below = y < H - 1 ? cells[i + W]! : 0;
-              if (tryMove(i, x, y, s, 0, false) || tryMove(i, x, y, -s, 0, false)) {
+              // The loose top layer gathers to one side of its row (and the gaps in the row below to
+              // the same side, so they meet). A tide pulls it back and forth instead.
+              const side = m.tide > 0 && ri(100) < m.tide ? tideDir : (y & 1) === 0 ? -1 : 1;
+              if (flowSide(i, x, y, c, s, side, thick !== 0 ? FLOW_THICK : FLOW)) {
                 // Erosion: running water picks up the sand it runs over.
-                if (below === SAND && ri(260) === 0) {
-                  const j = i + W;
-                  if (cells[i] === 0) swap(i, j);
+                if (below === SAND && ri(260) === 0 && cells[i] === 0) swap(i, i + W);
+              } else if (y > 1 && ((x + tick) & 1) === 0) {
+                // At rest with air above: is there higher water joined to this?
+                const k = kind[cells[i - W]!];
+                if (k === K.empty || k === K.gas) {
+                  if (calm[x] !== 0) calm[x] = calm[x]! - 1;
+                  else if (!level(i, y, c)) calm[x] = CALM_FOR;
                 }
               }
             }
@@ -495,6 +574,7 @@ export const factory: SurfaceSimFactory = () => {
       tick = 0;
       temp.fill(132);
       hum.fill(18);
+      calm.fill(0);
       events = [];
       lastCounts = { water: -1, ice: 0, fire: 0, moss: 0 };
       active.fill(1); next.fill(1); dirty.fill(1);
@@ -569,12 +649,12 @@ export const factory: SurfaceSimFactory = () => {
     snapshot: () => {
       // Format 2: everything a step reads, so a restored world goes on exactly as one that never stopped.
       // [magic][version][flags][tick][rng][wind][rain][lightning][last tally][modifiers][pending events]
-      // [chunks awake next tick][cells][temperature][humidity][pending heat, sparse][move stamps, as ages]
+      // [chunks awake next tick][cells][temperature][humidity][pending heat, sparse][move stamps, as ages][columns' calm]
       const NC = cells.length;
       let nHeat = 0;
       for (let k = 0; k < heat.length; k++) if (heat[k] !== 0) nHeat++;
       const head = 8 + 8 + 8 + 16 + MOD_KEYS.length * 2 + 2 + events.length * 13 + next.length;
-      const out = new Uint8Array(head + NC + temp.length + hum.length + 2 + nHeat * 4 + 4 + NC * 3);
+      const out = new Uint8Array(head + NC + temp.length + hum.length + 2 + nHeat * 4 + 4 + NC * 3 + calm.length);
       const dv = new DataView(out.buffer);
       let o = 0;
       dv.setUint32(o, SNAP_MAGIC); o += 4;
@@ -618,6 +698,7 @@ export const factory: SurfaceSimFactory = () => {
         i = j;
       }
       dv.setUint32(at0, o - at0 - 4);
+      out.set(calm, o); o += calm.length;
       return out.slice(0, o);
     },
     restore: (s) => {
@@ -649,7 +730,9 @@ export const factory: SurfaceSimFactory = () => {
           const pHeat = o;
           o += nHeat * 4;
           const nStamp = dv.getUint32(o); o += 4;
-          if (o + nStamp !== s.length) return;
+          // The columns' calm follows the stamps (a format 2 snapshot from before liquids levelled has none).
+          const hasCalm = o + nStamp + calm.length === s.length;
+          if (!hasCalm && o + nStamp !== s.length) return;
           // Everything is there: take it.
           cells.set(s.subarray(pCells, pCells + NC));
           stamp.fill(0);
@@ -662,6 +745,7 @@ export const factory: SurfaceSimFactory = () => {
             const st = (nTick - (t >>> 1)) & 0xffff;
             for (; i < NC && run > 0; i++) if (cells[i] !== 0) { stamp[i] = st; run--; }
           }
+          if (hasCalm) calm.set(s.subarray(end, end + calm.length)); else calm.fill(0);
           next.set(s.subarray(pNext, pNext + next.length));
           active.fill(0);
           temp.set(s.subarray(pTemp, pTemp + temp.length));
@@ -686,7 +770,7 @@ export const factory: SurfaceSimFactory = () => {
           temp.set(s.subarray(8 + NC, 8 + NC + temp.length));
           hum.set(s.subarray(8 + NC + temp.length, 8 + NC + temp.length + hum.length));
         }
-        stamp.fill(0); heat.fill(0);
+        stamp.fill(0); heat.fill(0); calm.fill(0);
         events = [];
         lastCounts = { water: -1, ice: 0, fire: 0, moss: 0 };
         stormy = false;

@@ -103,7 +103,7 @@ const store = (urgent = false) => {
 const begin = (m: Open) => {
   const surface = planets.surface(m.planet, m.universe);
   cur.sim.init(m.planet, m.universe, surface);
-  cur.civ.init(m.planet, surface);
+  cur.civ.init(m.planet, surface, m.universe);
   cur.chronicle.restore([]);
 };
 
