@@ -64,7 +64,7 @@ export const makeHeavens = (system: SystemSpec, orbitIndex: number, skyOfKey: (k
       says.push(`${art(word).replace(/^a/, 'A')} second sun circles the first and never leaves it.`);
     } else {
       all.push({ w: 100, b: { kind: 'world', size: 2.2 + (comp.heat / 255) * 0.4, turns: 1, phase: u('twin-phase'), tilt: u('twin-tilt') * 0.5 - 0.25, rgb: c, ringed: false, name: 'far sun' } });
-      says.push(`A far ${word} sun is the brightest star of their night.`);
+      says.push(planet.terrain.locked ? `A far ${word} sun is the brightest star over their dark side.` : `A far ${word} sun is the brightest star of their night.`);
     }
   }
   // ---- the moons it was born with, then every moon hung here ----
@@ -90,7 +90,7 @@ export const makeHeavens = (system: SystemSpec, orbitIndex: number, skyOfKey: (k
   }
   for (const b of hung) all.push({ w: 62 + b.size * 10, b });
   if (moons) says.push(moons === 1 ? `One ${natural.length ? 'hung ' : ''}moon, ${art(hung[0]!.name)}, crosses ${Math.abs(hung[0]!.turns)} times a year.` : `${moons} ${natural.length ? 'hung ' : ''}moons: ${hung.map((b) => b.name.replace(' moon', '')).join(', ')}.`);
-  if (moons + natural.length >= 5) says.push('The night is crowded. Some of them hide the others.');
+  if (moons + natural.length >= 5) says.push(planet.terrain.locked ? 'The sky is crowded. Some of them hide the others.' : 'The night is crowded. Some of them hide the others.');
   // ---- the rogue: a captured world on a leaning road ----
   const rogue = system.rogue;
   if (rogue) {

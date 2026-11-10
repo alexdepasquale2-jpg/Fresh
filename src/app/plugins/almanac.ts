@@ -16,7 +16,7 @@
  * Other plugins may read `window.__sallowAlmanac` ({ today(), omenOn(ms) }).
  */
 import './almanac.css';
-import { el, button } from '@/ui/kit';
+import { el, button, lightWords, pieceCount, displayName, curly } from '@/ui/kit';
 import type { BoxEntry } from '@/contracts/game';
 import type { SkyPieceKind } from '@/contracts/sky';
 import { SKY_PIECE_KINDS } from '@/contracts/sky';
@@ -85,7 +85,7 @@ const OMENS: readonly Omen[] = [
   { id: 'new-floor', name: 'New Floor', line: 'The bottom is further off than it was. Mote thinks that is good news.', does: 'Each dive that takes you deeper into a universe than you have ever been pays 250 light.', fx: { t: 'record' } },
   { id: 'spoils', name: 'Spoils', line: 'The other kids left their windows open.', does: 'Every battle you win today pays a sun.', fx: { t: 'win', give: 'sun' } },
   { id: 'loud-day', name: 'The Loud Day', line: 'Someone outside is shouting your name. Not kindly.', does: 'Every battle you win today pays a whole pip of Light.', fx: { t: 'win', give: 'pip' } },
-  { id: 'double-marks', name: 'Double Marks', line: 'Mote counted twice today, and liked the second number better.', does: "Today's tasks pay half as much light again.", fx: { t: 'tasks' } },
+  { id: 'double-marks', name: 'Double Marks', line: 'Mote counted twice today, and liked the second number better.', does: "Today's tasks pay half as much Light again.", fx: { t: 'tasks' } },
   { id: 'first-light', name: 'First Light', line: 'It was already bright when you sat down.', does: 'A pip of Light was waiting when the day began.', fx: { t: 'wake' } },
   { id: 'hanging-day', name: 'Hanging Day', line: 'The sky wants things in it. It pays to be filled.', does: 'Every piece you hang in a sky today gives back 150 light.', fx: { t: 'hang' } },
   { id: 'founders', name: "Founders' Day", line: 'Somewhere a family is packing. They are not afraid.', does: 'Each new village you see founded today sends 200 light.', fx: { t: 'found' } },
@@ -215,8 +215,9 @@ const clean = (raw: unknown): Saved => {
 
 const SMALL = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
 const num = (n: number) => SMALL[n] ?? String(n);
-const pieceWord = (k: SkyPieceKind, n: number) => (k === 'rings' ? (n === 1 ? 'a set of rings' : `${num(n)} sets of rings`) : k === 'dust' ? (n === 1 ? 'a pinch of dust' : `${num(n)} pinches of dust`) : n === 1 ? `a ${k}` : `${num(n)} ${k}s`);
-const lightWord = (glow: number) => (glow % 1000 === 0 ? (glow === 1000 ? 'a pip of Light' : `${num(glow / 1000)} pips of Light`) : `${glow} light`);
+// One wording for pieces and for Light everywhere: the kit's.
+const pieceWord = (k: SkyPieceKind, n: number) => pieceCount(k, n);
+const lightWord = lightWords;
 const streakGlow = (n: number) => Math.min(Math.max(n, 1), 7) * 200;
 
 export const plugin: Plugin = (shell) => {
@@ -235,7 +236,7 @@ export const plugin: Plugin = (shell) => {
   // ---- one notice at a time ------------------------------------------------------------
   const queue: { text: string; title: string; sfx: string }[] = [];
   let lastToast = 0;
-  const say = (title: string, text: string, sound = 'toast') => { if (queue.length < 6) queue.push({ title, text, sfx: sound }); };
+  const say = (title: string, text: string, sound = 'toast') => { if (queue.length < 6) queue.push({ title: curly(title), text: curly(text), sfx: sound }); };
   const cardUp = (): boolean => {
     if (document.querySelector('.guide .guide-card.on')) return true;
     const c = document.querySelector<HTMLElement>('[data-id=campaign-card]');
@@ -410,7 +411,7 @@ export const plugin: Plugin = (shell) => {
         if (o.fx.t === 'dive') {
           if (o.fx.give === 'toll') {
             const back = Math.min(600, diveFolds * 40);
-            if (omenGive(back)) say(o.name, `The folds gave back ${back} light.`, 'gain');
+            if (omenGive(back)) say(o.name, `The folds gave back ${lightWord(back)}.`, 'gain');
           } else {
             const k = SKY_PIECE_KINDS[h32(st.c.dives, dayNum(todayIso())) % SKY_PIECE_KINDS.length]!;
             if (omenGive(0, k)) say(o.name, `You came up holding ${pieceWord(k, 1)}.`, 'pickup');
@@ -520,7 +521,7 @@ export const plugin: Plugin = (shell) => {
       if (e && (e.stats.deepestFold >= 3 || e.stats.worldsTended > 0)) {
         l.thanked = true;
         give(1000);
-        say('On loan', `Whoever lent you ${l.name} knows you went inside. A pip of Light came under the door.`, 'gain');
+        say('On loan', `Whoever lent you ${displayName(l.serial, l.name)} knows you went inside. A pip of Light came under the door.`, 'gain');
         save();
       }
     }
@@ -561,7 +562,7 @@ export const plugin: Plugin = (shell) => {
       let serial = r(7) & 0xffffff;
       for (let i = 0; i < 8 && all.some((e) => e.serialNumber === serial); i++) serial = (serial + 0x1f3d5) & 0xffffff;
       const u = ctx.universes.fromSerial(serial);
-      return { ...base, title: 'A universe on the sill', serial, name: u.name, text: `There is a universe on your windowsill that is not yours. ${u.name}, ${u.serial}. A note under it: "Mind it for a day. Go in if you like. I will know."` };
+      return { ...base, title: 'A universe on the sill', serial, name: u.name, text: `There is a universe on your windowsill that is not yours. ${u.name}, serial ${u.serial}. A note under it: "Mind it for a day. Go in if you like. I will know."` };
     }
     const e = tended[r(8) % tended.length]!;
     const u = ctx.universes.fromSerial(e.serialNumber);
@@ -577,7 +578,7 @@ export const plugin: Plugin = (shell) => {
       'Look again.',
     ].filter((x): x is string => !!x);
     const others = SKY_PIECE_KINDS;
-    return { ...base, title: `A letter from ${u.name}`, serial: e.serialNumber, name: u.name, get: [others[r(9) % others.length]!, others[r(10) % others.length]!], text: `It is very small and written on something like bark. "${lines.join(' ')}"` };
+    return { ...base, title: `A letter from ${displayName(u)}`, serial: e.serialNumber, name: displayName(u), get: [others[r(9) % others.length]!, others[r(10) % others.length]!], text: `It is very small and written on something like bark. "${lines.join(' ')}"` };
   };
   const tryHappen = () => {
     const screen = shell.current();
@@ -658,7 +659,7 @@ export const plugin: Plugin = (shell) => {
           st.loans.push({ serial, name: h.name ?? 'It', due: dayNum(todayIso()) + 1, thanked: false });
           ctx.bus.emit('box:changed', { count: ctx.box.count() });
           ctx.persist();
-          settle(h, `You took ${h.name} in. It is in the Box, on loan until tomorrow night.`, 'catch');
+          settle(h, `You took ${h.name ?? 'it'} in. It is in the Box, on loan until tomorrow night.`, 'catch');
         }, ctx.box.count() >= 25),
         b('Leave it', 'no', () => { give(0, [['comet', 1]]); settle(h, 'You left it on the sill. It was gone by evening. There was a comet where it had stood.', 'back'); }),
       ];
@@ -739,10 +740,10 @@ export const plugin: Plugin = (shell) => {
   let rerender: (() => void) | null = null;
   const didWords = (d: DayRec): string => {
     const parts: string[] = [];
-    if (d.did.glow > 0) parts.push(`${d.did.glow} light`);
+    if (d.did.glow > 0) parts.push(lightWord(d.did.glow));
     for (const k of SKY_PIECE_KINDS) { const n = d.did.pieces[k] ?? 0; if (n > 0) parts.push(pieceWord(k, n)); }
     if (!parts.length) return 'So far today: nothing yet. It is waiting on you.';
-    return `So far today: ${parts.join(', ')}, over ${d.did.n === 1 ? 'one time' : `${d.did.n} times`}.`;
+    return `So far today: ${parts.join(', ')}, ${d.did.n === 1 ? 'all at once' : `over ${num(d.did.n)} times`}.`;
   };
   const taskRow = (t: Task, base: Counters, claimed: boolean, glow: number, pieceN: number, onClaim: () => void, id: string) => {
     const have = progress(t, base);
@@ -786,7 +787,7 @@ export const plugin: Plugin = (shell) => {
       el('span', { class: 'k-label' }, "Today's omen"),
       el('h4', {}, o.name),
       el('p', { class: 'alm-voice' }, o.line),
-      el('p', { class: 'alm-does' }, o.does),
+      el('p', { class: 'alm-does' }, curly(o.does)),
       el('small', { 'data-id': 'alm-did' }, didWords(d))));
 
     const pips = el('div', { class: 'alm-pips' });
@@ -822,10 +823,10 @@ export const plugin: Plugin = (shell) => {
     const haps = [...st.haps].reverse();
     const hapKids: HTMLElement[] = haps.slice(0, 6).map((h) => el('li', { class: h.done ? 'alm-hap' : 'alm-hap open', 'data-id': `alm-hap-${h.id}`, 'data-kind': h.kind },
       el('p', { class: 'alm-hap-title' }, el('span', {}, h.title), el('b', {}, h.iso === d.iso ? 'today' : longDate(h.iso).split(' ').slice(1).join(' '))),
-      el('p', { class: 'alm-voice' }, h.text),
-      h.done ? el('small', {}, h.done) : el('div', { class: 'alm-choices' }, ...choices(h))));
+      el('p', { class: 'alm-voice' }, curly(h.text)),
+      h.done ? el('small', {}, curly(h.done)) : el('div', { class: 'alm-choices' }, ...choices(h))));
     const loans = st.loans.filter((l) => entries().some((e) => e.serialNumber === l.serial)).slice(-3).map((l) => el('li', { class: 'alm-hap' },
-      el('p', { class: 'alm-hap-title' }, el('span', {}, l.name), el('b', {}, 'on loan')),
+      el('p', { class: 'alm-hap-title' }, el('span', {}, displayName(l.serial, l.name)), el('b', {}, 'on loan')),
       el('small', {}, n <= l.due
         ? `In your Box until ${n === l.due ? 'tonight' : 'tomorrow night'}.${l.thanked ? ' The lender knows you went inside, and was glad.' : ' Go inside before then and the lender will know.'}`
         : 'Nobody came back for it. It stays in your Box, and still says on loan on the lid.')));

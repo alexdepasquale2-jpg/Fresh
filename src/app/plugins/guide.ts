@@ -480,7 +480,7 @@ export const plugin: Plugin = (shell) => {
       ],
     },
     sky: {
-      id: 'sky', title: 'Sky', blurb: 'Their sky is the only thing you may touch.', home: 'system', listed: true, route: coreRoute,
+      id: 'sky', title: 'Sky', blurb: 'Their sky is your first and gentlest lever. Your hands are the blunt one.', home: 'system', listed: true, route: coreRoute,
       steps: [
         {
           scr: ['system'],
@@ -957,7 +957,7 @@ export const plugin: Plugin = (shell) => {
     offer = false; peek = false;
     note = '';
     // A parting line that asks nothing and takes no touch.
-    shell.toast('As you wish. I will keep quiet. I am in the menu, under Tutorial, if you want me.', { title: 'Mote', sfx: '' });
+    shell.toast('As you wish. I will keep quiet: Show hints is off now. Turn it back on in Settings, or find me in the menu under Tutorial.', { title: 'Mote', sfx: '' });
     resetStep();
     store();
   };

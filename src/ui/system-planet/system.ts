@@ -4,7 +4,7 @@ import type { SkyPieceKind, CosmicEvent } from '@/contracts/sky';
 import type { PlanetSpec } from '@/contracts/system';
 import { SKY_PIECE_KINDS, SKY_MAX_PIECES } from '@/contracts/sky';
 import { seedToHex } from '@/core/hash';
-import { el, backChip, label, button, skyPieceTile, narration, burst, flash } from '@/ui/kit';
+import { el, backChip, label, button, skyPieceTile, narration, burst, flash, aPiece, pieceName, cap } from '@/ui/kit';
 import { ensureSystem, keyOf, seenOf, logOf, addLog } from './shared';
 
 type Cosmic = 'pieces' | 'pull' | 'push' | 'flare' | CosmicEvent;
@@ -92,14 +92,14 @@ export const system: ScreenFactory = () => {
           if (!open) return el('section', { class: 'sy-card', 'data-id': `card-${o.index}` }, head);
           const says = c.skyRules.explain(sky, p);
           const chips = sky.pieces.map((k, i) => {
-            const b = el('button', { class: 'sy-chip', type: 'button', 'data-id': `sys-take-${i}`, 'aria-label': `Take down the ${k}` }, k, el('small', {}, 'take'));
+            const b = el('button', { class: 'sy-chip', type: 'button', 'data-id': `sys-take-${i}`, 'aria-label': `Take down the ${pieceName(k)}` }, k, el('small', {}, 'take'));
             b.addEventListener('click', () => {
               c.sky.remove(key, i); c.sky.grant(k, 1);
               c.audio.sfx('take');
               c.bus.emit('sky:changed', { planetKey: key });
               c.persist();
-              note.textContent = `You take the ${k} down from over ${p.name}.`;
-              did(`Took a ${k} down from ${p.name}`);
+              note.textContent = `You take the ${pieceName(k)} down from over ${p.name}.`;
+              did(`Took ${aPiece(k)} down from ${p.name}`);
               renderAll();
             });
             return b;
@@ -148,8 +148,8 @@ export const system: ScreenFactory = () => {
               c.persist();
               const p = planetOf(d.overOrbit);
               const says = c.skyRules.explain(res.sky, p);
-              note.textContent = says[says.length - 1] ?? `A ${d.kind} hangs over ${p.name} now.`;
-              did(`Hung a ${d.kind} over ${p.name}`);
+              note.textContent = says[says.length - 1] ?? `${cap(aPiece(d.kind))} hangs over ${p.name} now.`;
+              did(`Hung ${aPiece(d.kind)} over ${p.name}`);
             } else note.textContent = PLACE_FAIL[res.reason]!;
             renderAll();
           };

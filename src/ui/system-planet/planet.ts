@@ -6,8 +6,8 @@ import type { PlanetSpec } from '@/contracts/system';
 import type { BodyAction, BodyOption, ChronicleEntry, Village, Tool } from '@/contracts/sim';
 import { SKY_PIECE_KINDS, SKY_MAX_PIECES } from '@/contracts/sky';
 import { GRID_W, GRID_H, PERSON_STRIDE } from '@/contracts/sim';
-import { el, backChip, label, button, stat, narration, burst, shake, flash } from '@/ui/kit';
-import { ensureSystem, keyOf, villageName, seenOf, setSeen } from './shared';
+import { el, backChip, label, button, stat, narration, burst, shake, flash, aPiece, pieceName, tidy, quote } from '@/ui/kit';
+import { ensureSystem, keyOf, villageName, seenOf, setSeen, addLog, sysKeyOf } from './shared';
 import type { Seen } from './shared';
 import { TOOLS, GROUPS, BRUSH, applyTool } from './tools';
 import type { ToolDef } from './tools';
@@ -425,6 +425,13 @@ export const planet: ScreenFactory = () => {
       const setPhoto = (on: boolean) => {
         photo = on;
         wrap.classList.toggle('photo', on);
+        // A photo has nothing on it, so say once how to come back, then let the line fade.
+        slotEl.querySelector('.pl-photo-note')?.remove();
+        if (on) {
+          const n = el('p', { class: 'k-label pl-photo-note', 'data-id': 'photo-note', role: 'status' }, 'Tap to return');
+          slotEl.append(n);
+          window.setTimeout(() => n.remove(), 4200);
+        }
         c.audio.sfx('toggle', on ? 1 : 0);
         if (!on) hint.textContent = mode.hint;
       };
@@ -660,6 +667,8 @@ export const planet: ScreenFactory = () => {
         heavens = c.sky.heavens(sys, orbit.index);
         skyKey = skyKeyNow();
         const full = sky.pieces.length >= SKY_MAX_PIECES;
+        // The system's LOG page reads the same store; what is done from here belongs in it too.
+        const logDid = (line: string) => { try { addLog(sysKeyOf(sys), `Y${c.clock.year()} · ${line}.`); } catch { /* a log line is not worth a crash */ } };
         const changed = (sfx: string, line: string) => {
           c.audio.sfx(sfx);
           c.bus.emit('sky:changed', { planetKey: pKey });
@@ -669,13 +678,13 @@ export const planet: ScreenFactory = () => {
           renderSky();
         };
         const take = (k: SkyPieceKind, i: number) => {
-          const b = el('button', { class: 'sky-take', type: 'button', 'data-id': `sky-take-${i}`, 'aria-label': `Take down the ${k}` }, k, el('small', {}, 'take'));
-          b.addEventListener('click', () => { c.sky.remove(pKey, i); c.sky.grant(k, 1); changed('take', `You took the ${k} down. Their sky is lighter by one.`); });
+          const b = el('button', { class: 'sky-take', type: 'button', 'data-id': `sky-take-${i}`, 'aria-label': `Take down the ${pieceName(k)}` }, k, el('small', {}, 'take'));
+          b.addEventListener('click', () => { c.sky.remove(pKey, i); c.sky.grant(k, 1); logDid(`Took ${aPiece(k)} down from ${p.name}`); changed('take', `You took the ${pieceName(k)} down. Their sky is lighter by one.`); });
           return b;
         };
         const add = (k: SkyPieceKind) => {
           const have = inv[k] > 0;
-          const b = el('button', { class: have ? 'sky-add' : 'sky-add make', type: 'button', 'data-id': `sky-add-${k}` }, k, el('small', {}, have ? `x${inv[k]}` : '1 light')) as HTMLButtonElement;
+          const b = el('button', { class: have ? 'sky-add' : 'sky-add make', type: 'button', 'data-id': `sky-add-${k}` }, k, el('small', {}, have ? `x${inv[k]}` : '1 pip')) as HTMLButtonElement;
           b.disabled = full || (!have && !c.light.canSpend(1));
           b.addEventListener('click', () => {
             if (!have) {
@@ -687,7 +696,8 @@ export const planet: ScreenFactory = () => {
             const res = c.sky.place(k, sys, orbit.index);
             if (!res.ok) { c.audio.sfx('deny'); renderSky(); return; }
             c.box.recordPieceHung?.(c.box.selected());
-            changed('place', `You hung a ${k} in their sky${have ? '' : ', made from your own light'}.`);
+            logDid(`Hung ${aPiece(k)} over ${p.name}${have ? '' : ', made from a pip of Light'}`);
+            changed('place', `You hung ${aPiece(k)} in their sky${have ? '' : ', made from a pip of your own Light'}.`);
           });
           return b;
         };
@@ -844,20 +854,20 @@ export const planet: ScreenFactory = () => {
         if (top && top.id !== topId) {
           if (topId !== -1) c.audio.sfx('soul');
           topId = top.id;
-          ticker.replaceChildren(el('span', { class: 'k-label' }, `Y${top.year}`), ' ', narration(top.event));
+          ticker.replaceChildren(el('span', { class: 'k-label' }, `Y${top.year}`), ' ', narration(tidy(top.event)));
         }
         const count = (id: string) => { const k = KINDS.find((q) => q.id === id)!; return all.filter((e) => filed(e, k)).length; };
         if (all.length) {
           const first = all[all.length - 1]!;
           const parts = [[count('lives'), 'of lives'], [count('wars'), 'of blood'], [count('faith'), 'of faith'], [count('works'), 'of their works'], [count('sky'), 'of the sky']] as const;
           const told = parts.filter(([n]) => n > 0).map(([n, w]) => `${n} ${w}`);
-          story.textContent = `The story so far: ${all.length} ${all.length === 1 ? 'line' : 'lines'} since year ${first.year}${told.length ? `; ${told.join(', ')}` : ''}. It began: "${first.event}"`;
+          story.textContent = `The story so far: ${all.length} ${all.length === 1 ? 'line' : 'lines'} since year ${first.year}${told.length ? `; ${told.join(', ')}` : ''}. It began: ${quote(tidy(first.event))}`;
         }
         const kf = KINDS.find((k) => k.id === filter)!;
         const shown = all.filter((e) => filed(e, kf)).slice(0, 30);
         chronList.replaceChildren(...(shown.length ? shown.map((en) => {
           const at = whereOf(en);
-          const body = [el('span', { class: 'k-label' }, `Y${en.year}`), ' ', narration(en.event), en.reason ? el('small', {}, en.reason) : null];
+          const body = [el('span', { class: 'k-label' }, `Y${en.year}`), ' ', narration(tidy(en.event)), en.reason ? el('small', {}, tidy(en.reason)) : null];
           if (!at) return el('li', { 'data-id': `chron-entry-${en.id}` }, ...body);
           const b = el('button', { class: 'pl-chron-go', type: 'button', 'data-id': `chron-go-${en.id}`, 'aria-label': `${en.event} Go there.` }, ...body, el('i', { class: 'k-label' }, 'go there'));
           b.addEventListener('click', () => {
@@ -976,7 +986,7 @@ export const planet: ScreenFactory = () => {
         const t = e.temp.length ? tsum / e.temp.length : 128;
         const wx = e.lightning < 40 ? 'storm' : e.rain > 30 ? (e.snowing ? 'snow' : 'rain') : Math.abs(e.wind) > 50 ? 'wind' : 'clear';
         const season = SEASON[Math.min(3, Math.floor(e.season / 250))]!;
-        const cal = `Year ${c.clock.year()}, ${season}, day ${Math.min(4, Math.floor(e.season / 250) + 1)} of 4. It is ${timeWord(e.day)}.`;
+        const cal = `Year ${c.clock.year()}, ${season}, day ${Math.min(4, Math.floor(e.season / 250) + 1)} of 4. ${p.terrain.locked ? 'The sun stands still here: always day on one side, always dark on the other.' : `It is ${timeWord(e.day)}.`}`;
         if (calendar.textContent !== cal) calendar.textContent = cal;
         dayBar.style.width = `${e.day / 10}%`;
         dayBar.classList.toggle('night', e.day < 250 || e.day > 750);

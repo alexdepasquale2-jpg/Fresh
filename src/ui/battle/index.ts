@@ -7,7 +7,7 @@ import type { ScreenFactory, AppContext } from '@/contracts/app';
 import type { Fighter, BattleAction, StatusKind, BattleReward, LevelInfo, Skill, Rival, Weather } from '@/contracts/battle';
 import type { SkyPieceKind } from '@/contracts/sky';
 import type { FoldNode } from '@/contracts/fold';
-import { el, button, backChip, label, narration, tag, lightPips, glyphChar, shake, burst, flash } from '@/ui/kit';
+import { el, button, backChip, label, narration, tag, lightPips, glyphChar, shake, burst, flash, displayName, lightLabel, pieceCount, quote, curly } from '@/ui/kit';
 import { creature, type Creature } from '@/ui/creature';
 import './battle.css';
 
@@ -41,7 +41,10 @@ const grown = (c: AppContext, L: Ladder, base: Fighter): Fighter => {
   // A universe you have truly kept fights a little better for you, and shows it.
   const st = base.slot >= 0 ? c.box.slots()[base.slot]?.stats : undefined;
   const bond = st && c.box.bondOf ? c.box.bondOf(st) : undefined;
-  return c.battles.grow ? c.battles.grow(base, { xp: L.xp[base.serialNumber] ?? 0, ...(relic ? { relic } : {}), ...(bond !== undefined ? { bond } : {}) }) : base;
+  const f = c.battles.grow ? c.battles.grow(base, { xp: L.xp[base.serialNumber] ?? 0, ...(relic ? { relic } : {}), ...(bond !== undefined ? { bond } : {}) }) : base;
+  // A universe the player renamed in the Box fights under that name.
+  const name = displayName(f.serialNumber, f.name);
+  return name === f.name ? f : { ...f, name };
 };
 const power = (f: Fighter): number => f.maxHp + f.depth + f.radiance;
 const team = (c: AppContext, L: Ladder): Fighter[] =>
@@ -101,6 +104,8 @@ const outside: ScreenFactory = () => {
         c.go('battle');
       };
       let scroll = 0;
+      // The team row whose relic is being asked about (-1: none). Taking one off or swapping it is asked first.
+      let asking = -1;
       const render = () => {
         const mine = team(c, L);
         const say = (t: string) => { note = t; hint.textContent = t; };
@@ -122,7 +127,7 @@ const outside: ScreenFactory = () => {
             el('div', { class: 'row' },
               el('div', { class: 'rival-say' },
                 label(locked ? 'somewhere further out' : r.where),
-                locked ? null : el('span', { class: 'k-narration taunt' }, `"${r.taunt}"`),
+                locked ? null : el('span', { class: 'k-narration taunt' }, quote(r.taunt)),
                 !locked && r.mechanic ? el('span', { class: 'k-label mech' }, r.mechanic) : null),
               locked ? null : el('div', { class: 'rival-pets' }, ...theirs.map((f) => portrait(c, f, 40, 'left'))),
             ),
@@ -161,17 +166,33 @@ const outside: ScreenFactory = () => {
             const info = levelOf(c, L.xp[f.serialNumber] ?? 0);
             const free = relics.filter((r) => L.relics.includes(r.id) && !Object.entries(L.held).some(([s, id]) => id === r.id && s !== String(f.serialNumber)));
             const rb = el('button', { class: 'k-tag swap relic', type: 'button', 'data-id': `relic-${i}`, disabled: free.length === 0 }, f.relic ? `HOLDS: ${f.relic.name}` : free.length ? 'HOLDS NOTHING · TAP' : 'NO RELIC YET');
-            rb.addEventListener('click', () => {
-              // Tap to hand it the next free relic, then nothing, round and round.
-              const at = free.findIndex((r) => r.id === f.relic?.id);
-              const next = free[at + 1];
+            // The next free relic after the one held, then nothing, round and round.
+            const next = free[free.findIndex((r) => r.id === f.relic?.id) + 1];
+            const hand = () => {
               if (next) L.held[f.serialNumber] = next.id; else delete L.held[f.serialNumber];
               saveLadder(L);
               c.audio.sfx('place');
-              note = next ? `${f.name} holds the ${next.name}. ${next.desc}` : `${f.name} holds nothing.`;
+              note = next ? `${f.name} holds the ${next.name}. ${next.desc}` : `${f.name} holds nothing. The ${f.relic?.name ?? 'relic'} is back with the others.`;
+              asking = -1;
+              scroll = list.scrollTop;
+              render();
+            };
+            rb.addEventListener('click', () => {
+              // Nothing held: there is nothing to lose, so hand the relic over and say what it does.
+              if (!f.relic) { hand(); return; }
+              // Something held: say what it does and ask before it is taken off or swapped.
+              asking = asking === i ? -1 : i;
+              c.audio.sfx('tap');
               scroll = list.scrollTop;
               render();
             });
+            if (asking === i && f.relic) rb.setAttribute('aria-expanded', 'true');
+            const ask = asking === i && f.relic ? el('div', { class: 'relic-ask', 'data-id': `relic-ask-${i}`, role: 'group', 'aria-label': `${f.name}'s relic` },
+              el('p', { class: 'k-narration' }, `${f.name} holds the ${f.relic.name}. ${f.relic.desc}`),
+              next ? el('p', { class: 'k-narration dim' }, `Next to hand: the ${next.name}. ${next.desc}`) : null,
+              el('div', { class: 'row' },
+                button('Keep it', () => { asking = -1; scroll = list.scrollTop; render(); }, { id: `relic-keep-${i}` }),
+                button(next ? `Swap for ${next.name}` : 'Take it off', hand, { id: `relic-change-${i}` }))) : null;
             return el('div', { class: 'team-row pet-row' },
               portrait(c, f, 56),
               el('div', { class: 'team-info' },
@@ -179,6 +200,7 @@ const outside: ScreenFactory = () => {
                 xpBar(info),
                 el('span', { class: 'k-label stats' }, `${f.temperament ? `${f.temperament.toUpperCase()} · ` : ''}MGT ${f.might} · DEP ${f.depth} · RAD ${f.radiance} · GRD ${f.guard} · SPD ${f.speed}`),
                 el('div', { class: 'row start chips' }, rb, bondChip(c, f, `bond-${i}`, say), chip(`${f.skills.length} SKILLS`, 'trait', `skills-${i}`, `${f.name} knows ${f.skills.map((s) => s.name).join(', ')}. ${(c.battles.skillsOf?.(f.element) ?? []).filter((s) => !f.skills.some((x) => x.id === s.id)).slice(0, 1).map((s) => `Learns ${s.name} at level ${s.learnAt ?? 1}.`).join('')}`, say)),
+                ask,
               ),
             );
           })),
@@ -280,8 +302,8 @@ const settleUp = (c: AppContext): Summary => {
 const summaryView = (c: AppContext, s: Summary, b: NonNullable<AppContext['battle']>) => {
   const r = s.reward;
   const got = [
-    r.glow ? `Light +${r.glow} glow` : '',
-    r.piece ? `${r.piece.n} ${r.piece.kind}${r.piece.n > 1 && !r.piece.kind.endsWith('s') ? 's' : ''} for your skies` : '',
+    r.glow ? `+${lightLabel(r.glow)}` : '',
+    r.piece ? `${pieceCount(r.piece.kind, r.piece.n)} for your skies` : '',
     r.relic ? `Relic: ${r.relic.name}${s.relicTo ? ` (${s.relicTo} holds it)` : ''}` : '',
   ].filter(Boolean);
   return el('section', { class: 'summary', 'data-id': 'summary' },
@@ -460,7 +482,7 @@ const battle: ScreenFactory = () => {
         const adv = c.battles.advantage(me.element, them.element);
         const w = b.weather ? c.battles.weatherInfo?.(b.weather) : undefined;
         const chainN = b.chain?.you ?? 0;
-        const logEl = el('ol', { class: 'battle-log', 'data-id': 'battle-log' }, ...b.log.slice(-7).map((l) => el('li', { class: `log-${l.side}${l.text.startsWith('Turn’s end') || l.text.startsWith("Turn's end") ? ' log-tick' : ''}` }, l.text)));
+        const logEl = el('ol', { class: 'battle-log', 'data-id': 'battle-log' }, ...b.log.slice(-7).map((l) => el('li', { class: `log-${l.side}${l.text.startsWith('Turn’s end') || l.text.startsWith("Turn's end") ? ' log-tick' : ''}` }, curly(l.text))));
         const over = b.outcome !== 'ongoing';
         const threat = over ? 0 : c.battles.threat?.(b) ?? 0;
         const wipe = 2 - (b.turn % 3);

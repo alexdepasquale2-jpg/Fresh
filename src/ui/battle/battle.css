@@ -25,6 +25,11 @@
 .k-tag.tip { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; background: color-mix(in srgb, var(--panel) 70%, transparent); cursor: pointer; min-height: 44px; min-width: 44px; padding: 0 8px; font: 400 12px var(--font-ui); white-space: nowrap; }
 .k-tag.swap.relic { min-height: 44px; display: inline-flex; align-items: center; }
 .k-tag.relic { position: relative; }
+.relic-ask { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding: 8px; border: 1px solid var(--gold); background: var(--bg); min-width: 0; }
+.relic-ask p { margin: 0; font-size: 14px; line-height: 1.25; overflow-wrap: anywhere; }
+.relic-ask p.dim { color: var(--ink-muted); }
+.relic-ask .row { gap: 6px; }
+.relic-ask .k-btn { flex: 1 1 0; min-width: 0; padding: 4px 6px; font-size: 13px; line-height: 1.1; letter-spacing: .04em; white-space: normal; }
 .k-tag.tip.relic, .k-tag.swap.relic:not(:disabled) { border-color: var(--gold); color: var(--gold); }
 .k-tag.tip.good { border-color: var(--glow); color: var(--glow); }
 .k-tag.tip.bad { border-color: var(--gold); color: var(--gold); }

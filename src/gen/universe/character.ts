@@ -93,7 +93,7 @@ const RARE_LINE: Record<Rarity, readonly string[]> = {
   mythic: ['There should not be one of these at all.', 'Nobody will believe you have it.'],
 };
 const ORIGIN = [
-  'Found {where}.', 'It was {where} when the Box was first opened.', 'Somebody left it {where}.', 'It rolled out from {where} one {when}.', 'It came up from the bottom of another universe, {when}.',
+  'Found {where}.', 'It was {where} when the Box was first opened.', 'Somebody left it {where}.', 'It rolled out and stopped {where}, {when}.', 'It came up from the bottom of another universe, {when}.',
   'It turned up {where}, {when}.', 'It budded off something larger, {when}.', 'It was caught mid-flicker, {when}.', 'It was won, not found. Nobody says from whom.', 'It was already old {when}.',
   'It was {where}, wrapped in {wrap}.', 'It fell out of {wrap}, {when}.', 'Traded for {wrap}, {when}.', 'It was the last one left {where}.',
 ];

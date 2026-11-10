@@ -16,7 +16,7 @@
  * Other plugins may read `window.__sallowCampaign` ({ chapter, chapters, done, side }).
  */
 import './campaign.css';
-import { el, button } from '@/ui/kit';
+import { el, button, displayName } from '@/ui/kit';
 import type { ScreenId, SimFrame } from '@/contracts/app';
 import type { BoxEntry, DiveView } from '@/contracts/game';
 import type { SkyPieceKind, SkyState } from '@/contracts/sky';
@@ -248,7 +248,7 @@ const CHAPTERS: readonly Chapter[] = [
   {
     id: 'sky',
     title: 'Sky',
-    intro: 'You cannot touch them. You can only change what hangs over them. They will look up, and decide what it means.',
+    intro: 'Begin with what hangs over them. The sky is your first and gentlest lever; your hands are the blunt one. They will look up, and decide what it means.',
     outro: 'They have a sky now, and a reason for it. They made the reason up.',
     objectives: [
       ob('sky.hang', 'star', 'Hang a piece in a sky', 'At a star, drag a sky piece from the tray onto an orbit. On a surface, open the Sky tab and press a piece.', (w) => w.maxPieces >= 1),
@@ -259,7 +259,7 @@ const CHAPTERS: readonly Chapter[] = [
       ob('sky.fire', 'planet', 'See a people learn fire', 'Villages that eat well and stay glad learn. Give them time.', (w) => era(w) >= 1),
       ob('sky.glow', 'planet', 'Let a world feed your Light', 'Souls glow. Keep watching a living world and Mote brightens.', (w) => w.glow > 0),
     ],
-    reward: { glow: 1500, pieces: [['sun', 1], ['rings', 1], ['dust', 1]], universe: 0x51ca11, says: 'Light, a sun, rings, dust, and a universe that was waiting behind the others.' },
+    reward: { glow: 1500, pieces: [['sun', 1], ['rings', 1], ['dust', 1]], universe: 0x51ca11, says: 'A pip and a half of Light, a sun, a set of rings, a veil of dust, and a universe that was waiting behind the others.' },
   },
   {
     id: 'body',
@@ -274,7 +274,7 @@ const CHAPTERS: readonly Chapter[] = [
       ob('body.day', 'planet', 'Live one whole day in it', 'Stay in one body for a full turn of their sun. They may not let you.', (w) => w.bodyTicks >= DAY_TICKS, (w) => [Math.floor((w.bodyTicks * 100) / DAY_TICKS), 100]),
       ob('body.seen', 'planet', 'Be seen by the one the chronicle names', 'The People tab shows a named person. Press Find, then walk your body to them.', (w) => !!civ(w)?.notable?.metYou),
     ],
-    reward: { glow: 2000, pieces: [['moon', 2], ['belt', 1]], universe: 0xb0d1e5, says: 'Two pips of Light, two moons, a belt, and a universe that smells of rain.' },
+    reward: { glow: 2000, pieces: [['moon', 2], ['belt', 1]], universe: 0xb0d1e5, says: 'Two pips of Light, two moons, a belt of stones, and a universe that smells of rain.' },
   },
   {
     id: 'outside',
@@ -290,7 +290,7 @@ const CHAPTERS: readonly Chapter[] = [
       ob('out.catch', 'fight', 'Take one of their universes home', 'When you win, their box is open. Choose one.', (w) => w.beaten >= 1),
       ob('out.three', 'out', `Beat ${RIVALS_GOAL} rivals`, 'Each kid you beat lets you find the next.', (w) => w.beaten >= RIVALS_GOAL, (w) => [w.beaten, RIVALS_GOAL]),
     ],
-    reward: { glow: 2500, pieces: [['belt', 2], ['comet', 2], ['dust', 1]], says: 'Light, two belts, two comets and dust.' },
+    reward: { glow: 2500, pieces: [['belt', 2], ['comet', 2], ['dust', 1]], says: 'Two and a half pips of Light, two belts of stones, two comets and a veil of dust.' },
   },
   {
     id: 'strata',
@@ -305,7 +305,7 @@ const CHAPTERS: readonly Chapter[] = [
       ob('strata.back', 'dive', 'Carry Light back up from a dive', 'What you gather comes home as Light when the dive ends at a star, the surface or the floor.', (w) => w.h.back > 0),
       ob('strata.three', 'dive', 'Know three strata by name', 'Deeper, or in another universe. No two universes are layered alike.', (w) => w.h.strata.length >= 3, (w) => [w.h.strata.length, 3]),
     ],
-    reward: { glow: 2000, pieces: [['comet', 2], ['dust', 2]], universe: 0x57a7a5, says: 'Two pips of Light, two comets, dust, and a universe that is mostly layers.' },
+    reward: { glow: 2000, pieces: [['comet', 2], ['dust', 2]], universe: 0x57a7a5, says: 'Two pips of Light, two comets, two veils of dust, and a universe that is mostly layers.' },
   },
   {
     id: 'deep',
@@ -320,7 +320,7 @@ const CHAPTERS: readonly Chapter[] = [
       ob('deep.room', 'room', 'Stand in the room at the bottom', 'At the floor, wait. The room comes to you.', (w) => went(w, 'mirror') || w.mirrorGifts > 0),
       ob('deep.gift', 'room', 'Take what the other child hands you', 'In the room, stay until the end of what they say.', (w) => w.mirrorGifts > 0),
     ],
-    reward: { glow: 3000, pieces: [['sun', 2], ['rings', 1]], universe: 0x0dee9f, says: 'Three pips of Light, two suns, rings, and a universe from very far down.' },
+    reward: { glow: 3000, pieces: [['sun', 2], ['rings', 1]], universe: 0x0dee9f, says: 'Three pips of Light, two suns, a set of rings, and a universe from very far down.' },
   },
   {
     id: 'street',
@@ -336,7 +336,7 @@ const CHAPTERS: readonly Chapter[] = [
       ob('street.tier', 'out', 'Clear the first street', 'Beat every kid in the first tier of the ladder.', (w) => w.tierOne),
       ob('street.boss', 'fight', 'Beat a boss', 'The last kid of a tier fights by a rule of their own. Read it before you start.', (w) => w.bosses >= 1),
     ],
-    reward: { glow: 3000, pieces: [['belt', 2], ['moon', 2]], universe: 0x1add3a, says: 'Three pips of Light, two belts, two moons, and a universe a kid left on a wall for you.' },
+    reward: { glow: 3000, pieces: [['belt', 2], ['moon', 2]], universe: 0x1add3a, says: 'Three pips of Light, two belts of stones, two moons, and a universe a kid left on a wall for you.' },
   },
   {
     id: 'chronicle',
@@ -366,7 +366,7 @@ const CHAPTERS: readonly Chapter[] = [
       ob('kin.kept', 'box', 'Be kept by a universe', 'A bond of 30. Time spent in one universe counts for more than time spread thin.', (w) => w.bond >= 30, (w) => [w.bond, 30]),
       ob('kin.strange', 'box', 'Make a child with something neither parent had', 'A mutation, or a named recipe. Unlike parents mutate more.', (w) => w.strange),
     ],
-    reward: { glow: 3500, pieces: [['comet', 2], ['sun', 1], ['dust', 2]], says: 'Light, two comets, a sun and dust.' },
+    reward: { glow: 3500, pieces: [['comet', 2], ['sun', 1], ['dust', 2]], says: 'Three and a half pips of Light, two comets, a sun and two veils of dust.' },
   },
   {
     id: 'days',
@@ -382,7 +382,7 @@ const CHAPTERS: readonly Chapter[] = [
       ob('days.claim', 'hub', 'Claim what a deed is worth', 'Open Deeds in the menu and press Claim on one you have earned.', (w) => w.deedsClaimed >= 1),
       ob('days.five', 'hub', 'Earn five deeds', 'The Deeds page shows how near each one is.', (w) => w.deeds >= 5, (w) => [w.deeds, 5]),
     ],
-    reward: { glow: 3000, pieces: [['moon', 2], ['rings', 1], ['belt', 1]], says: 'Three pips of Light, two moons, rings and a belt.' },
+    reward: { glow: 3000, pieces: [['moon', 2], ['rings', 1], ['belt', 1]], says: 'Three pips of Light, two moons, a set of rings and a belt of stones.' },
   },
   {
     id: 'align',
@@ -456,7 +456,7 @@ const SIDES: readonly Chapter[] = [
       ob('side.child.take', 'room', 'Take something of theirs', 'In the room, press Take. They will notice.', (w) => w.taken >= 1),
       ob('side.child.speak', 'room', 'Speak with them three times', 'Press Speak and follow it to the end. They say different things on different floors.', (w) => w.talks >= 3, (w) => [w.talks, 3]),
     ],
-    reward: { glow: 3000, pieces: [['dust', 3], ['comet', 1]], says: 'Three pips of Light, dust and a comet.' },
+    reward: { glow: 3000, pieces: [['dust', 3], ['comet', 1]], says: 'Three pips of Light, three veils of dust and a comet.' },
   },
   {
     id: 'rare',
@@ -468,7 +468,7 @@ const SIDES: readonly Chapter[] = [
       ob('side.rare.2', 'box', 'Hold a rare one', 'Merging unlike parents can lift a child above both.', (w) => (w.rarities & 0b11100) !== 0),
       ob('side.rare.3', 'box', 'Hold three different rarities at once', 'Common counts.', (w) => bits(w.rarities) >= 3, (w) => [bits(w.rarities), 3]),
     ],
-    reward: { glow: 3000, pieces: [['rings', 2], ['belt', 2]], says: 'Three pips of Light, two sets of rings and two belts.' },
+    reward: { glow: 3000, pieces: [['rings', 2], ['belt', 2]], says: 'Three pips of Light, two sets of rings and two belts of stones.' },
   },
   {
     id: 'clean',
@@ -492,7 +492,7 @@ const SIDES: readonly Chapter[] = [
       ob('side.grudge.2', 'fight', 'Beat the kid who has beaten you most', 'Outside, find them again. Grow your creatures first.', (w) => w.revenge >= 1),
       ob('side.grudge.3', 'fight', 'Beat them three times', 'Every rematch is harder.', (w) => w.revenge >= 3, (w) => [w.revenge, 3]),
     ],
-    reward: { glow: 3000, pieces: [['belt', 3]], says: 'Three pips of Light and three belts.' },
+    reward: { glow: 3000, pieces: [['belt', 3]], says: 'Three pips of Light and three belts of stones.' },
   },
   {
     id: 'skies',
@@ -516,7 +516,7 @@ const SIDES: readonly Chapter[] = [
       ob('side.sick.2', 'planet', 'See them outlast it', 'Stay on that world until no village is sick and somebody is still alive.', (w) => w.h.plagueOver),
       ob('side.sick.3', 'planet', 'See that world hold sixty souls afterwards', 'The same world. Mild seasons help.', (w) => w.h.plagueOver && w.worldKey === w.h.plagueKey && (civ(w)?.souls ?? 0) >= 60, (w) => [w.h.plagueOver && w.worldKey === w.h.plagueKey ? civ(w)?.souls ?? 0 : 0, 60]),
     ],
-    reward: { glow: 3000, pieces: [['moon', 2], ['dust', 2]], says: 'Three pips of Light, two moons and dust.' },
+    reward: { glow: 3000, pieces: [['moon', 2], ['dust', 2]], says: 'Three pips of Light, two moons and two veils of dust.' },
   },
   {
     id: 'leaving',
@@ -528,7 +528,7 @@ const SIDES: readonly Chapter[] = [
       ob('side.leave.2', 'planet', 'See the last age', 'The eighth: leaving.', (w) => age(w) >= 8, (w) => [age(w), 8]),
       ob('side.leave.3', 'planet', 'See a colony ship go', 'It is counted among their launches, and it does not stay in orbit.', (w) => (civ(w)?.arks ?? 0) >= 1),
     ],
-    reward: { glow: 5000, pieces: [['sun', 2], ['comet', 2], ['rings', 1]], says: 'Five pips of Light, two suns, two comets and rings.' },
+    reward: { glow: 5000, pieces: [['sun', 2], ['comet', 2], ['rings', 1]], says: 'Five pips of Light, two suns, two comets and a set of rings.' },
   },
   {
     id: 'keeper',
@@ -953,7 +953,7 @@ export const plugin: Plugin = (shell) => {
   };
 
   // ---- the epilogue: what the player really did ----
-  const nameOf = (serial: number) => specOf(serial)?.name ?? 'a universe with no name';
+  const nameOf = (serial: number) => displayName(serial, specOf(serial)?.name ?? 'a universe with no name');
   const rivalName = (id: string) => rivals().find((r) => String(r.id) === id)?.name ?? 'a kid whose name you never learned';
   const codexPerson = (): string => {
     for (const wr of Object.values(rec(rec(readJson(CODEX_KEY)).w))) {

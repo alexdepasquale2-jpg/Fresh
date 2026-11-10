@@ -6,6 +6,7 @@ import type { SkyPieceKind } from '@/contracts/sky';
 import type { MergeRecipe } from '@/contracts/merge';
 import type { Char } from './character';
 import { saveCollection } from './store';
+import { lightWords, aPiece } from '@/ui/kit';
 import type { Collection } from './store';
 
 export interface Held { readonly slot: number; readonly e: BoxEntry; readonly spec: UniverseSpec; readonly ch: Char; readonly bond: number }
@@ -58,9 +59,8 @@ export const SETS: readonly SetDef[] = [
   { id: 'every-law', name: 'Every law', says: 'Hold every law set at once.', need: (c) => Math.max(1, lawSets(c).length), have: (h) => distinct(h.map((x) => x.spec.laws.id)), piece: 'sun', glow: 1000 },
   { id: 'every-mood', name: 'Every mood', says: 'Hold one of each temperament at once.', need: () => TEMPERS.length, have: (h) => distinct(h.map((x) => x.ch.temperament).filter(Boolean)), piece: 'sun', glow: 2000 },
 ];
-const A_PIECE: Record<string, string> = { belt: 'a belt of stones', rings: 'a set of rings', dust: 'a veil of dust' };
 export const rewardText = (s: SetDef): string =>
-  [s.glow ? `${(s.glow / 1000).toFixed(1)} pips of Light` : '', s.piece ? A_PIECE[s.piece] ?? `a ${s.piece}` : ''].filter(Boolean).join(' and ');
+  [s.glow ? lightWords(s.glow) : '', s.piece ? aPiece(s.piece) : ''].filter(Boolean).join(' and ');
 
 /** Pay a finished set, once. Returns false if it was already paid or is not finished. */
 export const claim = (c: AppContext, s: SetDef, held: readonly Held[], col: Collection): boolean => {
