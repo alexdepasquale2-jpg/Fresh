@@ -25,6 +25,11 @@ const FW = Math.ceil(W / FIELD);
 const FH = Math.ceil(H / FIELD);
 const ICE = ENGINE.ice.id, SNOW = ENGINE.snow.id, ORE = ENGINE.ore.id, FIRE = ENGINE.fire.id, ASH = ENGINE.ash.id;
 
+/** First word of a format 2+ snapshot. Format 1 began with the tick, which never gets near this. */
+const SNAP_MAGIC = 0xff534e44;
+const MOD_KEYS: readonly ModifierKey[] = ['tide', 'nightLight', 'impacts', 'seasons', 'dimming', 'warmth', 'dust'];
+const EVENT_KINDS: readonly SurfaceEventKind[] = ['impact', 'flood', 'drought', 'freeze', 'thaw', 'fire', 'storm', 'bloom', 'blight', 'ore', 'lightning', 'quake'];
+
 /** sin of a 0..999 phase, as -1000..1000 integer. */
 const isin = (phase: number) => Math.trunc((fxSin(Math.trunc((phase * FX_ONE) / 1000)) * 1000) / FX_ONE);
 
@@ -562,25 +567,131 @@ export const factory: SurfaceSimFactory = () => {
       return e;
     },
     snapshot: () => {
-      const out = new Uint8Array(8 + cells.length + temp.length + hum.length);
+      // Format 2: everything a step reads, so a restored world goes on exactly as one that never stopped.
+      // [magic][version][flags][tick][rng][wind][rain][lightning][last tally][modifiers][pending events]
+      // [chunks awake next tick][cells][temperature][humidity][pending heat, sparse][move stamps, as ages]
+      const NC = cells.length;
+      let nHeat = 0;
+      for (let k = 0; k < heat.length; k++) if (heat[k] !== 0) nHeat++;
+      const head = 8 + 8 + 8 + 16 + MOD_KEYS.length * 2 + 2 + events.length * 13 + next.length;
+      const out = new Uint8Array(head + NC + temp.length + hum.length + 2 + nHeat * 4 + 4 + NC * 3);
       const dv = new DataView(out.buffer);
-      dv.setUint32(0, tick);
-      dv.setUint32(4, seed);
-      out.set(cells, 8);
-      out.set(temp, 8 + cells.length);
-      out.set(hum, 8 + cells.length + temp.length);
-      return out;
+      let o = 0;
+      dv.setUint32(o, SNAP_MAGIC); o += 4;
+      out[o++] = 2;
+      out[o++] = (snowing ? 1 : 0) | (stormy ? 2 : 0) | (mods ? 4 : 0);
+      o += 2;
+      dv.setUint32(o, tick); o += 4;
+      dv.setUint32(o, seed); o += 4;
+      dv.setInt16(o, wind); o += 2;
+      dv.setUint16(o, rain); o += 2;
+      dv.setUint32(o, Math.min(0xffffffff, lightning)); o += 4;
+      dv.setInt32(o, lastCounts.water); dv.setInt32(o + 4, lastCounts.ice); dv.setInt32(o + 8, lastCounts.fire); dv.setInt32(o + 12, lastCounts.moss); o += 16;
+      for (const k of MOD_KEYS) { dv.setInt16(o, mods ? mods[k] : 0); o += 2; }
+      dv.setUint16(o, events.length); o += 2;
+      for (const e of events) {
+        out[o] = EVENT_KINDS.indexOf(e.kind);
+        dv.setUint32(o + 1, e.tick); dv.setInt16(o + 5, e.x); dv.setInt16(o + 7, e.y); dv.setInt32(o + 9, e.size);
+        o += 13;
+      }
+      out.set(next, o); o += next.length;
+      out.set(cells, o); o += NC;
+      out.set(temp, o); o += temp.length;
+      out.set(hum, o); o += hum.length;
+      dv.setUint16(o, nHeat); o += 2;
+      for (let k = 0; k < heat.length; k++) if (heat[k] !== 0) { dv.setUint16(o, k); dv.setInt16(o + 2, heat[k]!); o += 4; }
+      // Move stamps as ages (ticks since the cell last changed), run-length coded over the cells
+      // that hold something: an empty cell's stamp is never read before it is written.
+      const at0 = o;
+      o += 4;
+      const put = (v: number) => { while (v > 127) { out[o++] = (v & 127) | 128; v >>>= 7; } out[o++] = v; };
+      for (let i = 0; i < NC;) {
+        if (cells[i] === 0) { i++; continue; }
+        const age = (tick - stamp[i]!) & 0xffff;
+        let run = 1, j = i + 1;
+        for (; j < NC; j++) {
+          if (cells[j] === 0) continue;
+          if (((tick - stamp[j]!) & 0xffff) !== age) break;
+          run++;
+        }
+        if (run === 1) put(age << 1); else { put((age << 1) | 1); put(run - 2); }
+        i = j;
+      }
+      dv.setUint32(at0, o - at0 - 4);
+      return out.slice(0, o);
     },
     restore: (s) => {
-      const dv = new DataView(s.buffer, s.byteOffset);
-      tick = dv.getUint32(0);
-      seed = dv.getUint32(4);
-      cells.set(s.subarray(8, 8 + cells.length));
-      if (s.length >= 8 + cells.length + temp.length + hum.length) {
-        temp.set(s.subarray(8 + cells.length, 8 + cells.length + temp.length));
-        hum.set(s.subarray(8 + cells.length + temp.length));
-      }
-      active.fill(1); next.fill(1); dirty.fill(1);
+      // Never throws. A snapshot it cannot read leaves the world as it stands.
+      try {
+        const dv = new DataView(s.buffer, s.byteOffset, s.byteLength);
+        const NC = cells.length;
+        if (s.length >= 8 && dv.getUint32(0) === SNAP_MAGIC) {
+          if (s[4] !== 2) return;
+          const flags = s[5]!;
+          let o = 8;
+          const nTick = dv.getUint32(o), nSeed = dv.getUint32(o + 4); o += 8;
+          const nWind = dv.getInt16(o), nRain = dv.getUint16(o + 2), nLight = dv.getUint32(o + 4); o += 8;
+          const nLast = { water: dv.getInt32(o), ice: dv.getInt32(o + 4), fire: dv.getInt32(o + 8), moss: dv.getInt32(o + 12) }; o += 16;
+          const nMods: Record<string, number> = {};
+          for (const k of MOD_KEYS) { nMods[k] = dv.getInt16(o); o += 2; }
+          const nEv = dv.getUint16(o); o += 2;
+          const nEvents: SurfaceEvent[] = [];
+          for (let k = 0; k < nEv; k++) {
+            const kindE = EVENT_KINDS[s[o]!];
+            if (kindE) nEvents.push({ kind: kindE, tick: dv.getUint32(o + 1), x: dv.getInt16(o + 5), y: dv.getInt16(o + 7), size: dv.getInt32(o + 9) });
+            o += 13;
+          }
+          const body = next.length + NC + temp.length + hum.length;
+          if (o + body + 2 > s.length) return;
+          const pNext = o, pCells = pNext + next.length, pTemp = pCells + NC, pHum = pTemp + temp.length;
+          o += body;
+          const nHeat = dv.getUint16(o); o += 2;
+          const pHeat = o;
+          o += nHeat * 4;
+          const nStamp = dv.getUint32(o); o += 4;
+          if (o + nStamp !== s.length) return;
+          // Everything is there: take it.
+          cells.set(s.subarray(pCells, pCells + NC));
+          stamp.fill(0);
+          let i = 0;
+          const end = o + nStamp;
+          const get = () => { let v = 0, sh = 0, b = 0; do { b = s[o++]!; v |= (b & 127) << sh; sh += 7; } while (b > 127 && o < end); return v >>> 0; };
+          while (o < end && i < NC) {
+            const t = get();
+            let run = t & 1 ? get() + 2 : 1;
+            const st = (nTick - (t >>> 1)) & 0xffff;
+            for (; i < NC && run > 0; i++) if (cells[i] !== 0) { stamp[i] = st; run--; }
+          }
+          next.set(s.subarray(pNext, pNext + next.length));
+          active.fill(0);
+          temp.set(s.subarray(pTemp, pTemp + temp.length));
+          hum.set(s.subarray(pHum, pHum + hum.length));
+          heat.fill(0);
+          for (let k = 0; k < nHeat; k++) { const at = dv.getUint16(pHeat + k * 4); if (at < heat.length) heat[at] = dv.getInt16(pHeat + k * 4 + 2); }
+          tick = nTick; seed = nSeed; wind = nWind; rain = nRain; lightning = nLight;
+          snowing = (flags & 1) !== 0; stormy = (flags & 2) !== 0;
+          mods = flags & 4 ? (nMods as unknown as SurfaceModifiers) : null;
+          lastCounts = nLast;
+          events = nEvents;
+          dirty.fill(1);
+          return;
+        }
+        // Format 1 (before the snapshot carried everything): tick, rng, cells, and usually the
+        // climate fields. It wakes whole and goes on plausibly, as it always did.
+        if (s.length !== 8 + NC && s.length !== 8 + NC + temp.length + hum.length) return;
+        tick = dv.getUint32(0);
+        seed = dv.getUint32(4);
+        cells.set(s.subarray(8, 8 + NC));
+        if (s.length >= 8 + NC + temp.length + hum.length) {
+          temp.set(s.subarray(8 + NC, 8 + NC + temp.length));
+          hum.set(s.subarray(8 + NC + temp.length, 8 + NC + temp.length + hum.length));
+        }
+        stamp.fill(0); heat.fill(0);
+        events = [];
+        lastCounts = { water: -1, ice: 0, fire: 0, moss: 0 };
+        stormy = false;
+        active.fill(1); next.fill(1); dirty.fill(1);
+      } catch { /* unreadable: nothing was taken that the checks above had not passed */ }
     },
   };
 };

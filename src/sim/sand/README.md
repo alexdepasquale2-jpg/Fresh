@@ -31,3 +31,7 @@ Material behaviours: `rises` (a powder or liquid with inverted gravity), `flows:
 No new state: snapshots are unchanged. Nothing is scanned outside active chunks.
 
 A reaction whose `becomesB` is `"*"` leaves the neighbour as it is. Use it with `b: "*"`: a plain `becomesB: "empty"` there would erase whatever the cell happened to touch.
+
+## Snapshots (format 2)
+
+`snapshot()` carries everything a step reads, so a world restored into a fresh sim goes on cell for cell as one that never stopped: tick, rng word, wind, rain, lightning age, the last tally, the modifiers last stepped with, surface events not yet drained, the chunks awake next tick, cells, temperature, humidity, heat not yet folded in (sparse), and each cell's move stamp as an age (run-length coded over non-empty cells). It starts with a magic word. `restore()` never throws: a format 1 snapshot (tick, rng, cells, climate fields) still wakes whole and goes on plausibly, and anything unreadable is left alone (the caller compares `tick()`).

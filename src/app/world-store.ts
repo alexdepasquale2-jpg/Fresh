@@ -18,7 +18,10 @@ export const WORLDS_DB = 'sallow-worlds';
 export const WORLDS_STORE = 'worlds';
 /** Other tabs, the Worker and the sim client hear on this when the store is wiped. */
 export const WORLDS_CHANNEL = 'sallow-worlds';
-/** Bump when the packed layout changes: older records are then discarded, not restored. */
+/**
+ * Bump only when older records cannot be read any more: they are then discarded, not restored.
+ * (Still 1: the units and unpack() read the first layout and the first snapshot formats.)
+ */
 export const WORLD_FORMAT = 1;
 /** The most recently opened worlds kept; older ones are evicted. */
 export const MAX_WORLDS = 24;
@@ -35,6 +38,8 @@ export interface WorldParts {
   sand: Uint8Array;
   civ: Uint8Array;
   chronicle: ChronicleEntry[];
+  /** Chronicle.memory(): what the entries leave out. Absent in worlds stored before it existed. */
+  chronicleMemory?: string;
 }
 
 interface WorldRecord {
@@ -52,39 +57,53 @@ interface WorldRecord {
 }
 
 /* ---------- packing ---------- */
-const MAGIC = 0x53574c44; // 'SWLD'
+const MAGIC = 0x53574c44; // 'SWLD': the first layout, still read
+const MAGIC2 = 0x53574c32; // 'SWL2': the same with the chronicle's memory after the entries
 
-/** [magic][sand length][civ length][chronicle length][sand][civ][chronicle as JSON]. */
+/** [magic][sand length][civ length][chronicle length][memory length][sand][civ][chronicle as JSON][chronicle memory]. */
 export const pack = (p: WorldParts): Uint8Array => {
-  const chron = new TextEncoder().encode(JSON.stringify(p.chronicle));
-  const out = new Uint8Array(16 + p.sand.length + p.civ.length + chron.length);
+  const enc = new TextEncoder();
+  const chron = enc.encode(JSON.stringify(p.chronicle));
+  const mem = enc.encode(p.chronicleMemory ?? '');
+  const out = new Uint8Array(20 + p.sand.length + p.civ.length + chron.length + mem.length);
   const dv = new DataView(out.buffer);
-  dv.setUint32(0, MAGIC);
+  dv.setUint32(0, MAGIC2);
   dv.setUint32(4, p.sand.length);
   dv.setUint32(8, p.civ.length);
   dv.setUint32(12, chron.length);
-  out.set(p.sand, 16);
-  out.set(p.civ, 16 + p.sand.length);
-  out.set(chron, 16 + p.sand.length + p.civ.length);
+  dv.setUint32(16, mem.length);
+  let o = 20;
+  out.set(p.sand, o); o += p.sand.length;
+  out.set(p.civ, o); o += p.civ.length;
+  out.set(chron, o); o += chron.length;
+  out.set(mem, o);
   return out;
 };
 
-/** Null when the buffer is not a whole packed world. */
+/** Null when the buffer is not a whole packed world. Reads both layouts. */
 export const unpack = (b: Uint8Array): WorldParts | null => {
   try {
     if (b.length < 16) return null;
     const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
-    if (dv.getUint32(0) !== MAGIC) return null;
+    const magic = dv.getUint32(0);
+    if (magic !== MAGIC && magic !== MAGIC2) return null;
+    const head = magic === MAGIC2 ? 20 : 16;
+    if (b.length < head) return null;
     const ns = dv.getUint32(4);
     const nc = dv.getUint32(8);
     const nh = dv.getUint32(12);
-    if (16 + ns + nc + nh !== b.length) return null;
-    const chronicle = JSON.parse(new TextDecoder().decode(b.subarray(16 + ns + nc))) as unknown;
+    const nm = magic === MAGIC2 ? dv.getUint32(16) : 0;
+    if (head + ns + nc + nh + nm !== b.length) return null;
+    const dec = new TextDecoder();
+    const chronicle = JSON.parse(dec.decode(b.subarray(head + ns + nc, head + ns + nc + nh))) as unknown;
     if (!Array.isArray(chronicle)) return null;
     const ok = chronicle.every((e: unknown) => !!e && typeof e === 'object' && typeof (e as ChronicleEntry).id === 'number' && typeof (e as ChronicleEntry).event === 'string');
     if (!ok) return null;
     // Copies, so the units never hold on to the record's buffer.
-    return { sand: b.slice(16, 16 + ns), civ: b.slice(16 + ns, 16 + ns + nc), chronicle: chronicle as ChronicleEntry[] };
+    return {
+      sand: b.slice(head, head + ns), civ: b.slice(head + ns, head + ns + nc), chronicle: chronicle as ChronicleEntry[],
+      ...(nm ? { chronicleMemory: dec.decode(b.subarray(head + ns + nc + nh)) } : {}),
+    };
   } catch { return null; }
 };
 

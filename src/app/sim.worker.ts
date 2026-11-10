@@ -25,8 +25,8 @@ const makeUnits = (lawSet = ''): Units => ({ sim: sand(), civ: civF(), chronicle
 let cur: Units = makeUnits();
 /**
  * The last few worlds stay alive in memory, so going to a sibling planet or the system screen and
- * back in one sitting continues the very same world, exactly. (The units' own snapshots do not
- * carry everything: a world restored from the store goes on plausibly, not identically.)
+ * back in one sitting costs no read. A world restored from the store goes on just the same: the
+ * units' snapshots carry everything a step reads, the living body included.
  * Insertion order is age; the store on disk is what survives a reload.
  */
 const LIVE_WORLDS = 4;
@@ -81,7 +81,7 @@ const store = (urgent = false) => {
     const g = cur.sim.grid();
     const view = cur.civ.view();
     const input = {
-      sand: cur.sim.snapshot(), civ: cur.civ.snapshot(), chronicle: cur.chronicle.snapshot(),
+      sand: cur.sim.snapshot(), civ: cur.civ.snapshot(), chronicle: cur.chronicle.snapshot(), chronicleMemory: cur.chronicle.memory?.(),
       info: { key: h.key, serial: h.serial, tick: cur.sim.tick(), souls: view.souls, villages: view.villages.length, era: view.age ?? view.era, savedAtMs: t0, openedAtMs: h.openedAtMs },
       lawSet: h.lawSet, width: g.width, height: g.height, urgent,
     };
@@ -134,10 +134,9 @@ const post = (opened?: WorkerFrame['opened']) => {
 
 const touched = () => { if (held) held.changed = true; };
 
-/** Leaving a world: the body is given up (a stored world cannot hold one), then it is stored. */
+/** Leaving a world: it is stored as it stands, the body with it. */
 const leave = () => {
   if (!open) return;
-  try { if (cur.civ.view().avatar) { cur.civ.ascend(); touched(); } } catch { /* it stays as it is */ }
   store();
 };
 
@@ -195,10 +194,10 @@ const openWorld = (m: Open) => {
       if (my !== gen) return;
       if (rec) {
         try {
-          if (rec.sand.length !== cur.sim.snapshot().length) throw new Error('size');
+          // The sand takes only a snapshot it can read whole (the tick below says whether it did).
           cur.sim.restore(rec.sand);
           cur.civ.restore(rec.civ);
-          cur.chronicle.restore(rec.chronicle);
+          cur.chronicle.restore(rec.chronicle, rec.chronicleMemory);
           // Reading it back proves the civ took it.
           cur.civ.view();
           if (cur.sim.tick() !== rec.tick) throw new Error('tick');
