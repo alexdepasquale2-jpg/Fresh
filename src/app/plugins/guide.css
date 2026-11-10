@@ -1,0 +1,40 @@
+/* Mote's guide. Tokens only. Nothing here takes a touch except Mote's own small buttons. */
+.guide { position: absolute; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
+.guide > * { position: absolute; left: 0; top: 0; pointer-events: none; visibility: hidden; opacity: 0; }
+.guide > .on { visibility: visible; opacity: 1; }
+
+.guide-mote { display: block; width: 12px; height: 12px; background: var(--glow); box-shadow: 0 0 10px 2px var(--glow); animation: guide-breathe 2.6s ease-in-out infinite; }
+
+.guide-card { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; column-gap: 4px; padding: 6px 6px 6px 2px; background: var(--panel); border: 2px solid var(--line); box-shadow: 0 0 0 2px var(--bg), 0 0 18px color-mix(in srgb, var(--glow) 22%, transparent); transition: transform .28s ease-out, opacity .2s; }
+.guide-line { margin: 0; padding: 4px 0; font: italic 16px/1.3 var(--font-voice); color: var(--ink-bright); text-wrap: pretty; }
+.guide-dot, .guide-chip, .guide-btn { pointer-events: none; min-width: var(--touch); min-height: var(--touch); padding: 0; background: transparent; border: 0; cursor: pointer; display: grid; place-items: center; }
+.guide > .on .guide-dot, .guide > .on .guide-btn.on, .guide-chip.on { pointer-events: auto; }
+.guide-btn { display: none; padding: 0 10px; font: 600 11px var(--font-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-muted); }
+.guide-btn.on { display: grid; }
+.guide-acts { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 4px; }
+.guide-go { padding: 0 12px; color: var(--glow); border: 2px solid var(--line); font-size: 12px; }
+.guide-go:active, .guide-side:active { color: var(--ink-bright); border-color: var(--glow); }
+
+.guide-chip { transition: opacity .2s; }
+.guide-chip .guide-mote { width: 10px; height: 10px; }
+.guide-chip::after { content: ''; position: absolute; inset: 8px; border: 1px solid color-mix(in srgb, var(--glow) 45%, transparent); background: color-mix(in srgb, var(--bg) 60%, transparent); z-index: -1; }
+
+.guide-ring { border: 2px solid var(--glow); box-shadow: 0 0 10px color-mix(in srgb, var(--glow) 55%, transparent), inset 0 0 8px color-mix(in srgb, var(--glow) 25%, transparent); }
+.guide-ring::after { content: ''; position: absolute; inset: -2px; border: 2px solid var(--glow); border-radius: inherit; animation: guide-pulse 1.5s ease-out infinite; }
+.guide-ring.round { border-radius: 50%; }
+
+.guide-drift { width: 0; height: 0; }
+.guide-drift::after { content: ''; position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; background: var(--glow); box-shadow: 0 0 12px 3px var(--glow); animation: guide-drift 2s ease-in-out infinite; }
+
+.guide-arrow { width: 44px; height: 44px; }
+.guide-arrow::after { content: ''; position: absolute; left: 14px; top: 10px; width: 14px; height: 14px; border-right: 3px solid var(--glow); border-bottom: 3px solid var(--glow); transform: rotate(45deg); animation: guide-nod 1.1s ease-in-out infinite; filter: drop-shadow(0 0 4px var(--glow)); }
+
+@keyframes guide-breathe { 50% { opacity: .55; box-shadow: 0 0 5px 0 var(--glow); } }
+@keyframes guide-pulse { from { transform: scale(1); opacity: .9; } to { transform: scale(1.22); opacity: 0; } }
+@keyframes guide-drift { 0% { transform: translate(0, 0) scale(.6); opacity: 0; } 15% { opacity: 1; transform: translate(0, 0) scale(1); } 80% { opacity: 1; transform: translate(var(--dx, 0), var(--dy, 0)) scale(1); } 100% { opacity: 0; transform: translate(var(--dx, 0), var(--dy, 0)) scale(1.8); } }
+@keyframes guide-nod { 50% { transform: translateY(8px) rotate(45deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .guide-mote, .guide-ring::after, .guide-arrow::after { animation: none; }
+  .guide-drift::after { animation: none; transform: translate(var(--dx, 0), var(--dy, 0)); }
+  .guide-card { transition: none; }
+}
