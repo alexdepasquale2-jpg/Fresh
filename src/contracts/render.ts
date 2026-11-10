@@ -55,6 +55,8 @@ export interface SystemRenderView {
   readonly drag: { kind: SkyPieceKind; x: number; y: number; overOrbit: number } | null;
   readonly tick: number;
   readonly pulse: Fx;
+  /** 0..1 how far the worlds' orbits have been pulled into one line by what they have built. */
+  readonly align?: number;
   /** 0..1 star flare flash, decaying. */
   readonly flare?: number;
   /** Ripple at a touched point, 0..1 age. */

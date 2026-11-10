@@ -22,8 +22,9 @@ const EVENT: Partial<Record<Kind, string[]>> = {
   festival: ['%v sang all night.', 'A festival in %v, under the lit sky.'],
   convert: ['%v turned to the %b.', 'In %v they began to pray to the %b.'],
   tech: ['%v learned %t.', '%v came into the age of %t.'],
-  launch: ['From %v a small light rose and did not come down.', '%v sent a lamp into the sky.'],
+  launch: ['From %v a small light rose and did not come down.', '%v sent a lamp into the sky.', '%v put a new star into your sky.'],
   light: ['%v sang toward the sky.'],
+  traded: ['Traders from %v sold their wares in %o.', '%v and %o struck a bargain.'],
   struck: ['The stranger struck back at %v, and they ran.', 'Those of %v who raised their hands against the stranger fell.'],
   preached: ['The stranger spoke at %v, and some stayed to listen.', 'In %v they sat down around the stranger and heard it speak.'],
   gift: ['The stranger gave %v bread from its own body.', '%v ate from the hands of the stranger.'],
@@ -118,6 +119,11 @@ export const factory: ChronicleFactory = ({ names }) => {
           entries.push({ id: nextId++, year, kind: e.kind, tick: e.tick, event: t.replace('%v', vname(e.villageId)), ...(e.belief ? { belief: e.belief } : {}) });
           continue;
         }
+        if (e.kind === 'built') {
+          const B = ['', '', '%v ploughed its first field.', '%v built a dock on the water.', '%v dug a mine into the hill.', '%v raised a workshop. The forge is lit.', '%v opened a market.', '%v built a storehouse.', '%v raised a shrine.', '%v built a bell tower.', '%v cleared a field and built something that points at the sky.'];
+          entries.push({ id: nextId++, year, kind: e.kind, tick: e.tick, event: (B[e.detail ?? 0] || '%v built something new.').replace('%v', vname(e.villageId)), ...(e.belief ? { belief: e.belief } : {}) });
+          continue;
+        }
         const opts = e.kind === 'migrate' && e.detail === e.villageId ? ['%v climbed away from the water.', 'The people of %v moved to higher ground.'] : EVENT[e.kind] ?? ['%v endured.'];
         const text = pick(opts, nextId + e.tick)
           .replace('%v', vname(e.villageId))
@@ -145,6 +151,8 @@ export const factory: ChronicleFactory = ({ names }) => {
             reason = prior ? `After ${CAUSE[prior.kind]}, it seemed the only answer.` : says[0] ? `They watched the sky. ${says[0]}` : 'No one remembers why.';
             break;
           case 'feud': reason = 'Each said the other prayed wrong.'; break;
+          case 'built': reason = 'There were hands enough, and coin.'; break;
+          case 'traded': reason = 'Each had what the other lacked.'; break;
           case 'struck': reason = `${voice} it was never a thing to be fought.`; break;
           case 'preached': reason = 'Its voice was like their own, but older.'; break;
           case 'gift': reason = 'It grew fainter as they ate.'; break;

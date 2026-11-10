@@ -38,7 +38,7 @@ void main(){
 const FS = `#version 300 es
 precision highp float; precision highp int;
 in vec2 v_p; in vec4 v_b; in float v_role; in float v_dist; out vec4 o;
-uniform int u_mode; uniform float u_time, u_amb, u_night; uniform sampler2D u_pal, u_depth; uniform vec4 u_vp;
+uniform int u_mode; uniform float u_time, u_amb, u_night, u_zoom; uniform sampler2D u_pal, u_depth; uniform vec4 u_vp;
 vec3 pal(int i){ return texelFetch(u_pal, ivec2(i & 15, 0), 0).rgb; }
 float seg(vec2 p, vec2 a, vec2 b, float r){ vec2 pa = p - a, ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)) - r; }
 void main(){
@@ -65,6 +65,11 @@ void main(){
   else if (role == ${ROLE.chat}) { float a = sin(t * 5.0); handF = vec2(0.4, 1.3 + 0.25 * a); headY += 0.03 * a; }
   else if (role == ${ROLE.lamp}) { handF = vec2(0.42, 1.5); extra = length(p - handF - vec2(0.0, 0.12)) - 0.13; extraCol = pal(10); emis = 1.0; }
   else if (role == ${ROLE.watch}) { handF = vec2(0.28, 1.95); }
+  else if (role == ${ROLE.mine}) { float a = sin(t * 6.0); lean = 0.2 + 0.12 * a; handF = vec2(0.5, 1.5 + 0.5 * a); handB = vec2(0.4, 1.4 + 0.45 * a);
+    extra = min(seg(p, handF, handF + vec2(0.25, 0.6), 0.04), seg(p, handF + vec2(-0.1, 0.62), handF + vec2(0.6, 0.5), 0.06)); extraCol = pal(4); }
+  else if (role == ${ROLE.craft} || role == ${ROLE.build}) { float a = max(sin(t * 8.0), 0.0); lean = 0.12; handF = vec2(0.45, 1.25 + 0.6 * a);
+    extra = min(seg(p, handF, handF + vec2(0.1, 0.4), 0.04), max(abs(p.x - handF.x - 0.12) - 0.17, abs(p.y - handF.y - 0.48) - 0.1)); extraCol = pal(4); }
+  else if (role == ${ROLE.trade}) { lean = 0.1; extra = max(abs(p.x + 0.42) - 0.26, abs(p.y - 1.45) - 0.34); extraCol = pal(7); handB = vec2(-0.3, 1.5); }
   else if (role == 99) { float a = sin(t * 3.0); handF = vec2(0.45, 1.3 + 0.1 * a); handB = vec2(-0.45, 1.3 - 0.1 * a); }
   p.y -= bob;
   float k = 1.0 - squat;                                  // kneeling folds the legs
@@ -86,6 +91,11 @@ void main(){
   vec3 col = head < min(min(legs, torso), arms) ? pal(8) : (legs < torso ? cloth * 0.6 : cloth);
   col *= 0.75 + 0.25 * smoothstep(0.1, -0.1, p.x - lean);   // a little form
   col *= u_amb;
+  // Closer layers add a belt, then eyes.
+  float zl = u_mode == 1 ? 40.0 : u_zoom;
+  if (zl > 14.0 && torso < 0.0 && abs(p.y - hipP.y - 0.12) < 0.05) col = pal(3) * u_amb;
+  if (zl > 19.0 && head < 0.0) { vec2 e = p - headP; if (length(vec2(abs(e.x - 0.08) - 0.08, e.y - 0.03)) < 0.035) col = pal(0); }
+  if (zl > 26.0 && head < -0.02 && (p.y - headP.y) > 0.13) col = mix(pal(3), pal(1), step(0.5, seed)) * u_amb;   // hair
   if (extra < d) { col = extraCol * (emis > 0.5 ? 1.6 : u_amb); }
   if (role == 99) { col = mix(pal(9), pal(10), 0.5 + 0.5 * sin(u_time * 5.0)) * 1.5; }
   if (role == ${ROLE.lamp}) col += pal(13) * u_night * 0.25 * smoothstep(1.2, 0.0, length(p - handF));
@@ -104,7 +114,7 @@ interface Soul { x: number; y: number; face: number; phase: number; moving: numb
 export const createPeople = (core: GlCore) => {
   const gl = core.gl;
   const prog = core.program(VS, FS);
-  const names = ['u_mode', 'u_cam', 'u_ro', 'u_grid', 'u_time', 'u_amb', 'u_night', 'u_pal', 'u_depth', 'u_vp'];
+  const names = ['u_zoom', 'u_mode', 'u_cam', 'u_ro', 'u_grid', 'u_time', 'u_amb', 'u_night', 'u_pal', 'u_depth', 'u_vp'];
   const loc = Object.fromEntries(names.map((n) => [n, gl.getUniformLocation(prog, n)])) as Record<string, WebGLUniformLocation | null>;
   const MAXN = 260;
   const data = new Float32Array(MAXN * 8);
@@ -201,6 +211,7 @@ export const createPeople = (core: GlCore) => {
       gl.uniform1f(loc.u_time!, o.time % 10000);
       gl.uniform1f(loc.u_amb!, o.amb);
       gl.uniform1f(loc.u_night!, o.night);
+      gl.uniform1f(loc.u_zoom!, o.view.zoom);
       gl.uniform4f(loc.u_vp!, vx, vy, vw, vh);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, o.pal);

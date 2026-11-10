@@ -88,6 +88,11 @@ export interface SurfaceSim {
 }
 export type SurfaceSimFactory = () => SurfaceSim;
 
+/** What a village builds as it grows. x is the column it stands on. */
+export type BuildingKind = 'house' | 'fire' | 'farm' | 'dock' | 'mine' | 'workshop' | 'market' | 'store' | 'shrine' | 'tower' | 'pad';
+export const BUILDING_KINDS: readonly BuildingKind[] = ['house', 'fire', 'farm', 'dock', 'mine', 'workshop', 'market', 'store', 'shrine', 'tower', 'pad'];
+export interface Building { readonly kind: BuildingKind; readonly x: number; readonly seed: number }
+
 export type Belief = 'none' | 'sun' | 'moon' | 'sea' | 'stone' | 'fire' | 'sky';
 export const BELIEFS: readonly Belief[] = ['none', 'sun', 'moon', 'sea', 'stone', 'fire', 'sky'];
 /** Tech eras: 0 huts, 1 fire, 2 iron, 3 lamps, 4 bells, 5 star-reaching. */
@@ -108,11 +113,18 @@ export interface Village {
   readonly mood: number;
   /** 0..100. At 100 they understand what you are and will not fear you. */
   readonly enlightenment: number;
+  /** Coin from trade and craft, 0..999. */
+  readonly wealth: number;
+  /** Crafted goods waiting to be traded. */
+  readonly goods: number;
+  /** 0..100: fed, rich and glad. */
+  readonly prosperity: number;
+  readonly buildings: readonly Building[];
 }
 export type CivEventKind =
   | 'found' | 'grow' | 'split' | 'die' | 'migrate' | 'light'
   | 'famine' | 'tech' | 'convert' | 'feud' | 'festival' | 'burn' | 'flooded' | 'frozen' | 'launch' | 'merged'
-  | 'struck' | 'preached' | 'gift' | 'omen' | 'stranger' | 'attack' | 'slain' | 'worship' | 'enlightened' | 'smitten' | 'blessed';
+  | 'built' | 'traded' | 'struck' | 'preached' | 'gift' | 'omen' | 'stranger' | 'attack' | 'slain' | 'worship' | 'enlightened' | 'smitten' | 'blessed';
 export interface CivEvent {
   readonly kind: CivEventKind;
   readonly tick: number;
@@ -124,7 +136,7 @@ export interface CivEvent {
   readonly belief?: Belief;
 }
 /** Person roles in CivView.people. */
-export const ROLE = { idle: 0, farm: 1, fish: 2, pray: 3, travel: 4, lamp: 5, attack: 6, kneel: 7, watch: 8, flee: 9, listen: 10, carry: 11, chat: 12, dance: 13, sleep: 14 } as const;
+export const ROLE = { idle: 0, farm: 1, fish: 2, pray: 3, travel: 4, lamp: 5, attack: 6, kneel: 7, watch: 8, flee: 9, listen: 10, carry: 11, chat: 12, dance: 13, sleep: 14, mine: 15, craft: 16, trade: 17, build: 18 } as const;
 /** Floats per person in CivView.people. */
 export const PERSON_STRIDE = 5;
 /** What the player's body can do. */
@@ -140,6 +152,12 @@ export interface CivView {
   readonly peopleCount: number;
   /** Highest tech level reached on this planet. */
   readonly era: number;
+  /** Average village prosperity, 0..100. */
+  readonly prosperity: number;
+  /** Things this world has put into orbit since it was opened. */
+  readonly launches: number;
+  /** Ticks since the last launch (for the rocket animation). */
+  readonly launchAge: number;
   /** The player's incarnation on this surface, if any. */
   readonly avatar: Avatar | null;
 }

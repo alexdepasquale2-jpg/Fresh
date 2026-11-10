@@ -9,6 +9,8 @@ import { ENGINE, FIELD, ROLE } from '@/contracts/sim';
 import { FULLSCREEN_VS } from '@/render/gl';
 import { createFirstPerson } from './first-person';
 import { createPeople } from './people';
+import { createStructures } from './structures';
+import type { Structures } from './structures';
 import type { People } from './people';
 import { FX_ONE } from '@/core/fixed';
 
@@ -22,7 +24,7 @@ uniform vec2 u_res; uniform vec4 u_rect; uniform vec2 u_grid; uniform vec3 u_vie
 uniform usampler2D u_cells, u_over, u_mat, u_top;
 uniform sampler2D u_temp, u_hum, u_pal;
 uniform float u_day, u_season, u_time, u_pulse, u_nl, u_dim, u_warm, u_dust, u_wind, u_rain, u_flash;
-uniform float u_moons, u_suns, u_rings, u_comet, u_belt;
+uniform float u_moons, u_suns, u_rings, u_comet, u_belt, u_orb;
 uniform vec4 u_vill[12]; uniform int u_nvill;
 vec3 pal(int i){ return texelFetch(u_pal, ivec2(i & 15, 0), 0).rgb; }
 float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
@@ -87,6 +89,9 @@ void main(){
     vec2 rel = gp - cp; float along = dot(rel, normalize(vec2(-1.0, -0.4)));
     float across = abs(dot(rel, normalize(vec2(0.4, -1.0))));
     sky += pal(10) * (disc(gp, cp, 2.2) + smoothstep(0.0, 1.0, along) * smoothstep(40.0, 0.0, along) * smoothstep(1.5 + along * 0.08, 0.0, across) * 0.6); }
+  // what they launched: small lights crossing the sky in a line
+  for (int j = 0; j < 8; j++) { if (float(j) >= u_orb) break; float ox = fract(u_time * 0.012 + float(j) * 0.13); vec2 op = vec2(ox * u_grid.x, 22.0 + sin(ox * 3.14159) * -12.0 + float(j));
+    sky += pal(10) * smoothstep(1.3, 0.2, length(gp - op)) * (0.8 + 0.4 * sin(u_pulse * 6.2831 + float(j))); }
   // clouds driven by humidity, pushed by the wind
   float cn = fbm(vec2(gp.x * 0.045 - u_time * u_wind * 0.02, gp.y * 0.11 + u_time * 0.01));
   float cloud = smoothstep(0.42, 0.75, cn + hum * 1.3 - 0.3) * smoothstep(0.6, 0.05, wq.y);
@@ -131,6 +136,9 @@ void main(){
     vec3 base = pal(slot);
     float n = h21(vec2(g));
     float fine = h21(floor(gp * 4.0)) - 0.5; // 4x4 grains per cell, visible when zoomed
+    float det2 = smoothstep(8.0, 11.0, u_view.z), det3 = smoothstep(20.0, 26.0, u_view.z);
+    fine += det2 * (h21(floor(gp * 16.0)) - 0.5) * 0.8 + det3 * (noise(gp * 70.0) - 0.5) * 0.9;   // pebbles, then the grain of the grains
+    if (kind <= 2u && det2 > 0.0) base *= 1.0 - det2 * 0.35 * smoothstep(0.18, 0.1, length(fract(gp * 3.0 + h21(floor(gp * 3.0)) * 0.6) - 0.5)) * step(0.7, h21(floor(gp * 3.0) + 3.0));
     if (kind == 1u) { base *= 0.82 + 0.18 * noise(vec2(g) * vec2(0.18, 0.9)) + 0.12 * n; base *= 1.0 + det * (fine * 0.16 - 0.3 * step(0.8, noise(gp * vec2(2.3, 3.1)) * noise(gp.yx * 1.7 + 9.0) * 2.2)); } // strata, cracks
     else if (kind == 2u) base *= 0.85 + 0.3 * n + det * fine * 0.4;                              // grains
     else if (kind == 3u) {                                                                       // water
@@ -208,6 +216,7 @@ export const factory: PlanetRendererFactory = () => {
   let flash = 0;
   let fp: ReturnType<typeof createFirstPerson> | null = null;
   let people: People | null = null;
+  let structures: Structures | null = null;
   const fract = (n: number) => n - Math.floor(n);
   let lastLightning = 9999;
 
@@ -231,11 +240,12 @@ export const factory: PlanetRendererFactory = () => {
   const build = () => {
     const gl = core!.gl;
     prog = core!.program(FULLSCREEN_VS, FS);
-    for (const k of ['u_res', 'u_rect', 'u_grid', 'u_view', 'u_cells', 'u_over', 'u_mat', 'u_top', 'u_temp', 'u_hum', 'u_pal', 'u_day', 'u_season', 'u_time', 'u_pulse', 'u_nl', 'u_dim', 'u_warm', 'u_dust', 'u_wind', 'u_rain', 'u_flash', 'u_moons', 'u_suns', 'u_rings', 'u_comet', 'u_belt', 'u_vill', 'u_nvill']) loc[k] = gl.getUniformLocation(prog, k);
+    for (const k of ['u_res', 'u_rect', 'u_grid', 'u_view', 'u_cells', 'u_over', 'u_mat', 'u_top', 'u_temp', 'u_hum', 'u_pal', 'u_day', 'u_season', 'u_time', 'u_pulse', 'u_nl', 'u_dim', 'u_warm', 'u_dust', 'u_wind', 'u_rain', 'u_flash', 'u_moons', 'u_suns', 'u_rings', 'u_comet', 'u_belt', 'u_orb', 'u_vill', 'u_nvill']) loc[k] = gl.getUniformLocation(prog, k);
     W = H = 0;
     matKey = '';
     fp = null;
     people = null;
+    structures = null;
   };
   const put = (x: number, y: number, code: number) => {
     if (x >= 0 && y >= 0 && x < W && y < H) over[y * W + x] = code;
@@ -330,31 +340,7 @@ export const factory: PlanetRendererFactory = () => {
       let nv = 0;
       vill.fill(0);
       for (const vg of v.civ.villages) {
-        const houses = Math.min(7, 1 + (vg.souls >> 3));
-        const hh = 2 + (vg.tech >= 2 ? 1 : 0);
-        for (let k = 0; k < houses; k++) {
-          const off = (k % 2 ? -1 : 1) * (3 + (k >> 1) * 6) - 1;
-          const hx = vg.x + off;
-          if (hx < 1 || hx > W - 4) continue;
-          const gy = Math.min(top[hx]!, top[hx + 1]!, top[hx + 2]!) - 1;
-          for (let yy = 0; yy < hh; yy++) for (let xx = 0; xx < 3; xx++) put(hx + xx, gy - yy, xx === 1 && yy === hh - 1 ? O.window : O.wall);
-          for (let xx = -1; xx <= 3; xx++) put(hx + xx, gy - hh, O.roof);
-          put(hx + 1, gy - hh - 1, O.roof);
-          if (vg.tech >= 1 && k === 0) {
-            for (let j = 0; j < 5; j++) {
-              const sx = Math.round(hx + 2 + Math.sin(time * 1.5 + j) * 0.8 + (env.wind * j) / 60);
-              const sy = gy - hh - 2 - j - (Math.floor(time * 4) % 2);
-              put(sx, sy, O.smoke);
-            }
-          }
-        }
-        const gy = top[vg.x]! - 1;
-        if (vg.tech >= 1) put(vg.x, gy, O.bonfire);
-        if (vg.tech >= 4) {
-          for (let j = 1; j < 8; j++) put(vg.x, gy - j, O.tower);
-          put(vg.x, gy - 8, O.window);
-        }
-        if (vg.tech >= 5 && Math.floor(time) % 7 === vg.id % 7) put(vg.x, gy - 10 - Math.floor((time % 1) * 60), O.launch);
+        const gy = top[Math.max(0, Math.min(W - 1, vg.x))]! - 1;
         if (nv < 12) {
           vill.set([vg.x, gy - 1, 6 + Math.min(14, vg.souls / 4), (night ? 1 : 0.3) * (0.5 + vg.tech * 0.15)], nv * 4);
           nv++;
@@ -409,9 +395,13 @@ export const factory: PlanetRendererFactory = () => {
       gl.uniform1f(loc.u_rings!, count('rings') ? 1 : 0);
       gl.uniform1f(loc.u_comet!, count('comet') ? 1 : 0);
       gl.uniform1f(loc.u_belt!, count('belt') ? 1 : 0);
+      gl.uniform1f(loc.u_orb!, Math.min(8, v.sky.built ?? 0));
       gl.uniform4fv(loc.u_vill!, vill);
       gl.uniform1i(loc.u_nvill!, nv);
       core.quad(prog);
+      const cam2 = { cx: v.view?.cx ?? W / 2, cy: v.view?.cy ?? H / 2, zoom: Math.max(1, v.view?.zoom ?? 1) };
+      structures ??= createStructures(core);
+      structures.draw({ civ: v.civ, top, view: cam2, rect: v.rect, W, H, time, amb: ambP, night: 1 - dayl, pulse: v.pulse / FX_ONE, pal: tex.pal! });
       people.draw({ fp: null, view: { cx: v.view?.cx ?? W / 2, cy: v.view?.cy ?? H / 2, zoom: Math.max(1, v.view?.zoom ?? 1) }, rect: v.rect, W, H, time, amb: ambP, night: 1 - dayl, pal: tex.pal! });
     },
     dispose: () => { core = null; },

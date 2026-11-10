@@ -13,7 +13,7 @@ precision highp float;
 in vec2 v_uv; out vec4 o;
 uniform vec2 u_res, u_c; uniform float u_rings[4]; uniform int u_n, u_sel, u_hover;
 uniform vec3 u_planet[4]; uniform vec4 u_piece[16]; uniform vec3 u_ghost;
-uniform vec3 u_bg, u_line, u_ink, u_gold, u_glow; uniform float u_pulse, u_heat, u_flare; uniform vec3 u_touch;
+uniform vec3 u_bg, u_line, u_ink, u_gold, u_glow; uniform float u_pulse, u_heat, u_flare; uniform vec3 u_touch; uniform float u_built[4]; uniform vec2 u_align; uniform float u_time;
 void main(){
   vec2 fc = vec2(v_uv.x * u_res.x, (1.0 - v_uv.y) * u_res.y);
   vec3 col = u_bg;
@@ -31,6 +31,22 @@ void main(){
     col = mix(col, lc, smoothstep(w, 0.0, abs(d - u_rings[i])));
     float pd = length(fc - u_planet[i].xy);
     col = mix(col, i == u_sel ? u_glow : u_ink, smoothstep(u_planet[i].z, u_planet[i].z - 1.5, pd));
+  }
+  // What each world has put into orbit: small lights circling it, blinking on the pulse.
+  for (int i = 0; i < 4; i++) {
+    if (i >= u_n) break;
+    for (int j = 0; j < 8; j++) {
+      if (float(j) >= u_built[i]) break;
+      float a = u_time * (0.9 + float(j) * 0.23) * (mod(float(j), 2.0) < 0.5 ? 1.0 : -1.0) + float(j) * 1.05 + float(i);
+      vec2 op = u_planet[i].xy + (u_planet[i].z + 5.0 + float(j) * 1.4) * vec2(cos(a), sin(a) * 0.6);
+      col += u_glow * smoothstep(2.2, 0.3, length(fc - op)) * (0.7 + 0.3 * sin(u_pulse * 6.2831 + float(j)));
+    }
+  }
+  // Alignment: a line of light from the star through the worlds as their orbits lock together.
+  if (u_align.x > 0.02) {
+    vec2 dir = vec2(cos(u_align.y), sin(u_align.y)); vec2 rel = fc - u_c;
+    float along = dot(rel, dir), perp = abs(dot(rel, vec2(-dir.y, dir.x)));
+    col += mix(u_gold, u_glow, 0.5) * u_align.x * u_align.x * step(0.0, along) * smoothstep(190.0, 20.0, along) * (smoothstep(1.6, 0.0, perp) * 0.8 + smoothstep(14.0, 0.0, perp) * 0.12 * (0.6 + 0.4 * sin(u_pulse * 6.2831)));
   }
   for (int i = 0; i < 16; i++) {
     vec4 p = u_piece[i];
@@ -66,9 +82,10 @@ export const factory: SystemRendererFactory = () => {
   const pieces = new Float32Array(64);
   let n = 0;
   const ringR = new Float32Array(4);
+  const built = new Float32Array(4);
   const build = () => {
     prog = core!.program(FULLSCREEN_VS, FS);
-    for (const k of ['u_res', 'u_c', 'u_rings', 'u_n', 'u_sel', 'u_hover', 'u_planet', 'u_piece', 'u_ghost', 'u_bg', 'u_line', 'u_ink', 'u_gold', 'u_glow', 'u_pulse', 'u_heat', 'u_flare', 'u_touch']) loc[k] = core!.gl.getUniformLocation(prog, k);
+    for (const k of ['u_res', 'u_c', 'u_rings', 'u_n', 'u_sel', 'u_hover', 'u_planet', 'u_piece', 'u_ghost', 'u_bg', 'u_line', 'u_ink', 'u_gold', 'u_glow', 'u_pulse', 'u_heat', 'u_flare', 'u_touch', 'u_built', 'u_align', 'u_time']) loc[k] = core!.gl.getUniformLocation(prog, k);
   };
   const rgb = (gl: WebGL2RenderingContext, l: WebGLUniformLocation | null | undefined, hex: string) => {
     const [r, g, b] = hexToRgb(hex);
@@ -95,12 +112,19 @@ export const factory: SystemRendererFactory = () => {
       n = v.system.orbits.length;
       pieces.fill(0);
       let pc = 0;
+      const k = Math.max(0, Math.min(1, v.align ?? 0));
+      const p0 = v.system.orbits[0]!.periodTicks * 2;
+      const shared = ((v.tick % p0) / p0) * Math.PI * 2;
+      built.fill(0);
       v.system.orbits.forEach((o, i) => {
         const key0 = seedToHex(v.system.planets[o.planet]!.seed);
         const drift = v.skies.find((s) => s.planetKey === key0)?.drift ?? 0;
         rings[i] = L.ring(i) + drift * 6;
         ringR[i] = rings[i]!;
-        const a = ((v.tick % o.periodTicks) / o.periodTicks) * Math.PI * 2 + i * 1.7;
+        const own = ((v.tick % o.periodTicks) / o.periodTicks) * Math.PI * 2 + i * 1.7;
+        // Aligned worlds share one angle and one period.
+        const a = own * (1 - k) + shared * k;
+        built[i] = Math.min(8, v.skies.find((s) => s.planetKey === key0)?.built ?? 0);
         const px = L.cx + Math.cos(a) * rings[i]!, py = L.cy + Math.sin(a) * rings[i]!;
         planets.set([px, py, 6 + (i % 2) * 2], i * 3);
         const key = seedToHex(v.system.planets[o.planet]!.seed);
@@ -126,6 +150,9 @@ export const factory: SystemRendererFactory = () => {
       gl.uniform1f(loc.u_pulse!, v.pulse / FX_ONE);
       gl.uniform1f(loc.u_heat!, v.system.star.heat / 255);
       gl.uniform1f(loc.u_flare!, v.flare ?? 0);
+      gl.uniform1fv(loc.u_built!, built);
+      gl.uniform2f(loc.u_align!, k, shared);
+      gl.uniform1f(loc.u_time!, (v.tick / 20) % 10000);
       gl.uniform3f(loc.u_touch!, v.touch?.x ?? 0, v.touch?.y ?? 0, v.touch ? 1 - v.touch.age : 0);
       core.quad(prog);
     },

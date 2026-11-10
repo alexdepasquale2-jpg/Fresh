@@ -75,6 +75,8 @@ export const factory: MergerFactory = ({ universes }) => {
       era: Math.max(a.era ?? 0, b?.era ?? 0),
       belief: a.belief ?? b?.belief ?? 'none',
       enlightenment: Math.max(a.enlightenment ?? 0, b?.enlightenment ?? 0),
+      prosperity: Math.max(a.prosperity ?? 0, b?.prosperity ?? 0),
+      orbiters: (a.orbiters ?? 0) + (b?.orbiters ?? 0),
     }),
   };
 };
