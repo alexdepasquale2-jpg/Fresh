@@ -19,3 +19,5 @@
 7. Deterministic for a fixed input script (golden test).
 
 Plus: `npm run check` passes, and `demo.ts` shows the unit alone in `/dev` with a fixed seed.
+
+Resume: `start(u, best)` on a dive that is stopped at a star in the same universe (not the floor) goes on from that fold: depth, reliquaries and milestones kept; streak, haul and the summary begin again. Call `surface()` first for a fall from the top (the dive HUD does this unless `ctx.selection.star` is the star the dive stopped at).

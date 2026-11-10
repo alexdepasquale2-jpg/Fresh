@@ -1,4 +1,9 @@
 /* Dive HUD. Tokens only. */
+/* The hub's menu button is a fixed 44px square in the top right corner: the header keeps clear of it. */
+.screen .dive-head { flex-wrap: nowrap; padding-right: calc(var(--touch) - var(--pad) + var(--gap) + 4px); min-height: var(--touch); }
+.screen .dive-head .k-pips { flex: 0 1 auto; min-width: 0; white-space: nowrap; }
+.screen .dive-head.tight .k-pips { font-size: 0; gap: 3px; }
+.screen .dive-head.tight .k-back { padding: 0 8px; }
 /* The floor of a universe, shown on the depth bar once it is near. */
 .depth-bar .bar-floor { position: absolute; top: -5px; bottom: -5px; width: 4px; margin-left: -4px; background: var(--ink-bright); box-shadow: 0 0 8px var(--gold); animation: bar-floor 1.1s steps(2) infinite; }
 .depth-bar.near-floor { border-color: var(--line); }

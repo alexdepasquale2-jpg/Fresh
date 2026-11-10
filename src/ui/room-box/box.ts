@@ -6,7 +6,7 @@ import { RARITIES } from '@/contracts/universe';
 import type { Thing, MergePreview } from '@/contracts/merge';
 import { SKY_PIECE_KINDS } from '@/contracts/sky';
 import { el, button, narration, label, boxSlot, glyphChar, backChip, tag, stat, skyPieceTile, burst, flash, lightPips } from '@/ui/kit';
-import { names, sync, saveMeta, touch, ago, EMPTY_STATS, loadCollection, saveCollection } from './store';
+import { names, sync, saveMeta, touch, ago, EMPTY_STATS, loadCollection, saveCollection, lastStar, noteStar } from './store';
 import { charOf, tierOf, RARITY_MARK, modChips, modList, bondParts, bondScore, bondWord, emblem } from './character';
 import type { Char } from './character';
 import { SETS, TEMPERS, claim, lawSets, noteHeld, recipesOf, rewardText } from './collection';
@@ -53,6 +53,7 @@ export const box: ScreenFactory = () => {
       ctx = c;
       host = root;
       root.classList.add('rb-box');
+      noteStar(c);
       const meta = sync(c, true).meta;
       const col = loadCollection();
       let mode: Mode = 'view';
@@ -282,10 +283,14 @@ export const box: ScreenFactory = () => {
               c.selection.system = null;
               c.go('dive');
             }, { primary: true, id: 'enter' }),
-            button(`Worlds ${entry.stats.worldsTended}`, () => {
-              // Explore any universe straight away: open its home solar system.
+            button(entry.stats.worldsTended > 0 ? `Worlds ${entry.stats.worldsTended}` : 'Worlds', () => {
+              // Straight to the star last tended in this universe; its home system if there has been none.
               touch(spec.serialNumber);
-              if (c.selection.universe?.serial !== spec.serial) { c.selection.star = null; c.selection.system = null; c.selection.planetIndex = 0; }
+              if (c.selection.universe?.serial !== spec.serial || !c.selection.star) {
+                c.selection.star = lastStar.of(spec);
+                c.selection.system = null;
+                c.selection.planetIndex = 0;
+              }
               c.selection.universe = spec;
               c.go('system');
             }, { id: 'worlds' }),
@@ -362,6 +367,8 @@ export const box: ScreenFactory = () => {
                 el('b', {}, `${Math.round(ch.permille / 10)}%`),
                 el('span', { class: ch.happened ? 'rb-odd-r yes' : 'rb-odd-r' }, ch.happened ? '✓ came up' : '· did not'),
               ])),
+              kid && res?.kind === 'universe' && kid.tier > 0 && tierOf(res.spec.rarity) >= kid.tier && !pv.chances.some((ch) => ch.happened && /^Rarity/.test(ch.label))
+                ? el('span', { class: 'k-label', 'data-id': 'merge-born' }, `It is ${kid.rarity} by its own seed. A merge can lift a rarity, never lower it.`) : null,
               label(both ? 'Merging is seeded: the same two always make the same third. Unlike parents mutate more and lift rarity.' : 'Merging is seeded: the same two always make the same third.')) : null,
             kid && kid.traits.length ? el('div', { class: 'rb-block', 'data-id': 'merge-traits' },
               label('IT WILL CARRY'),
@@ -405,6 +412,7 @@ export const box: ScreenFactory = () => {
           }));
       };
 
+      const claimable = () => SETS.filter((x) => !col.paid.includes(x.id) && x.have(held, col) >= x.need(c));
       const goalsPage = (): HTMLElement => {
         const laws = lawSets(c);
         const tempers = [...new Set<string>([...TEMPERS, ...held.map((h) => h.ch.temperament).filter(Boolean)])];
@@ -431,6 +439,17 @@ export const box: ScreenFactory = () => {
               return el('span', { class: n ? 'rb-have on' : 'rb-have' }, `${n ? '■' : '□'} ${t}`);
             }))),
           label(`SETS · ${col.paid.length} of ${SETS.length} paid · each pays once`),
+          claimable().length >= 2 ? button(`Claim all ${claimable().length}`, () => {
+            // Each set goes through the same claim() the single buttons use; one that will not pay is skipped.
+            const bankWas = c.light.view().bank ?? 0;
+            const got = claimable().filter((x) => claim(c, x, held, col));
+            if (!got.length) return;
+            note = `${got.length} ${got.length === 1 ? 'set' : 'sets'} paid: ${got.map((x) => `${x.name} (${rewardText(x)})`).join(', ')}.${(c.light.view().bank ?? 0) > bankWas ? ' Mote was full, so half of what spilled over went to the bank.' : ''}`;
+            c.audio.sfx('gain');
+            later(300, () => c.audio.sfx('shine'));
+            render();
+            burst(root, root.getBoundingClientRect().width / 2, 240, 20, true);
+          }, { primary: true, id: 'goals-claim-all' }) : null,
           ...SETS.map((s) => {
             const need = s.need(c), have = Math.min(need, s.have(held, col));
             const paid = col.paid.includes(s.id), ready = !paid && have >= need;

@@ -3,7 +3,7 @@ import type { ScreenFactory, AppContext } from '@/contracts/app';
 import { ROOM_SPOTS } from '@/contracts/render';
 import type { RoomDecor } from '@/contracts/render';
 import { el, button, lightPips, narration, label } from '@/ui/kit';
-import { names, sync, roomHour, weatherAt, sleepNow, roomState, totals, TROPHIES, mostTended, pick } from './store';
+import { noteStar, names, sync, roomHour, weatherAt, sleepNow, roomState, totals, TROPHIES, mostTended, pick } from './store';
 import type { Totals } from './store';
 import { charOf, bondScore, bondWord } from './character';
 import type { BoxEntry } from '@/contracts/game';
@@ -42,6 +42,7 @@ export const bedroom: ScreenFactory = () => {
     mount: (root, c) => {
       ctx = c;
       host = root;
+      noteStar(c);
       const room = c.renderers.room;
       pips = lightPips(c.light.view().pips);
       let muted = false;
@@ -187,7 +188,7 @@ export const bedroom: ScreenFactory = () => {
             const base = got === 0 ? 'A bare shelf. It is waiting for what you do.' : got === 5 ? 'The shelf is full. Each thing on it is something you did.' : 'Your shelf. Each thing on it is something you did.';
             show(rarest ? `${base} The rarest thing you hold is ${rarest.name}: ${rarest.rarity}.` : base);
             const vals: Record<string, number> = { depth: tot.depth, tended: tot.tended, battles: tot.battles, held: tot.held, light: tot.light };
-            shelf.replaceChildren(...TROPHIES.map((t, i) => el('div', { class: `rb-trophy lv${decor.trophies[i] ?? 0}`, 'data-id': `trophy-${t.key}`, 'data-level': decor.trophies[i] ?? 0, 'data-value': vals[t.key] ?? 0 }, el('b', {}, String(vals[t.key] ?? 0)), el('span', {}, t.label))));
+            shelf.replaceChildren(...TROPHIES.map((t, i) => el('div', { class: `rb-trophy lv${decor.trophies[i] ?? 0}`, 'data-id': `trophy-${t.key}`, 'data-level': decor.trophies[i] ?? 0, 'data-value': vals[t.key] ?? 0 }, el('b', {}, String(t.key === 'light' ? Math.floor((vals[t.key] ?? 0) / 1000) : vals[t.key] ?? 0)), el('span', {}, t.label))));
             shelf.hidden = false;
             break;
           }

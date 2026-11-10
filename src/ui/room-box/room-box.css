@@ -176,7 +176,8 @@ button.rb-node.here b { color: var(--ink-bright); }
 .rb-paid { color: var(--glow); }
 
 /* The reveal after a merge. */
-.rb-reveal { position: absolute; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center; padding: 60px var(--pad) var(--pad); background: color-mix(in srgb, var(--bg) 92%, transparent); animation: rb-in .4s ease-out; }
+/* Opaque, and above every overlay but the hub (60 and up), so nothing under or over it reads through it. */
+.rb-reveal { position: absolute; inset: 0; z-index: 55; display: flex; align-items: center; justify-content: center; padding: 60px var(--pad) var(--pad); background: var(--bg); animation: rb-in .4s ease-out; }
 .rb-reveal-in { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; max-height: 100%; overflow-y: auto; touch-action: pan-y; padding: 16px 12px; background: var(--panel); border: 2px solid var(--line); text-align: center; scrollbar-width: none; }
 .rb-reveal-in > * { flex: none; }
 .rb-reveal-in > .rb-block, .rb-reveal-in > .k-btn, .rb-reveal-in > .rb-recipe-line { align-self: stretch; }
@@ -189,3 +190,9 @@ button.rb-node.here b { color: var(--ink-bright); }
 @keyframes rb-rise { from { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } to { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .rb-floor::after { transition: none; } .rb-say, .rb-reveal, .rb-reveal .rb-crest.big, .rb-reveal-rar { animation: none; } }
 .sallow-reduce-motion .rb-reveal, .sallow-reduce-motion .rb-reveal .rb-crest.big, .sallow-reduce-motion .rb-reveal-rar { animation: none; }
+
+/* A name of 24 letters with no space in it still stays inside its card. */
+.rb-preview > .rb-col { flex: 1; }
+.rb-col > .k-title, .rb-side .k-title, .rb-say, .rb-node b, .rb-reveal-in > .k-title { overflow-wrap: anywhere; min-width: 0; }
+.rb-vs > * { min-width: 0; }
+.rb-side .k-title { max-width: 100%; }

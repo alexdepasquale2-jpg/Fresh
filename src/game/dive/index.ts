@@ -173,6 +173,26 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
 
   return {
     start: (u, b) => {
+      // Coming back to a dive that is resting at a star (the player looked at its system and returned):
+      // the fall goes on from that fold. Depth, reliquaries and milestones are kept; the streak and the
+      // haul (already paid out when the star was reached) begin again. A caller that wants the top of
+      // the universe calls surface() first.
+      if (phase === 'stopped' && !atBottom && address && universe && universe.serialNumber === u.serialNumber && summary?.reason === 'star') {
+        best = Math.max(best, b);
+        startBest = best;
+        progress = 0;
+        landed = null;
+        // Do not sit aimed at the star just left: holding would fall straight back into it.
+        if (children[aim]?.star) { aim = 0; for (let k = 0; k < 7 && children[aim]?.star; k++) aim = (aim + 1) % 7; }
+        crossed = stratum ? [stratum.name] : [];
+        streak = bestStreak = idleTicks = haul = folds = follower = followTicks = followFolds = 0;
+        steerLocked = surge = false;
+        got.pieces = got.wells = got.echoes = got.wrecks = got.flickers = got.hit = got.dodged = 0;
+        summary = null;
+        events = [];
+        phase = 'hovering';
+        return;
+      }
       universe = u;
       address = fold.root(u);
       children = open(address);

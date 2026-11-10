@@ -2,6 +2,7 @@
 import type { AppContext } from '@/contracts/app';
 import type { BoxEntry, UniverseStats } from '@/contracts/game';
 import type { UniverseSpec } from '@/contracts/universe';
+import type { StarRef } from '@/contracts/fold';
 
 export const NAMES_KEY = 'sallow-box-names';
 const META_KEY = 'sallow-box-meta';
@@ -40,6 +41,34 @@ export const names = {
     if (clean) all[String(serialNumber)] = clean; else delete all[String(serialNumber)];
     write(NAMES_KEY, all);
   },
+};
+
+/**
+ * The star last visited in each universe, so Worlds opens the system the player was tending and not the home one.
+ * The dive HUD writes the same key when a fall stops at a star.
+ */
+const LAST_STAR_KEY = 'sallow.last-star.v1';
+const isSeed = (v: unknown): v is { hi: number; lo: number } => !!v && typeof v === 'object' && Number.isInteger((v as { hi: unknown }).hi) && Number.isInteger((v as { lo: unknown }).lo);
+export const lastStar = {
+  of: (spec: UniverseSpec): StarRef | null => {
+    const s = read<Record<string, StarRef | undefined>>(LAST_STAR_KEY, {})[String(spec.serialNumber)];
+    if (!s || typeof s !== 'object' || !isSeed(s.seed) || !s.address || !isSeed(s.address.universe) || !isSeed(s.address.pathHash)) return null;
+    if (!Number.isInteger(s.address.depth) || s.address.depth < 0 || typeof s.heat !== 'number' || !['dwarf', 'main', 'giant', 'pulsar'].includes(s.kind)) return null;
+    // A star of some other universe (a merged-away serial reused, a hand-edited store) is not this one's.
+    if (s.address.universe.hi !== spec.seed.hi || s.address.universe.lo !== spec.seed.lo) return null;
+    return s;
+  },
+  set: (spec: UniverseSpec, star: StarRef) => {
+    if (star.address.universe.hi !== spec.seed.hi || star.address.universe.lo !== spec.seed.lo) return;
+    const all = read<Record<string, StarRef>>(LAST_STAR_KEY, {});
+    all[String(spec.serialNumber)] = star;
+    write(LAST_STAR_KEY, all);
+  },
+};
+/** Note where the player has just been, on arriving in the room or at the Box. */
+export const noteStar = (ctx: AppContext) => {
+  const u = ctx.selection.universe, s = ctx.selection.star;
+  if (u && s) lastStar.set(u, s);
 };
 
 export const loadMeta = (): Meta => {
@@ -114,7 +143,7 @@ export const TROPHIES = [
   { key: 'tended', label: 'tended', level: (t: Totals) => level(t.tended, 1, 5, 15) },
   { key: 'battles', label: 'won', level: (t: Totals) => level(t.battles, 1, 3, 6) },
   { key: 'held', label: 'held', level: (t: Totals) => level(t.held, 8, 14, 22) },
-  { key: 'light', label: 'light', level: (t: Totals) => level(t.light, 1, 8, 30) },
+  { key: 'light', label: 'light', level: (t: Totals) => level(Math.floor(t.light / 1000), 1, 8, 30) },
 ] as const;
 
 /** The universe tended most, or null when none has been tended. */

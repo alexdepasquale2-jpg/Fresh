@@ -17,6 +17,18 @@ export { giftSerial };
 const NUMBER = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty', 'twenty-one', 'twenty-two', 'twenty-three', 'twenty-four', 'twenty-five'];
 const count = (n: number, one: string, many: string) => `${NUMBER[n] ?? String(n)} ${n === 1 ? one : many}`;
 const FLIP = 'scaleX(-1)';
+const A_PIECE: Record<string, string> = { comet: 'a comet', moon: 'a moon', belt: 'a belt of stones', sun: 'a small sun', rings: 'a set of rings', dust: 'a veil of dust' };
+const aPiece = (k: string) => A_PIECE[k] ?? `a ${k}`;
+const THE_PIECE: Record<string, string> = { belt: 'belt of stones', rings: 'set of rings', dust: 'veil of dust' };
+const piece1 = (k: string) => THE_PIECE[k] ?? k;
+/** The name the player gave a universe in the Box, if any (the Box keeps them in this store). */
+const nameOf = (u: UniverseSpec): string => {
+  try {
+    const all = JSON.parse(localStorage.getItem('sallow-box-names') ?? '{}') as Record<string, unknown> | null;
+    const n = all?.[String(u.serialNumber)];
+    return typeof n === 'string' && n.trim() ? n : u.name;
+  } catch { return u.name; }
+};
 
 interface Beat {
   /** The line, read when it is spoken. */
@@ -160,13 +172,13 @@ const mirror: ScreenFactory = () => {
         const cells = now.map((e, i) => {
           if (!e) return el('button', { class: 'mr-slot', type: 'button', disabled: true, 'aria-label': 'Empty slot' });
           const spec = c.universes.fromSerial(e.serialNumber);
-          const b = el('button', { class: `mr-slot held${e.serialNumber === u.serialNumber ? ' lit' : ''}${layerOf(s, e.serialNumber) > 0 ? ' above' : ''}`, type: 'button', 'data-id': `mirror-slot-${i}`, 'aria-label': spec.name }, glyphChar(spec.glyph));
+          const b = el('button', { class: `mr-slot held${e.serialNumber === u.serialNumber ? ' lit' : ''}${layerOf(s, e.serialNumber) > 0 ? ' above' : ''}`, type: 'button', 'data-id': `mirror-slot-${i}`, 'aria-label': nameOf(spec) }, glyphChar(spec.glyph));
           b.addEventListener('click', () => {
             for (const o of cells) o.removeAttribute('aria-pressed');
             b.setAttribute('aria-pressed', 'true');
             const fresh = !s.watched.includes(e.serialNumber);
             const lines = seenLines(spec, e.stats, s, e.serialNumber === u.serialNumber);
-            sayAll([`${spec.name}. ${spec.serial}.`, ...lines]);
+            sayAll([`${nameOf(spec)}. ${spec.serial}.`, ...lines]);
             if (fresh) {
               s.watched = [...s.watched, e.serialNumber].slice(-200);
               c.light.addGlow(150);
@@ -206,7 +218,7 @@ const mirror: ScreenFactory = () => {
               if (c.sky.inventory()[k] <= 0) return;
               c.sky.grant(k, -1);
               s.left = [...s.left, { serial: u.serialNumber, kind: k, visit: s.visits }].slice(-12);
-              done(`You set a ${k} on their shelf. The child moves it a little to the left.`, 'gift');
+              done(`You set ${aPiece(k)} on their shelf. The child moves it a little to the left.`, 'gift');
             }, `mirror-leave-${k}`)),
             small('A pip of Light', () => {
               if (!c.light.spend(1)) return;
@@ -231,11 +243,11 @@ const mirror: ScreenFactory = () => {
             else c.sky.grant(o.kind as SkyPieceKind, o.n);
             if (o.mine >= 0) {
               s.left = s.left.filter((_, j) => j !== o.mine);
-              say(`Your ${o.kind} again. It grew in their keeping: there are two now.`);
+              say(`Your ${piece1(o.kind)} again. It grew in their keeping: there are two now.`);
             } else {
               s.debt++;
-              s.taken = [...s.taken, { serial: u.serialNumber, what: o.kind === 'light' ? 'a pip of light' : `a ${o.kind}` }].slice(-30);
-              say(o.kind === 'light' ? 'You take a pip of their light. Their room is a little darker. The child says nothing.' : `You take their ${o.kind}. The child watches it go, and counts what is left.`);
+              s.taken = [...s.taken, { serial: u.serialNumber, what: o.kind === 'light' ? 'a pip of light' : aPiece(o.kind) }].slice(-30);
+              say(o.kind === 'light' ? 'You take a pip of their light. Their room is a little darker. The child says nothing.' : `You take their ${piece1(o.kind)}. The child watches it go, and counts what is left.`);
             }
             save();
             c.persist();
@@ -341,7 +353,7 @@ const mirror: ScreenFactory = () => {
         on: () => { flash(root); c.audio.sfx('land'); try { navigator.vibrate?.([40, 80, 40]); } catch { /* not allowed */ } },
       };
       const given: Beat = line('The child holds something out. One of theirs.', 3200, give);
-      const got: Beat = { text: () => (gift ? `${gift.name} is in your box now. ${floorSuns(s) > 1 ? 'Suns' : 'A sun'} with it, and light for Mote.` : 'Your box is full. Suns instead, and light for Mote.'), hold: 3600 };
+      const got: Beat = { text: () => (gift ? `${nameOf(gift)} is in your box now. ${floorSuns(s) > 1 ? 'Suns' : 'A sun'} with it, and light for Mote.` : 'Your box is full. Suns instead, and light for Mote.'), hold: 3600 };
       const answer: Beat = {
         text: () => (piece >= 0 ? FRAGMENTS[piece]! : 'There are no more pieces down here. The answer is whole. The child knows you know.'),
         hold: 0,
@@ -349,12 +361,12 @@ const mirror: ScreenFactory = () => {
         on: () => { c.audio.sfx(piece === FRAGMENTS.length - 1 ? 'shine' : 'chapter'); if (piece === FRAGMENTS.length - 1) flash(root); menu(); },
       };
       const upLine = layer > 0 ? [line(`You are ${count(layer, 'layer', 'layers')} above your own room. The boards are the same boards.`, 3200)] : [];
-      const shelfLine = s.left.length ? [line(`Your ${s.left[s.left.length - 1]!.kind} is still on their shelf. It looks larger.`, 2800)] : s.lamps ? [line(`${s.lamps === 1 ? 'The pip you left is' : 'The pips you left are'} still burning by their bed.`, 2800)] : [];
+      const shelfLine = s.left.length ? [line(`Your ${piece1(s.left[s.left.length - 1]!.kind)} is still on their shelf. It looks larger.`, 2800)] : s.lamps ? [line(`${s.lamps === 1 ? 'The pip you left is' : 'The pips you left are'} still burning by their bed.`, 2800)] : [];
       beats = !newFloor
         ? [
           line('The room again. The child does not turn.', 2600),
           ...upLine,
-          line(`${u.name} is still lit in their box.`, 2800, showBox),
+          line(`${nameOf(u)} is still lit in their box.`, 2800, showBox),
           ...shelfLine,
           peak,
           line(s.promised ? 'A little light has been left out for you, as promised. Mote gathers it.' : 'Nothing more is given here. Mote gathers a little light.', 0, () => { c.light.addGlow(returnGlow(s)); c.persist(); menu(); }),
@@ -365,7 +377,7 @@ const mirror: ScreenFactory = () => {
             line('A child is here. It is not you.', 2800),
             line('A machine hums on the desk. Beside the child, a box.', 3000),
             line('Twenty-five slots. One of them is lit.', 3000, showBox),
-            line(`In the lit slot: ${u.name}. ${u.serial}.`, 3200),
+            line(`In the lit slot: ${nameOf(u)}. ${u.serial}.`, 3200),
             line('It is the one they are looking into right now.', 3200),
             line(`Their box holds ${NUMBER[held] ?? String(held)}. So does yours.`, 3000),
             line('The child looks up.', 2600),
@@ -374,7 +386,7 @@ const mirror: ScreenFactory = () => {
           : [
             line(s.level > 0 ? 'The room. You have woken from it before. It has waited.' : 'The room, under another universe. The same boards.', 3000),
             ...upLine,
-            line(`In the lit slot now: ${u.name}. ${u.serial}.`, 3000, showBox),
+            line(`In the lit slot now: ${nameOf(u)}. ${u.serial}.`, 3000, showBox),
             ...shelfLine,
             line('The child looks up sooner, this time.', 2600),
             peak, given, got, answer,
@@ -398,6 +410,8 @@ const mirror: ScreenFactory = () => {
       says.addEventListener('pointerdown', () => advance?.());
 
       root.append(el('header', { class: 'row start mr-head' }, backChip('UP', up), place), stage, says, actions);
+      // Until the lines are done the only way on is a tap; say so where the buttons will be.
+      actions.replaceChildren(el('p', { class: 'k-label mr-hint', 'data-id': 'mirror-hint' }, 'Tap the room to hear the next line.'));
       at = -1;
       advance();
     },
