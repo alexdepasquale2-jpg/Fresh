@@ -24,6 +24,25 @@ export const boot = async (host: HTMLElement) => {
   let shellToast: ((t: string, o?: { title?: string; sfx?: string }) => void) | null = null;
   let safeScale = 1;
   try { safeScale = Number(localStorage.getItem('sallow-gpu-safe') ?? '1') || 1; } catch { /* storage blocked */ }
+  // If the page last closed while a world was still opening, the device could not hold it: the
+  // browser killed the page (it goes white) before anything here could react. Open worlds gently
+  // from now on: lowest quality, half resolution. It can be changed back under Menu, Performance.
+  const OPENING = 'sallow-opening-world';
+  let crashedOpening = false;
+  try {
+    const raw = localStorage.getItem(OPENING);
+    if (raw) {
+      localStorage.removeItem(OPENING);
+      const m = JSON.parse(raw) as { at: number; frames: number };
+      if (Date.now() - m.at < 30 * 60 * 1000) {
+        crashedOpening = true;
+        safeScale = 0.5;
+        localStorage.setItem('sallow-gpu-safe', '0.5');
+        perfControl.setMode('minimal');
+        localStorage.setItem('sallow-last-error', JSON.stringify({ where: 'world', msg: `The page closed while a world was opening (after ${m.frames} frames). Worlds now open at Minimal quality and half resolution.`, stack: '', at: Date.now(), ua: navigator.userAgent }));
+      }
+    }
+  } catch { /* storage blocked */ }
   const gl = createGlCore(canvas, { resolutionScale: () => stage.glScale * safeScale });
   // A phone that cannot keep up resets its GPU: the canvas blinks white and, after a few resets,
   // the browser gives up on the page. Each reset steps quality and resolution down and remembers it.
@@ -49,6 +68,11 @@ export const boot = async (host: HTMLElement) => {
   let transition: ((from: ScreenId | null, to: ScreenId, swap: () => void) => void) | null = null;
   let swapping = false;
   let queued: ScreenId | null = null;
+  let worldFrames = 0;
+  // Leaving the page on purpose (switching apps, closing the tab) is not a crash.
+  const cleared = () => { try { localStorage.removeItem(OPENING); } catch { /* storage blocked */ } };
+  window.addEventListener('pagehide', cleared);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') cleared(); });
   const go = (to: ScreenId) => {
     // A navigation that lands while one is animating waits for it, then runs.
     if (swapping) { queued = to; return; }
@@ -62,6 +86,8 @@ export const boot = async (host: HTMLElement) => {
       layer.replaceChildren();
       layer.dataset.screen = to;
       currentId = to;
+      worldFrames = 0;
+      try { if (to === 'planet') localStorage.setItem(OPENING, JSON.stringify({ at: Date.now(), frames: 0 })); else localStorage.removeItem(OPENING); } catch { /* storage blocked */ }
       current = app.screens[to]();
       current.mount(layer, app.ctx);
       app.ctx.bus.emit('navigate', { to });
@@ -117,6 +143,12 @@ export const boot = async (host: HTMLElement) => {
     stepMs: 1000 / TICKS_PER_SECOND,
     fixed: () => {},
     frame: (dt) => {
+      // A world that has drawn for about four seconds has opened safely.
+      if (currentId === 'planet' && worldFrames >= 0) {
+        worldFrames++;
+        if (worldFrames % 30 === 0 && worldFrames < 240) { try { localStorage.setItem(OPENING, JSON.stringify({ at: Date.now(), frames: worldFrames })); } catch { /* storage blocked */ } }
+        if (worldFrames >= 240) { cleared(); worldFrames = -1; }
+      }
       ctx.perf.sample(dt);
       const ticks = ctx.perf.tickBudget(ctx.clock.advance(dt));
       if (ticks > 0) {
@@ -143,6 +175,7 @@ export const boot = async (host: HTMLElement) => {
     setTransition: (fn) => void (transition = fn),
   };
   shellToast = shell.toast;
+  if (crashedOpening) window.setTimeout(() => shell.toast('Last time a world was too much for this device, so I will open them gently now. You can change it under Menu, Performance.', { title: 'Mote', sfx: '' }), 6500);
   for (const p of await loadPlugins()) {
     try { p(shell); } catch (e) { console.error('plugin failed', e); }
   }
