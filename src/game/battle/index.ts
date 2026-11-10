@@ -92,6 +92,7 @@ const ELEMENT_SKILLS: Record<Element, Def[]> = {
 };
 for (const list of Object.values(ELEMENT_SKILLS)) list.forEach((d, i) => { (d as { learnAt?: number }).learnAt = LEARN[i]; });
 const DEFS: Record<string, Def> = Object.fromEntries([STRIKE, FOLD, SHINE, ALIGN, ...Object.values(ELEMENT_SKILLS).flat()].map((d) => [d.id, d]));
+const FADE: Record<StatusKind, string> = { burn: 'the fire on {me} goes out', chill: '{me} thaws', ward: 'the ward on {me} fades', regen: '{me} stops regrowing', expose: '{me} closes up' };
 const FIN_WORD: Record<StatusKind, string> = { burn: 'burning', chill: 'chilled', expose: 'exposed', regen: 'regrowing', ward: 'warded' };
 
 const WEATHER: Record<Weather, WeatherInfo> = {
@@ -142,9 +143,37 @@ const T = {
   legion: { id: 'legion', name: 'Legion', desc: 'A hundred souls: more Might.' },
   fused: { id: 'fused', name: 'Fused', desc: 'Two universes in one.' },
 } satisfies Record<string, Trait>;
+const lucky: Trait = { id: 'lucky', name: 'Lucky', desc: 'Its blows never land soft, and its Fold crits more often.' };
+/** A universe's temperament gives its creature one passive and a manner. Ids start `t-`. */
+const TEMPER: Record<string, { trait: Trait; enter: string; low: string; win: string }> = {
+  placid: { trait: { id: 't-placid', name: 'Placid', desc: 'Burns bite it half as hard.' }, enter: '{me} settles where it is put.', low: '{me} does not seem to mind much.', win: '{me} sits down again.' },
+  restless: { trait: { id: 't-restless', name: 'Restless', desc: '3 more Speed.' }, enter: '{me} will not keep still.', low: '{me} turns over and over.', win: '{me} is already looking for the next one.' },
+  watchful: { trait: { id: 't-watchful', name: 'Watchful', desc: 'Guarding gathers 2 Light, not 1.' }, enter: '{me} counts them.', low: '{me} keeps counting.', win: '{me} watches them go.' },
+  hungry: { trait: { id: 't-hungry', name: 'Hungry', desc: 'Its Strike drinks a fifth back.' }, enter: '{me} leans toward them.', low: '{me} is hungrier now.', win: '{me} is not full.' },
+  shy: { trait: { id: 't-shy', name: 'Shy', desc: 'Starts behind a shield worth a tenth of its life.' }, enter: '{me} shows them less than it has.', low: '{me} dims and pulls in.', win: '{me} looks back at you, once.' },
+  proud: { trait: { id: 't-proud', name: 'Proud', desc: 'Hits a tenth harder while above half its life.' }, enter: '{me} holds itself very straight.', low: '{me} will not look down.', win: '{me} expects to be remembered.' },
+  mournful: { trait: { id: 't-mournful', name: 'Mournful', desc: 'Hits a sixth harder once one of its own has gone dark.' }, enter: '{me} hums something low.', low: '{me} hums lower.', win: '{me} keeps humming. It is not a glad tune.' },
+  patient: { trait: { id: 't-patient', name: 'Patient', desc: 'Its guard soaks two thirds, not half.' }, enter: '{me} can wait longer than they can.', low: '{me} waits.', win: '{me} had all the time it needed.' },
+  feral: { trait: { id: 't-feral', name: 'Feral', desc: 'Hits an eighth harder below half its life.' }, enter: '{me} bites at the edge of the lid.', low: '{me} shows what teeth it has.', win: '{me} does not let go at once.' },
+  kind: { trait: { id: 't-kind', name: 'Kind', desc: 'Heals a fifth more.' }, enter: '{me} is gentle about it.', low: '{me} is still gentle. It costs more now.', win: '{me} gives something back.' },
+  cold: { trait: { id: 't-cold', name: 'Cold', desc: '3 more Guard.' }, enter: '{me} does not warm to them.', low: 'Frost comes off {me} in a thin breath.', win: '{me} keeps its own counsel.' },
+  dreaming: { trait: { id: 't-dreaming', name: 'Dreaming', desc: 'Its Fold crits more often.' }, enter: '{me} is asleep, mostly.', low: '{me} mutters in its sleep.', win: '{me} may only have dreamed it.' },
+};
+const RARITY_LIFT: Record<string, number> = { common: 0, uncommon: 3, rare: 6, epic: 10, mythic: 14 };
+const pc = (n: number | undefined, cap = 25) => 1 + Math.max(-cap, Math.min(cap, n ?? 0)) / 100;
+const DAILY: { name: string; where: string; taunt: string; beaten: string }[] = [
+  { name: 'A kid off the morning train', where: 'by the ticket hall', taunt: 'I am only here today.', beaten: 'I have a train to catch anyway.' },
+  { name: 'The milk-float boy', where: 'two streets over', taunt: 'I am early. So are you.', beaten: 'The bottles are all rattled now.' },
+  { name: 'A girl with a borrowed box', where: 'on the church steps', taunt: 'It is not mine. Do not tell.', beaten: 'I have to give it back by dark.' },
+  { name: 'Somebody under an umbrella', where: 'where the gutter runs', taunt: 'It only rains on me.', beaten: 'It has stopped. I should go.' },
+  { name: 'The cousin who is visiting', where: 'in the front room', taunt: 'We do it differently at home.', beaten: 'We go back on Sunday.' },
+  { name: 'A child nobody has seen before', where: 'at the edge of the lamplight', taunt: 'You will not see me tomorrow.', beaten: 'You will not see me tomorrow.' },
+  { name: 'The knife-grinder’s girl', where: 'beside the cart', taunt: 'Mine are sharp today.', beaten: 'We move on in the morning.' },
+];
 const NO_STATUS: Status = { burn: 0, chill: 0, ward: 0, regen: 0, expose: 0 };
 const KINDS = ['burn', 'chill', 'ward', 'regen', 'expose'] as const;
 
+const EASE = [0.62, 1, 0.92, 1.28, 1.4, 0.8, 1.28, 0.82, 1.4, 0.84, 0.86, 0.86, 1.08, 1, 0.76, 0.6];
 const TIERS = ['The street', 'The water', 'The dark houses', 'The lamp'];
 type RivalSeed = Omit<Rival, 'id' | 'serials' | 'level'>;
 const RIVALS: RivalSeed[] = [
@@ -155,7 +184,7 @@ const RIVALS: RivalSeed[] = [
   { name: 'Someone in the garden shed', where: 'past the wet grass', taunt: 'Shut the door. They get out.', again: 'One got out. It came back bigger.', beaten: 'Leave the door. It does not matter now.', persona: 'sly', theme: 'bloom' },
   { name: 'A kid by the canal', where: 'down the towpath', taunt: 'Mine came out of the water.', again: 'The water gave me another.', beaten: 'It wants them back, you know.', persona: 'bold', theme: 'tide' },
   { name: 'The paper girl', where: 'at the end of her round', taunt: 'I see every house before it wakes.', again: 'Your light was on at four.', beaten: 'I will skip your door tomorrow.', persona: 'sly', theme: 'void' },
-  { name: 'The child in the hall mirror', where: 'in the glass on the landing', taunt: 'Whatever you do, I did first.', again: 'You came back. So did I.', beaten: 'Do not look in here again.', persona: 'cruel', boss: 'mirror', mechanic: 'Gives you back your own last move.' },
+  { name: 'The child in the hall mirror', where: 'in the glass on the landing', taunt: 'Whatever you do, I did first.', again: 'You came back. So did I.', beaten: 'Do not look in here again.', persona: 'cruel', boss: 'mirror', mechanic: 'Gives you back your own last move. Repeat yourself and it comes back double.' },
   { name: 'The old man at the window', where: 'across the street', taunt: 'I had a box like yours once.', again: 'I remember more of it now.', beaten: 'Yes. That is how I lost mine.', persona: 'wary', theme: 'cold' },
   { name: 'The child in the cellar', where: 'down where it is cold', taunt: 'Mine are hungry.', again: 'They still are.', beaten: 'Now there is nothing down here but me.', persona: 'cruel', theme: 'void' },
   { name: 'The night-bus sisters', where: 'at the last stop', taunt: 'Last stop. Everyone off.', again: 'You missed your stop again.', beaten: 'We will walk home.', persona: 'bold', theme: 'tide' },
@@ -186,17 +215,26 @@ export const factory: BattlesFactory = ({ seed }) => {
     if (orb >= 3) traits.push(T.reaching);
     if (era >= 3) traits.push(T.lamplit);
     if (souls >= 100) traits.push(T.legion);
+    // The universe's own character: temperament gives a passive, modifiers lean the stats, rarity lifts them a little.
+    const m = spec.modifiers ?? {};
+    const rarity = spec.rarity;
+    const temper = spec.temperament ? TEMPER[spec.temperament] : undefined;
+    if (temper) traits.push(temper.trait);
+    if ((m.luck ?? 0) >= 4) traits.push(lucky);
     const tr = (id: string) => traits.some((t) => t.id === id);
-    const might = Math.round((8 + Math.floor(souls / 6) + era * 6 + (st?.worldsTended ?? 0)) * (tr('legion') ? 1.1 : 1));
-    const depth = 4 + Math.floor((st?.deepestFold ?? 0) / 2);
-    const radiance = 4 + Math.floor((st?.lightFromGlow ?? 0) / 40) + Math.floor(enl / 10) * 2;
-    const maxHp = Math.round((30 + might * 2 + depth) * (tr('thriving') ? 1.15 : 1));
+    const lift = 1 + (RARITY_LIFT[rarity ?? 'common'] ?? 0) / 100;
+    const might = Math.round((8 + Math.floor(souls / 6) + era * 6 + (st?.worldsTended ?? 0)) * (tr('legion') ? 1.1 : 1) * pc(m.might) * lift);
+    const depth = Math.round((4 + Math.floor((st?.deepestFold ?? 0) / 2)) * pc(m.depth));
+    const radiance = Math.round((4 + Math.floor((st?.lightFromGlow ?? 0) / 40) + Math.floor(enl / 10) * 2) * pc((m.glow ?? 0) + Math.floor((m.faith ?? 0) / 2)));
+    const maxHp = Math.round((30 + might * 2 + depth) * (tr('thriving') ? 1.15 : 1) * pc(Math.floor(((m.tide ?? 0) + (m.growth ?? 0)) / 2)));
     return {
       serialNumber: spec.serialNumber, name: spec.name, element, might, depth, radiance,
-      guard: Math.floor(pros / 8), speed: 5 + orb * 2 + Math.floor(depth / 6) + (tr('reaching') ? 4 : 0),
+      guard: Math.max(0, Math.floor(pros / 8) + Math.round(Math.max(-12, Math.min(16, m.ward ?? 0)) / 4) + (tr('t-cold') ? 3 : 0)),
+      speed: Math.max(1, 5 + orb * 2 + Math.floor(depth / 6) + (tr('reaching') ? 4 : 0) + Math.round(Math.max(-12, Math.min(12, m.tempo ?? 0)) / 4) + (tr('t-restless') ? 3 : 0)),
       maxHp, hp: maxHp, energy: tr('awake') ? 3 : 1, status: NO_STATUS,
       skills: skillsAt(element, 1), traits, guarding: false, spent: [], slot, fused: false,
-      level: 1, form: 1, shield: 0,
+      level: 1, form: 1, shield: tr('t-shy') ? Math.round(maxHp * 0.1) : 0,
+      ...(rarity ? { rarity } : {}), ...(spec.temperament ? { temperament: spec.temperament } : {}),
     };
   };
 
@@ -204,16 +242,18 @@ export const factory: BattlesFactory = ({ seed }) => {
   const grow = (base: Fighter, growth: Growth): Fighter => {
     const { level } = levelOf(growth.xp);
     const relic = RELICS.find((r) => r.id === growth.relic);
-    const up = (v: number, flat: number) => Math.round((v + (level - 1) * flat) * (1 + 0.06 * (level - 1)));
+    const bond = Math.max(0, Math.min(100, Math.floor(growth.bond ?? 0)));
+    const near = 1 + bond * 0.0006; // a kin universe (100) is 6% more of everything
+    const up = (v: number, flat: number) => Math.round((v + (level - 1) * flat) * (1 + 0.06 * (level - 1)) * near);
     const might = Math.round(up(base.might, 1.5) * (relic?.id === 'tooth' ? 1.1 : 1));
     const depth = up(base.depth, 0.7), radiance = up(base.radiance, 0.7);
-    const maxHp = Math.round((base.maxHp + (level - 1) * 5) * (1 + 0.06 * (level - 1)));
+    const maxHp = Math.round((base.maxHp + (level - 1) * 5) * (1 + 0.06 * (level - 1)) * near);
     return {
-      ...base, might, depth, radiance, maxHp, hp: maxHp, level, form: level >= 9 ? 3 : level >= 4 ? 2 : 1, ...(relic ? { relic } : {}),
+      ...base, ...(growth.bond !== undefined ? { bond } : {}), might, depth, radiance, maxHp, hp: maxHp, level, form: level >= 9 ? 3 : level >= 4 ? 2 : 1, ...(relic ? { relic } : {}),
       guard: base.guard + Math.floor(level / 4) + (relic?.id === 'button' ? 4 : 0),
       speed: base.speed + Math.floor(level / 3) + (relic?.id === 'feather' ? 4 : 0),
       energy: Math.min(6, base.energy + (relic?.id === 'coal' ? 1 : 0)),
-      shield: relic?.id === 'key' ? Math.round(maxHp * 0.2) : 0,
+      shield: Math.round(maxHp * ((relic?.id === 'key' ? 0.2 : 0) + (has(base, 't-shy') ? 0.1 : 0))),
       skills: skillsAt(base.element, level),
     };
   };
@@ -278,7 +318,10 @@ export const factory: BattlesFactory = ({ seed }) => {
 
     const hurt = (side: Side, a: F, d: F, base: number, o: { pierce?: boolean; noGuard?: boolean; crit?: boolean; tag?: string } = {}) => {
       const adv = advantage(a.element, d.element);
-      let dmg = base * adv * (90 + g.int(21)) / 100;
+      let dmg = base * (side === 'them' ? boost : 1) * adv * ((has(a, 'lucky') ? 98 : 90) + g.int(has(a, 'lucky') ? 13 : 21)) / 100;
+      if (has(a, 't-proud') && a.hp * 2 > a.maxHp) dmg *= 1.1;
+      if (has(a, 't-feral') && a.hp * 2 < a.maxHp) dmg *= 1.125;
+      if (has(a, 't-mournful') && team(side).some((f) => f.hp <= 0)) dmg *= 1.17;
       const w = weather ? WEATHER[weather] : undefined;
       if (w && a.element === w.up) dmg *= 1.33;
       if (w && a.element === w.down && !holds(a, 'moth')) dmg *= 0.75;
@@ -287,7 +330,7 @@ export const factory: BattlesFactory = ({ seed }) => {
       if (a.status.chill > 0) dmg *= 0.75;
       if (d.status.expose > 0) dmg *= 1.4;
       if (d.status.ward > 0 && !o.pierce) dmg *= 0.5;
-      if (d.guarding) dmg *= 0.5;
+      if (d.guarding) dmg *= has(d, 't-patient') ? 0.34 : 0.5;
       if (has(d, 'bedrock') && !d.spent.includes('bedrock')) { dmg *= 0.5; d.spent.push('bedrock'); }
       if (!o.noGuard) dmg -= d.guard / 4;
       const n = Math.max(1, Math.round(dmg));
@@ -296,12 +339,17 @@ export const factory: BattlesFactory = ({ seed }) => {
       d.hp = Math.max(0, d.hp - (n - soak));
       if (side === 'you') tally.dealt += n; else tally.taken += n;
       hits.push({ to: other(side), amount: n, crit: !!o.crit, heal: false, tag: o.tag ?? (soak >= n ? 'SHIELDED' : ''), ...(adv > 1 ? { eff: 'strong' as const } : adv < 1 ? { eff: 'weak' as const } : {}) });
+      // Once a fight, a creature that is badly hurt shows its temperament.
+      const tm = d.temperament ? TEMPER[d.temperament] : undefined;
+      if (tm && d.hp > 0 && d.hp < d.maxHp * 0.35 && !d.spent.includes('low')) { d.spent.push('low'); lows.push(tm.low.replace('{me}', d.name)); }
       return n;
     };
+    let ticking = false, boost = 1;
+    const lows: string[] = [];
     const heal = (side: Side, f: F, amount: number, tag = '') => {
-      const n = Math.max(0, Math.min(f.maxHp - f.hp, Math.round(amount * (has(f, 'lamplit') ? 1.25 : 1))));
+      const n = Math.max(0, Math.min(f.maxHp - f.hp, Math.round(amount * (has(f, 'lamplit') ? 1.25 : 1) * (has(f, 't-kind') ? 1.2 : 1))));
       f.hp += n;
-      if (n > 0) hits.push({ to: side, amount: n, crit: false, heal: true, tag });
+      if (n > 0) hits.push({ to: side, amount: n, crit: false, heal: true, tag, ...(ticking ? { tick: true } : {}) });
       return n;
     };
     const light = (f: F, n: number) => { f.energy = Math.max(0, Math.min(6, f.energy + n)); };
@@ -314,7 +362,7 @@ export const factory: BattlesFactory = ({ seed }) => {
       let me = activeOf(side);
       if (me.hp <= 0) return;
       me.guarding = false;
-      if (a0.type === 'guard') { me.guarding = true; light(me, 1); chain[side] = 0; last[side] = ''; say(`${me.name} braces and gathers Light.`); return; }
+      if (a0.type === 'guard') { me.guarding = true; light(me, has(me, 't-watchful') ? 2 : 1); chain[side] = 0; last[side] = ''; say(`${me.name} braces and gathers Light.`); return; }
       if (a0.type === 'swap') {
         const t = us[a0.target];
         if (!t || t.hp <= 0) return;
@@ -358,7 +406,9 @@ export const factory: BattlesFactory = ({ seed }) => {
       const adv = advantage(me.element, d.element);
       const tail = adv > 1 ? ' It burns through.' : adv < 1 ? ' It barely lands.' : '';
       me = activeOf(side);
-      if (mirror) world(`The glass shows ${d.name} its own ${use.name}.`);
+      const echo = mirror && action.type === 'skill' && action.id === a0.id;
+      if (mirror) world(echo ? `You repeated yourself. The glass was ready: ${d.name} gets its own ${use.name} back, double.` : `The glass shows ${d.name} its own ${use.name}.`);
+      boost = echo ? 2 : 1;
       // Chain: a different move from the one before hits harder, up to three in a row.
       if (last[side] && last[side] !== use.id) {
         chain[side] = Math.min(3, chain[side] + 1);
@@ -371,6 +421,7 @@ export const factory: BattlesFactory = ({ seed }) => {
           const sh = d.status.chill > 0;
           const n = hurt(side, me, d, me.might * (sh ? 1.5 : 1), { noGuard: has(me, 'hollow'), ...(sh ? { tag: 'SHATTER', crit: true } : {}) });
           light(me, 1);
+          if (has(me, 't-hungry')) heal(side, me, n / 5);
           if (sh) { d.status.chill = 0; say(`${me.name} strikes ${d.name} for ${n}.`); combo(side, `Shatter: ${d.name} was chilled, and frozen things break when struck. Half again.`); }
           else say(`${me.name} strikes ${d.name} for ${n}.${tail}`);
           break;
@@ -381,7 +432,7 @@ export const factory: BattlesFactory = ({ seed }) => {
         case 'avalanche': { const broke = d.status.ward > 0, sh = d.status.chill > 0; const n = hurt(side, me, d, me.might * 1.3 * (sh ? 1.5 : 1), { pierce: true, tag: sh ? 'SHATTER' : broke ? 'BREAK' : '', crit: sh }); if (sh) d.status.chill = 0; say(`${me.name} comes down on ${d.name} for ${n}${broke ? ', straight through its ward' : ''}.${tail}`); if (sh) combo(side, `Shatter: ${d.name} was chilled, and frozen things break under weight. Half again.`); break; }
         case 'overgrow': { const wild = d.status.burn > 0; const n = hurt(side, me, d, me.might * 0.6, { tag: wild ? 'WILDFIRE' : '' }); me.status.regen = has(me, 'rooted') ? 4 : 3; if (wild) d.status.burn += 2; say(`${me.name} grows over ${d.name} for ${n} and takes root.`); if (wild) combo(side, `Wildfire: green things feed a fire. ${d.name} burns 2 turns longer.`); break; }
         case 'unmake': { const n = hurt(side, me, d, me.might, { tag: 'EXPOSE' }); d.status.expose = 2; say(`${me.name} unmakes part of ${d.name} for ${n}. It stands exposed.`); break; }
-        case 'fold': { const open = d.status.expose > 0; const crit = open || g.int(100) < Math.round((me.depth * 100) / (me.depth + 30)); const n = hurt(side, me, d, me.depth * 1.5 * (crit ? 2 : 1), { crit, tag: crit ? 'CRIT' : '' }); say(crit ? `${me.name} folds and strikes from ${me.depth} layers down. ${n}!` : `${me.name} folds and strikes from inside for ${n}.`); if (open) combo(side, `Open wound: ${d.name} was exposed, so the fold could not miss. Double.`); break; }
+        case 'fold': { const open = d.status.expose > 0; const crit = open || g.int(100) < Math.round((me.depth * 100) / (me.depth + 30)) + (has(me, 't-dreaming') ? 15 : 0) + (has(me, 'lucky') ? 10 : 0); const n = hurt(side, me, d, me.depth * 1.5 * (crit ? 2 : 1), { crit, tag: crit ? 'CRIT' : '' }); say(crit ? `${me.name} folds and strikes from ${me.depth} layers down. ${n}!` : `${me.name} folds and strikes from inside for ${n}.`); if (open) combo(side, `Open wound: ${d.name} was exposed, so the fold could not miss. Double.`); break; }
         case 'shine': { const n = heal(side, me, me.radiance * 1.8 + 6, 'SHINE'); me.status.ward = 2; me.status.burn = 0; me.status.chill = 0; say(`${me.name} shines. Its worlds sing it whole (+${n}), and it is warded.`); break; }
         case 'align': { const n = hurt(side, me, d, (me.might + me.depth + me.radiance) * 0.85 + me.speed, { crit: true, tag: 'ALIGNMENT' }); d.energy = 0; say(`Every world in ${me.name} falls into one line. ${n}! ${d.name} loses its Light.`); break; }
         default: {
@@ -436,18 +487,24 @@ export const factory: BattlesFactory = ({ seed }) => {
     const theirA = st0.intent.action;
     const qy = quick(action), qt = quick(theirA);
     const first: Side = qy !== qt ? (qy ? 'you' : 'them') : spd(activeOf('you')) >= spd(activeOf('them')) ? 'you' : 'them';
-    for (const side of [first, other(first)] as const) { perform(side, side === 'you' ? action : theirA); settle(); }
+    for (const side of [first, other(first)] as const) { perform(side, side === 'you' ? action : theirA); for (const l of lows.splice(0)) world(l); settle(); }
     // End of turn: burns bite, roots mend, statuses fade, Light gathers, the weather moves.
     if (outcome === 'ongoing') {
+      ticking = true;
+      const ticks: string[] = [];
       for (const side of ['you', 'them'] as const) {
         const f = activeOf(side);
-        if (f.status.burn > 0) { const n = Math.max(1, Math.round(3 + f.maxHp * 0.05)); f.hp = Math.max(0, f.hp - n); hits.push({ to: side, amount: n, crit: false, heal: false, tag: 'BURN' }); }
-        if (f.hp > 0 && f.status.regen > 0) heal(side, f, f.maxHp * 0.06 + f.radiance / 3, 'REGROW');
-        if (f.hp > 0 && (has(f, 'ebb') || has(f, 'rooted'))) heal(side, f, f.maxHp * 0.035);
-        if (f.hp > 0 && holds(f, 'shell')) heal(side, f, f.maxHp * 0.04, 'SHELL');
-        for (const k of KINDS) f.status[k] = Math.max(0, f.status[k] - 1);
+        if (f.status.burn > 0) { const n = Math.max(1, Math.round((3 + f.maxHp * 0.05) * (has(f, 't-placid') ? 0.5 : 1))); f.hp = Math.max(0, f.hp - n); hits.push({ to: side, amount: n, crit: false, heal: false, tag: 'BURN', tick: true }); ticks.push(`${f.name} burns for ${n}`); }
+        let mend = 0;
+        if (f.hp > 0 && f.status.regen > 0) mend += heal(side, f, f.maxHp * 0.06 + f.radiance / 3, 'REGROW');
+        if (f.hp > 0 && (has(f, 'ebb') || has(f, 'rooted'))) mend += heal(side, f, f.maxHp * 0.035, 'MEND');
+        if (f.hp > 0 && holds(f, 'shell')) mend += heal(side, f, f.maxHp * 0.04, 'SHELL');
+        if (mend > 0) ticks.push(`${f.name} mends ${mend}`);
+        for (const k of KINDS) { if (f.hp > 0 && f.status[k] === 1) ticks.push(FADE[k].replace('{me}', f.name)); f.status[k] = Math.max(0, f.status[k] - 1); }
         light(f, 1);
       }
+      ticking = false;
+      if (ticks.length) world(`Turn's end: ${ticks.join(' · ')}.`);
       settle();
     }
     if (outcome === 'ongoing') {
@@ -465,7 +522,11 @@ export const factory: BattlesFactory = ({ seed }) => {
       }
     }
     const done = outcome as BattleState['outcome'];
-    if (done === 'won') world(`${R.name}: "${R.beaten ?? '...'}" Their box is open to you.`);
+    if (done === 'won') {
+      const tm = TEMPER[mine[myActive]?.temperament ?? ''];
+      if (tm) world(tm.win.replace('{me}', mine[myActive]!.name));
+      world(`${R.name}: "${R.beaten ?? '...'}" ${R.mode === 'practice' ? 'Only practice. Nothing changes hands.' : R.mode ? 'They step aside.' : 'Their box is open to you.'}`);
+    }
     if (done === 'lost') world('Your box falls dark. Mote pulls you home.');
     const next = { rival: R, mine, theirs, myActive, theirActive, turn: st0.turn + 1, last, theirFused };
     return {
@@ -487,7 +548,7 @@ export const factory: BattlesFactory = ({ seed }) => {
   // A rival's team leans to their theme: for each place, the first of a few seeded serials whose laws fit.
   const teams = new Map<string, Fighter[]>();
   const rivalTeam = (rival: Rival, specOf: (serial: SerialNumber) => UniverseSpec): Fighter[] => {
-    const key = `${rival.id}:${rival.rematch ?? 0}`;
+    const key = `${rival.id}:${rival.rematch ?? 0}:${rival.level}:${rival.mode ?? ''}:${EASE[rival.id] ?? 1}`;
     const hit = teams.get(key);
     if (hit) return hit;
     const l = rival.level + Math.min(6, rival.rematch ?? 0);
@@ -499,10 +560,15 @@ export const factory: BattlesFactory = ({ seed }) => {
         if ((ELEMENT_OF[spec.laws.id] ?? 'stone') !== rival.theme) spec = specOf(serial);
       }
       const g = rng(child(spec.seed, `rival-${rival.id}-${hashString(rival.name)}`));
+      // Their worlds are tended about half as well as their creatures are trained: a box that only fights can keep up.
+      const w = 1 + (l - 1) * 0.45, wi = Math.floor(w);
       const base = fighter(spec, {
-        worldsTended: l - 1, deepestFold: l * 4 + g.int(4 + l), lightFromGlow: l * 40 + g.int(40), souls: l * 8 + g.int(4 + l),
-        era: Math.min(4, Math.floor(l / 3)), enlightenment: Math.min(100, l * 9 + (l >= 9 ? 30 : 0)), prosperity: Math.min(100, l * 8), orbiters: l > 6 ? l - 5 : 0,
+        worldsTended: wi - 1, deepestFold: wi * 4 + g.int(4 + wi), lightFromGlow: Math.round(w * 40) + g.int(40), souls: Math.round(w * 8) + g.int(4 + wi),
+        era: Math.min(4, Math.floor(w / 3)), enlightenment: Math.min(100, Math.round(w * 9) + (l >= 9 ? 30 : 0)), prosperity: Math.min(100, Math.round(w * 8)), orbiters: l > 6 ? Math.floor((l - 5) / 2) : 0,
       }, -1);
+      // The first doors on the street are easy ones: a new box must be able to win there.
+      const ease = (rival.rematch ?? 0) === 0 && (!rival.mode || rival.mode === 'practice') && rival.id < EASE.length ? EASE[rival.id]! : 1;
+      if (ease !== 1) { const hp = Math.round(base.maxHp * ease); Object.assign(base, { might: Math.max(4, Math.round(base.might * ease)), maxHp: hp, hp }); }
       const relic = (rival.tier ?? 1) >= 2 && (i === 0 || rival.boss) ? RELICS[g.int(RELICS.length)]!.id : undefined;
       return grow(base, { xp: xpForLevel(Math.max(1, l + (rival.boss ? 1 : 0) - (i === 2 ? 1 : 0))), ...(relic ? { relic } : {}) });
     });
@@ -510,7 +576,108 @@ export const factory: BattlesFactory = ({ seed }) => {
     return out;
   };
 
+  /** About what a move would do, before the dice. Used by threat() and the scripted players. */
+  const est = (st: Pick<BattleState, 'weather'>, a: Fighter, d: Fighter, k: Def, free = false): number => {
+    if (!free && a.energy < costOf(a, k)) k = STRIKE;
+    const fin = !!(k.fin && (k.finSelf ? a : d).status[k.fin] > 0);
+    const sh = d.status.chill > 0 ? 1.5 : 1;
+    let base = 0, pierce = !!k.pierce;
+    switch (k.id) {
+      case 'strike': base = a.might * sh; break;
+      case 'kindle': base = a.might * 0.9 * sh; break;
+      case 'rime': base = a.might * 0.8 * (d.status.burn > 0 ? 1.5 : 1); break;
+      case 'undertow': base = a.might * 1.1; break;
+      case 'avalanche': base = a.might * 1.3 * sh; pierce = true; break;
+      case 'overgrow': base = a.might * 0.6; break;
+      case 'unmake': base = a.might; break;
+      case 'fold': base = a.depth * 1.5 * (d.status.expose > 0 ? 2 : 1 + a.depth / (a.depth + 30)); break;
+      case 'align': base = (a.might + a.depth + a.radiance) * 0.85 + a.speed; break;
+      default: base = k.pow ? a[k.stat ?? 'might'] * k.pow * (fin ? 2 : 1) : 0;
+    }
+    if (base <= 0) return 0;
+    let dmg = base * advantage(a.element, d.element);
+    const w = st.weather ? WEATHER[st.weather] : undefined;
+    if (w && a.element === w.up) dmg *= 1.33;
+    if (w && a.element === w.down && !holds(a, 'moth')) dmg *= 0.75;
+    if (a.status.chill > 0) dmg *= 0.75;
+    if (d.status.expose > 0) dmg *= 1.4;
+    if (d.status.ward > 0 && !pierce) dmg *= 0.5;
+    if (has(d, 'bedrock') && !d.spent.includes('bedrock')) dmg *= 0.5;
+    return Math.max(1, dmg - d.guard / 4);
+  };
+  const threat = (st: BattleState): number => {
+    if (st.outcome !== 'ongoing') return 0;
+    const a = st.intent.action;
+    if (a.type !== 'skill') return 0;
+    const me = st.mine[st.myActive]!, foe = st.theirs[st.theirActive]!;
+    const k = DEFS[a.id] ?? STRIKE;
+    const n = est(st, foe, me, k, st.rival.boss === 'mirror');
+    if (n <= 0) return 0;
+    return k.id === 'align' || n >= me.maxHp * 0.3 || (n >= me.hp + (me.shield ?? 0) && n >= me.maxHp * 0.15) ? 2 : 1;
+  };
+  /** Scripted players. Naive: the first move, always. Sensible: reads the intent, guards the big one, uses what hits hardest. Expert: chains, finishers, fusing. */
+  const suggest = (st: BattleState, skill: 'naive' | 'sensible' | 'expert' = 'sensible'): BattleAction => {
+    const me = st.mine[st.myActive]!, foe = st.theirs[st.theirActive]!;
+    const strike: BattleAction = { type: 'skill', id: me.skills[0]?.id ?? 'strike' };
+    if (skill === 'naive') return strike;
+    const expert = skill === 'expert';
+    const t = threat(st);
+    const life = foe.hp + (foe.shield ?? 0);
+    const mine = me.skills.map((s) => DEFS[s.id]!).filter((k) => k && me.energy >= costOf(me, k));
+    const myFins = new Set(me.skills.map((s) => DEFS[s.id]?.fin).filter(Boolean));
+    const youFirst = st.first !== 'them';
+    const hurt = (me.maxHp - me.hp) / me.maxHp;
+    let best: Def = STRIKE, bestV = -1, kill: Def | undefined;
+    for (const k of mine) {
+      const n = est(st, me, foe, k);
+      if (n >= life * 1.12 && (!kill || costOf(me, k) < costOf(me, kill))) kill = k;
+      let v = n;
+      if (k.id === 'strike') v += me.might * 0.25; // the Light it gathers
+      if ((k.id === 'kindle' || k.burn) && foe.status.burn === 0) v += 2 * (3 + foe.maxHp * 0.05);
+      if ((k.id === 'rime' || k.chill) && foe.status.chill === 0) v += foe.might * 0.3;
+      if ((k.id === 'unmake' || k.expose) && foe.status.expose === 0) v += me.might * (expert && myFins.has('expose') ? 0.9 : 0.4);
+      if (k.id === 'undertow' || k.leech) v += n * 0.33 * Math.min(1, hurt * 3);
+      if (k.id === 'overgrow') v += me.maxHp * 0.18 * Math.min(1, hurt * 3) * (me.status.regen > 0 ? 0.2 : 1);
+      if (k.drain) v += Math.min(foe.energy, k.drain) * foe.might * 0.2;
+      if (k.gain && !k.pow) v += me.energy <= 2 ? me.might * 0.5 : 0;
+      if (k.shield && !k.pow) v += (me.shield ?? 0) > 0 ? 0 : me.maxHp * k.shield * (t >= 1 ? 0.9 : 0.4);
+      if (k.id === 'shine') v = hurt > 0.5 && me.status.ward === 0 ? me.radiance * 1.8 + 6 + me.might * 0.6 : 0;
+      if (k.id === 'align') v *= 0.9;
+      if (k.cleanse && !k.pow) v += (me.status.burn > 0 ? me.maxHp * 0.1 : 0) + (me.status.expose > 0 ? me.maxHp * 0.1 : 0) + (me.status.chill > 0 ? me.might * 0.3 : 0);
+      if (expert && st.last?.you && st.last.you !== k.id) v *= 1.1;
+      if (expert && st.rival.boss === 'champion' && (st.turn + 1) % 3 === 0 && (k.kind === 'BURN' || k.kind === 'CHILL' || k.id === 'unmake')) v *= 0.7;
+      if (expert && st.rival.boss === 'mirror') v -= est(st, foe, me, k, true) * 0.6; // it comes straight back
+      v -= costOf(me, k) * me.might * 0.06;
+      if (v > bestV) { bestV = v; best = k; }
+    }
+    // It can be finished now, before it lands its blow.
+    if (kill && (youFirst || kill.quick || t < 2)) return { type: 'skill', id: kill.id };
+    if (t === 2 && !me.guarding) return { type: 'guard' };
+    if (t === 2 && me.guarding && st.intent.action.type === 'skill' && DEFS[st.intent.action.id]?.id === 'align') return { type: 'guard' };
+    const adv = advantage(me.element, foe.element);
+    const better = st.mine.findIndex((f, i) => i !== st.myActive && f.hp > f.maxHp * 0.5 && advantage(f.element, foe.element) > adv && advantage(foe.element, f.element) <= advantage(foe.element, me.element));
+    if (adv < 1 && better >= 0 && foe.hp > foe.maxHp * 0.4) return { type: 'swap', target: better };
+    if (expert && !st.fusedUsed && me.hp < me.maxHp * 0.45 && !me.fused) {
+      const ally = st.mine.findIndex((f, i) => i !== st.myActive && f.hp > 0);
+      if (ally >= 0 && st.mine.filter((f) => f.hp > 0).length >= 2 && (st.theirs.filter((f) => f.hp > 0).length <= 2 || st.rival.boss)) return { type: 'fuse', target: ally };
+    }
+    // Dying anyway and someone fresher is behind: let them take it.
+    if (me.hp < me.maxHp * 0.2 && t >= 1 && !youFirst) { const fresh = st.mine.findIndex((f, i) => i !== st.myActive && f.hp > f.maxHp * 0.6); if (fresh >= 0 && expert) return { type: 'swap', target: fresh }; }
+    return { type: 'skill', id: best.id };
+  };
+  const daily = (day: number, level0: number): Rival => {
+    const g = rng(child(seed, `daily-${Math.floor(day)}`));
+    const who = g.pick(DAILY);
+    const level = Math.max(1, Math.min(12, Math.floor(level0)));
+    return {
+      ...who, again: who.taunt, id: 1000 + (Math.abs(Math.floor(day)) % 9000), level, tier: level >= 4 ? 2 : 1, tierName: 'Today only', mode: 'daily',
+      persona: g.pick(['bold', 'wary', 'sly', 'cruel'] as const), theme: g.pick([...CYCLE, 'void'] as Element[]),
+      serials: Array.from({ length: 3 }, () => g.int(0x1000000)),
+    };
+  };
+
   return {
+    suggest, daily, threat,
     rivals: () => rivals,
     fighter,
     advantage,
@@ -525,12 +692,14 @@ export const factory: BattlesFactory = ({ seed }) => {
       const R = st.rival;
       const g = rng(child(seed, `reward-${R.id}-${wins}`));
       const xp = Math.round((16 + R.level * 8 + Math.min(6, wins) * 4) * (R.boss ? 1.5 : 1));
+      if (R.mode === 'practice') return { glow: 0, xp: 0 };
       if (st.outcome !== 'won') return { glow: 0, xp: Math.ceil(xp / 2) };
       const pieceRoll = g.chance(1, 2), relicRoll = g.chance(1, wins === 0 ? 2 : 4);
       const left = RELICS.filter((r) => !owned.includes(r.id));
       const relic = left.length && (R.boss || (wins === 0 && R.id === 0) || relicRoll) ? left[g.int(left.length)]! : undefined;
-      const piece = R.boss || pieceRoll ? { kind: SKY_PIECE_KINDS[g.int(SKY_PIECE_KINDS.length)]!, n: R.boss ? 2 : 1 } : undefined;
-      return { glow: (600 + R.level * 300) * (R.boss ? 2 : 1), xp, ...(piece ? { piece } : {}), ...(relic ? { relic } : {}) };
+      const big = !!R.boss || R.mode === 'daily';
+      const piece = big || pieceRoll ? { kind: SKY_PIECE_KINDS[g.int(SKY_PIECE_KINDS.length)]!, n: big ? 2 : 1 } : undefined;
+      return { glow: (600 + R.level * 300) * (big ? 2 : 1), xp, ...(piece ? { piece } : {}), ...(relic ? { relic } : {}) };
     },
     rivalTeam,
     start: (rival, mine, theirs) => {
@@ -540,6 +709,8 @@ export const factory: BattlesFactory = ({ seed }) => {
       const weather: Weather = rival.boss === 'champion' ? 'dark' : els.length ? g.pick(els) : 'dark';
       const log: BattleLogLine[] = [{ side: 'them', text: `${rival.name}: "${rival.taunt}"` }, { side: 'world', text: `${WEATHER[weather].name}. ${WEATHER[weather].desc}` }];
       if (rival.mechanic) log.push({ side: 'world', text: `${rival.name}: ${rival.mechanic}` });
+      const lead = mine[base.myActive], tm = TEMPER[lead?.temperament ?? ''];
+      if (lead && tm) log.push({ side: 'you', text: tm.enter.replace('{me}', lead.name) });
       return {
         ...base, log, hits: [], intent: plan(base), fusedUsed: false, outcome: 'ongoing', weather,
         chain: { you: 0, them: 0 }, tally: { dealt: 0, taken: 0, combos: 0 },

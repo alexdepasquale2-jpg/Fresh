@@ -22,8 +22,8 @@
 
 /* Ladder, growth, weather, chains, relics, summary. */
 .screen[data-screen='battle'] { gap: 6px; }
-.k-tag.tip { position: relative; background: transparent; cursor: pointer; min-height: 22px; font: 400 11px var(--font-ui); }
-.k-tag.tip::after, .k-tag.relic::after { content: ''; position: absolute; inset: -11px -2px; }
+.k-tag.tip { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; background: color-mix(in srgb, var(--panel) 70%, transparent); cursor: pointer; min-height: 44px; min-width: 44px; padding: 0 8px; font: 400 12px var(--font-ui); white-space: nowrap; }
+.k-tag.swap.relic { min-height: 44px; display: inline-flex; align-items: center; }
 .k-tag.relic { position: relative; }
 .k-tag.tip.relic, .k-tag.swap.relic:not(:disabled) { border-color: var(--gold); color: var(--gold); }
 .k-tag.tip.good { border-color: var(--glow); color: var(--glow); }
@@ -65,3 +65,41 @@
 .rival-say .mech { color: var(--gold); text-transform: none; letter-spacing: .02em; }
 .screen[data-screen='battle'] > header, .screen[data-screen='outside'] > header { padding-right: 30px; flex-wrap: nowrap; }
 .screen[data-screen='battle'] > header .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+
+/* Info chips are full touch targets; a card's chips sit on one line and slide sideways. */
+.pet-card .chips, .team-row .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 5px; }
+.pet-card .chips::-webkit-scrollbar, .team-row .chips::-webkit-scrollbar { display: none; }
+.field { overflow-x: auto; scrollbar-width: none; }
+.field .k-tag.tip { padding: 0 6px; font-size: 11px; }
+.k-tag.tip.ctl { color: var(--ink); border-color: var(--line); margin-left: auto; }
+.k-tag.tip.ctl + .k-tag.tip.ctl { margin-left: 0; }
+.k-tag.tip.ctl.good { border-color: var(--glow); color: var(--glow); }
+.k-tag.tip.off { opacity: .55; }
+.k-tag.tip.mech { border-color: var(--gold); color: var(--gold); }
+.k-tag.rar { border-color: var(--line-dim); }
+.k-tag.rar-rare { border-color: var(--glow); color: var(--glow); }
+.k-tag.rar-epic, .k-tag.rar-mythic { border-color: var(--gold); color: var(--gold); }
+.k-tag.intent.danger { border-color: var(--gold); color: var(--ink-bright); background: color-mix(in srgb, var(--gold) 28%, transparent); animation: b-warn 1s ease-in-out infinite; }
+.skills .skill.wanted { border-color: var(--glow); box-shadow: 0 0 10px color-mix(in srgb, var(--glow) 55%, transparent); }
+.screen[data-screen='battle'] .battle-log { height: 66px; }
+.screen[data-screen='battle'] .battle-log li.log-tick { color: var(--gold); border-top: 1px dashed var(--line-dim); padding-top: 2px; }
+.pet-card .float.tick { font-size: 15px; opacity: .9; }
+.pet-card .f-info .row.nowrap { flex-wrap: nowrap; }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; flex: none; }
+.modes .mode { min-height: 46px; padding: 2px 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
+.modes .mode b { font-weight: 600; font-size: 14px; }
+.modes .mode small { font-size: 9px; letter-spacing: .05em; color: var(--ink-muted); }
+.modes .mode.off { opacity: .6; }
+.rival-acts { display: flex; gap: 6px; }
+.rival-acts .k-btn { flex: 1; min-width: 0; }
+.screen[data-screen='outside'] .rivals { min-height: 0; }
+@keyframes b-warn { 50% { background: color-mix(in srgb, var(--gold) 10%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .k-tag.intent.danger { animation: none; } }
+:root.sallow-reduce-motion .k-tag.intent.danger { animation: none; }
+.screen .pet-card .row.chips, .screen .team-row .row.chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.screen[data-screen='battle'] .row.bench { gap: 5px; }
+.screen[data-screen='battle'] .row.bench > * { white-space: nowrap; }
+.screen[data-screen='battle'] .battle-log { height: 56px; }
+.k-label.stats { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .02em; }
+.pet-card .f-info .k-title.small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.screen[data-screen='battle'] .summary { min-height: 0; flex: 0 1 auto; overflow-y: auto; scrollbar-width: none; }
