@@ -1,6 +1,6 @@
 /**
  * While you were gone. When the player returns after an absence, the last world they
- * tended is dreamed again from its first morning, under the sky they left it, for the
+ * tended is carried on from where it was left, under the sky they left it, for the
  * (capped) time away, and what happened is read back to them over the bedroom.
  *
  * The surface sim is never persisted, so this is a replay under the same sky, not a
@@ -216,6 +216,8 @@ export const plugin: Plugin = (shell) => {
   // ---- The dream -----------------------------------------------------------------------
   interface Dream {
     world: Remembered; awayMs: number; target: number; startedMs: number; lastFrameMs: number; tick: number;
+    /** The world's own tick when the dream began (-1 until its first frame), and the chronicle lines already written by then. */
+    base: number; old: Set<number>;
     lines: Map<number, Line>; named: Map<string, Named>; leftMs: number; lightBefore: number; off: () => void; note: HTMLElement; bar: HTMLElement;
     restore: () => void;
   }
@@ -265,7 +267,7 @@ export const plugin: Plugin = (shell) => {
     const note = el('div', { class: 'away-note', role: 'status' }, el('span', {}, 'The box has been dreaming…'), el('b', {}, bar));
     shell.host.append(note);
     const d: Dream = {
-      world, awayMs, target, startedMs: now(), lastFrameMs: now(), tick: 0, lines: new Map(), named: new Map(), leftMs: now() - awayMs, lightBefore: (lightSnap = ctx.light.snapshot(), lightPoints(shell)),
+      world, awayMs, target, startedMs: now(), lastFrameMs: now(), tick: 0, base: -1, old: new Set(), lines: new Map(), named: new Map(), leftMs: now() - awayMs, lightBefore: (lightSnap = ctx.light.snapshot(), lightPoints(shell)),
       off: () => {}, note, bar, restore,
     };
     dream = d;
@@ -282,9 +284,12 @@ export const plugin: Plugin = (shell) => {
     const f = ctx.sim.latest();
     if (!f) return;
     d.lastFrameMs = now();
-    d.tick = f.tick;
+    // The box keeps its worlds now: the dream carries the world on from where it was left.
+    if (d.base < 0) { d.base = f.tick; for (const e of f.chronicle) d.old.add(e.id); }
+    d.tick = f.tick - d.base;
     const year = Math.floor(f.tick / YEAR_TICKS) + 1;
     for (const e of f.chronicle) {
+      if (d.old.has(e.id)) continue;
       const known = d.lines.get(e.id);
       if (known) { if (e.reason && !known.reason) known.reason = e.reason; continue; }
       d.lines.set(e.id, { id: e.id, text: e.event, reason: e.reason, year, kind: kindOf(e.event) });
@@ -292,10 +297,10 @@ export const plugin: Plugin = (shell) => {
     for (const p of d.named.values()) p.alive = false;
     const nb = f.civ.notable;
     if (nb) d.named.set(nb.name, { name: nb.name, calling: nb.calling, age: nb.age, deeds: nb.deeds, metYou: nb.metYou, alive: true });
-    if (f.tick >= d.target || now() - d.startedMs > BUDGET_MS) { finish(d); return; }
+    if (d.tick >= d.target || now() - d.startedMs > BUDGET_MS) { finish(d); return; }
     // One step may be in flight at a time. If the main loop got there first this one is
     // dropped, and the frame its step brings leads back here.
-    ctx.sim.step(Math.min(CHUNK, d.target - f.tick));
+    ctx.sim.step(Math.min(CHUNK, d.target - d.tick));
   };
 
   const finish = (d: Dream) => {
@@ -348,7 +353,7 @@ export const plugin: Plugin = (shell) => {
     };
     const gift = gained > 0
       ? `Their lamps reached you across the dark. Your light grew by ${lightWords(gained)}.`
-      : 'Their lamps reached you across the dark, but your light was already full.';
+      : 'Their lamps reached you across the dark, though little of it came this far.';
     // The one they name: the last the dream saw, with what they did.
     const people = [...d.named.values()];
     const who = people[people.length - 1] ?? null;
@@ -379,7 +384,7 @@ export const plugin: Plugin = (shell) => {
         el('p', { class: 'away-when' }, `You were away ${howLong(d.awayMs)}.`),
         el('p', { class: 'away-where' }, el('b', {}, w.planet), ` · ${w.universe}`),
         el('p', { class: 'away-honest' },
-          `The box cannot hold a world still. It dreamed ${w.planet} again from its first morning, under the sky you left it, for ${howManyYears(d.tick)} of its own. These are not the same souls you watched. This is what your sky made of them.`),
+          `The box does not hold a world still. It carried ${w.planet} on from where you left it, under the sky you gave it, for ${howManyYears(d.tick)} of its own. These are the souls you watched, and their children.`),
         el('ol', { class: 'away-lines' }, ...(lines.length
           ? lines.map((l) => el('li', { 'data-kind': l.kind }, el('span', {}, `Year ${words(l.year)}`), el('p', {}, l.text), why(l.reason), l.more ? el('em', {}, l.more) : null))
           : [el('li', {}, el('p', {}, 'Nothing was written down. The ground kept its own counsel.'))])),

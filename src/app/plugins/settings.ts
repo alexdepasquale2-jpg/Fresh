@@ -12,6 +12,7 @@ import './settings.css';
 import type { Plugin, Shell } from '../plugins';
 import type { ScreenId } from '@/contracts/app';
 import type { InputAction, InputBinding, SaveBundleInfo } from '@/contracts/platform';
+import { clearWorlds } from '../world-store';
 
 interface Settings {
   text: 0 | 1 | 2;
@@ -425,6 +426,8 @@ export const plugin: Plugin = (shell: Shell) => {
           await settle();
           const res = await ctx.save.stageImport?.(text);
           if (!res || !res.ok) { tell(res ? res.error : 'This build cannot import.', true); return; }
+          // Stored worlds belong to the game being replaced.
+          try { await clearWorlds(); } catch { /* nothing stored, or storage blocked */ }
           reloadSoon('It is coming back. One moment.');
         })(), 'gold'),
         btn('Leave it', 'set-import-no', () => { preview.hidden = true; }),
@@ -453,6 +456,8 @@ export const plugin: Plugin = (shell: Shell) => {
           await settle();
           const r = await ctx.save.stageRestore?.();
           if (!r || !r.ok) { tell(r ? r.error : 'This build cannot restore.', true); return; }
+          // Stored worlds belong to the game being replaced.
+          try { await clearWorlds(); } catch { /* nothing stored, or storage blocked */ }
           reloadSoon('The backup is coming back. One moment.');
         })();
       });
@@ -471,6 +476,8 @@ export const plugin: Plugin = (shell: Shell) => {
           await settle();
           const ok = await ctx.save.stageReset?.(KEEP_ON_RESET);
           if (!ok) { tell(ctx.save.status?.().lastError ?? 'It could not be done, so nothing was changed.', true); paintFresh(0); return; }
+          // Stored worlds belong to the game being replaced.
+          try { await clearWorlds(); } catch { /* nothing stored, or storage blocked */ }
           reloadSoon('The Box goes dark.');
         })(), 'gold'),
         btn('Keep my game', 'set-new-no', () => paintFresh(0)),
