@@ -74,6 +74,7 @@ export const plugin: Plugin = (shell) => {
     mood.depth = mood.speed = mood.day = mood.wind = mood.rain = mood.sea = mood.fire = mood.cold = undefined;
     mood.era = mood.prosperity = mood.souls = mood.danger = mood.intensity = undefined;
     mood.body = mood.boss = undefined;
+    mood.place = undefined;
 
     if (screen === 'dive') {
       const v = ctx.dive.view();
@@ -146,6 +147,20 @@ export const plugin: Plugin = (shell) => {
         mood.danger = me && me.maxHp > 0 ? 1 - me.hp / me.maxHp : 0;
         mood.boss = b.rival.level >= 8;
       } else mood.intensity = 0.15;
+    }
+    else if (screen === 'town') {
+      // The street plays in the home key whatever universe is selected, and follows the town's own clock and sky.
+      mood.seed = undefined;
+      const tw = (window as unknown as { __sallowTown?: { town?: { state?: { minutes?: number }; weather?: () => string } } }).__sallowTown?.town;
+      let minutes = tw?.state?.minutes;
+      if (typeof minutes !== 'number') { try { minutes = (JSON.parse(localStorage.getItem('sallow-town') ?? 'null') as { minutes?: number } | null)?.minutes; } catch { minutes = undefined; } }
+      const mins = typeof minutes === 'number' && Number.isFinite(minutes) ? minutes : 720;
+      mood.day = Math.round(((mins % 1440) / 1440) * 999);
+      let w = '';
+      try { w = tw?.weather?.() ?? ''; } catch { w = ''; }
+      mood.rain = w === 'rain' ? 0.8 : 0;
+      mood.wind = w === 'wind' ? 0.8 : w === 'rain' ? 0.3 : 0.15;
+      mood.place = (document.querySelector('[data-id="town-place"]')?.textContent ?? '').trim() || undefined;
     }
     if (screen !== 'planet') seenWorld = null;
     audio.setMood?.(mood);

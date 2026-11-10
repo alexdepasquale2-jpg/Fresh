@@ -173,6 +173,8 @@ export interface AudioMood {
   readonly boss?: boolean;
   /** Mote's light, 1 full, 0 out. */
   readonly light?: number;
+  /** Town: the district the player stands in (its name). Colours the street's theme. In the town `day` is the clock. */
+  readonly place?: string;
 }
 export interface AudioMix {
   readonly master?: number;

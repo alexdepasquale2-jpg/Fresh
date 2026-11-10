@@ -18,10 +18,10 @@ import { foldFrame, childScreen } from '@/core/fold-layout';
 const KEY_V1 = 'sallow-guide-v1';
 
 type LessonId = 'box' | 'fall' | 'sky' | 'watch' | 'zoom' | 'tools' | 'body' | 'people' | 'chron' | 'skytab' | 'system' | 'deep' | 'depths' | 'flicker' | 'floor'
-  | 'outside' | 'battle' | 'merge' | 'manage' | 'room' | 'mirror' | 'menu';
+  | 'outside' | 'battle' | 'merge' | 'manage' | 'room' | 'street' | 'mirror' | 'menu';
 /** In the order they are listed and counted ("lesson 3 of 21"). */
 const IDS: readonly LessonId[] = ['box', 'fall', 'sky', 'watch', 'zoom', 'tools', 'body', 'people', 'chron', 'skytab', 'system', 'deep', 'depths', 'flicker', 'floor',
-  'outside', 'battle', 'merge', 'manage', 'room', 'mirror', 'menu'];
+  'outside', 'battle', 'merge', 'manage', 'room', 'street', 'mirror', 'menu'];
 const CORE: readonly LessonId[] = ['box', 'fall', 'sky', 'watch'];
 type Status = 'new' | 'active' | 'done' | 'skipped';
 type Marks = Partial<Record<LessonId, boolean>>;
@@ -130,7 +130,7 @@ const clean = (o: Partial<Saved> | null): Saved => {
 };
 
 /** Screens where the core walk keeps quiet. */
-const PAUSED: ReadonlySet<ScreenId> = new Set<ScreenId>(['outside', 'battle', 'mirror']);
+const PAUSED: ReadonlySet<ScreenId> = new Set<ScreenId>(['outside', 'battle', 'mirror', 'town']);
 /** A waiting line stays at least this long before the line that answers it. */
 const READ_MS = 2600;
 const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty', 'twenty-one', 'twenty-two', 'twenty-three', 'twenty-four', 'twenty-five'];
@@ -252,6 +252,16 @@ export const plugin: Plugin = (shell) => {
   const settle = (key: string, ready: boolean): boolean => { const t = read.get(key) ?? 0; if (ready && (t === 0 || t >= READ_MS)) return true; read.set(key, t + frameMs); return false; };
   /** The wait has gone on long enough that the player may simply go on. */
   const slow = (key: string): boolean => (read.get(key) ?? 0) > 12000;
+  /** The town, read and never written: the live state when its screen is up, else what it last saved. */
+  const townSt = (): { x: number; y: number; steps: number; talks: number } | null => {
+    try {
+      const live = (window as unknown as { __sallowTown?: { town?: { state?: unknown } } }).__sallowTown?.town?.state;
+      const o = (live ?? JSON.parse(localStorage.getItem('sallow-town') ?? 'null')) as { x?: unknown; y?: unknown; stats?: { steps?: unknown; talks?: unknown } } | null;
+      if (!o || typeof o !== 'object') return null;
+      const n = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+      return { x: n(o.x), y: n(o.y), steps: n(o.stats?.steps), talks: n(o.stats?.talks) };
+    } catch { return null; }
+  };
   const layerNow = (): number => layer.querySelectorAll('.layer-rail i.on').length;
   const inEyes = (): boolean => q('.zoom-label')?.textContent === 'EYES';
   const findSpeed = (): Element | null => { for (const b of layer.querySelectorAll('button')) if (b.textContent?.trim().toLowerCase() === '3x') return b; return null; };
@@ -545,7 +555,7 @@ export const plugin: Plugin = (shell) => {
         { scr: ['planet'], cue: () => (layerNow() > 1 ? { text: 'There. I will stay with them a few breaths. Press − to climb back out.', target: byId('zoom-out'), act: 'next' } : { text: 'Find carries your eye to the one it names, wherever they have gone. Watch them a few breaths.', act: 'next' }) },
         {
           scr: ['planet', 'system', 'box', 'bedroom', 'dive'],
-          cue: () => ({ text: 'That is the whole of it. Fall, hang a sky, watch. The rest I will tell you when we come to it. Outside the room there are other children, with boxes of their own.', act: 'next', actLabel: 'I will', side: 'none' }),
+          cue: () => ({ text: 'That is the whole of it. Fall, hang a sky, watch. The rest I will tell you when we come to it. Past the front door is the street, and the way out to it is in your room. Out there are other children, with boxes of their own.', act: 'next', actLabel: 'I will', side: 'none' }),
         },
       ],
     },
@@ -872,6 +882,44 @@ export const plugin: Plugin = (shell) => {
         { scr: ['bedroom'], cue: () => ({ text: 'Each thing does something small. None of it is needed. It is only your room.', act: 'next', actLabel: 'Good', side: 'none' }) },
       ],
     },
+    street: {
+      id: 'street', title: 'The street', blurb: 'Walking, talking, pockets, the map, the hour, and the way home.', home: 'town', listed: true,
+      when: (scr) => scr === 'town',
+      route: (scr) => (scr === 'bedroom' ? { text: 'The street is past the front door. Go out.', target: byId('go-town') } : null),
+      steps: [
+        {
+          scr: ['town'],
+          cue: () => ({ text: 'This is the street. Touch a place and you walk to it. Drag anywhere to steer, or use the arrow keys. Walk a little way.', place: 'top' }),
+          done: () => { const t = townSt(); if (!t) return false; const x0 = first('tx', t.x), y0 = first('ty', t.y), n0 = first('tsteps', t.steps); return Math.abs(t.x - x0) + Math.abs(t.y - y0) > 24 || t.steps > n0 + 1; },
+        },
+        {
+          scr: ['town'],
+          cue: () => {
+            settle('talk', false);
+            return slow('talk')
+              ? { text: 'Nobody near. When you find someone, touch them and they speak. Some of them want something. Some only remember.', place: 'top', act: 'next', actLabel: 'Go on' }
+              : { text: 'People stand about out here. Walk up to one and touch them. They will have something to say.', place: 'top' };
+          },
+          done: () => { const t = townSt(); if (!t) return false; return t.talks > first('ttalks', t.talks) || (shownEl(byId('town-sheet')) && !!byId('town-say') && !byId('town-map') && !byId('town-bag-note')); },
+        },
+        {
+          scr: ['town'],
+          cue: () => (shownEl(byId('town-sheet')) && !byId('town-map')
+            ? { text: 'Hear them out. Then I will show you the map.', place: 'top' }
+            : { text: 'Bag is what is in your pockets. Map is where you have been: it draws itself as you walk. Open the map.', target: byId('town-map-btn'), place: 'top' }),
+          done: () => pressed.has('town-map-btn') || !!byId('town-map'),
+        },
+        {
+          scr: ['town'],
+          cue: () => (byId('town-map') ? null : { text: 'The hour up there moves as you do. Shops shut, some people go in, others come out. At night it is a different street.', target: byId('town-time'), place: 'top', act: 'next', actLabel: 'Go on' }),
+        },
+        {
+          scr: ['town'],
+          cue: () => ({ text: 'Other children are out here too, each with a box. Find one and they will set theirs against yours where they stand. Home takes us back to your room.', target: byId('town-home'), place: 'top', act: 'next', actLabel: 'Good', side: 'none' }),
+          done: (scr) => scr === 'bedroom',
+        },
+      ],
+    },
     mirror: {
       id: 'mirror', title: 'The floor', blurb: 'The room at the bottom, and the child who keeps it.', home: 'mirror', listed: true,
       when: (scr) => scr === 'mirror',
@@ -898,11 +946,12 @@ export const plugin: Plugin = (shell) => {
   const hubBtn = (): Element | null => host.querySelector('[data-id="hub"]');
   const LISTED: readonly LessonId[] = IDS.filter((id) => LESSONS[id].listed);
   /** Offered in this order when more than one fits a screen. */
-  const OFFERS: readonly LessonId[] = ['menu', 'room', 'zoom', 'tools', 'body', 'people', 'chron', 'skytab', 'system', 'merge', 'manage', 'deep', 'depths', 'outside', 'battle', 'mirror'];
+  const OFFERS: readonly LessonId[] = ['street', 'menu', 'room', 'zoom', 'tools', 'body', 'people', 'chron', 'skytab', 'system', 'merge', 'manage', 'deep', 'depths', 'outside', 'battle', 'mirror'];
   /** These announce themselves in the middle of a fall, not on arrival. */
   const MID: readonly LessonId[] = ['floor', 'flicker'];
   /** What Mote says once about each page of the menu, the first time it is opened. */
   const PAGES: Record<string, string> = {
+    street: 'The Street page keeps what you carry out there: errands, pockets, the map so far, and who you have met.',
     journal: 'The Journal keeps the chapters of what you are doing here, and what each one asks of you.',
     almanac: 'The Almanac is today: an omen over the box, small tasks, and what is happening out there. It turns over each day.',
     tutorial: 'Everything I have shown you, and what I have not yet. Touch a lesson and I show it where it happens.',
@@ -1256,6 +1305,14 @@ export const plugin: Plugin = (shell) => {
     if (to) hard.push({ x: to.x - 30, y: to.y - 30, w: 60, h: 60 });
     for (const e of layer.querySelectorAll('.k-btn--primary, [data-id="merge-reveal"], [data-id="reveal-done"], .sum-panel, [data-id="summary"], [data-id="rewards"]')) addRect(hard, e, 6);
     for (const e of layer.querySelectorAll('[data-id="stratum"], [data-id="dive-threat"], [data-id="stratum-banner"], [data-id="star-says"], [data-id="mote-say"], [data-id="uni-name"], [data-id="merge-preview"], [data-id="battle-log"], .depth-bar')) addRect(soft, e, 4);
+    if (scr === 'town') {
+      // The street: never over the row of buttons, an open sheet, or the kid and Mote in the middle of the view.
+      for (const e of layer.querySelectorAll('.town-bar, [data-id="town-sheet"]')) addRect(hard, e, 6);
+      const cv = byId('town-canvas')?.getBoundingClientRect();
+      if (cv && cv.height > 0) hard.push({ x: cv.left + cv.width / 2 - 50, y: cv.top + cv.height / 2 - 120, w: 100, h: 170 });
+      const tt = q('.town-top');
+      if (tt) addRect(soft, tt, 4);
+    }
     const mid = byId(scr === 'bedroom' ? 'floor' : 'surface')?.getBoundingClientRect();
     // The middle of their world, and the wall of the room where its things hang.
     if (mid && mid.height > 0) soft.push(scr === 'bedroom' ? { x: mid.left, y: mid.top, w: mid.width, h: mid.height * 0.45 } : { x: mid.left, y: mid.top + mid.height * 0.2, w: mid.width, h: mid.height * 0.6 });

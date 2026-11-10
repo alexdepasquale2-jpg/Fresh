@@ -7,7 +7,7 @@ import type { AudioMix, AudioMood, ScreenId } from '@/contracts/platform';
 interface Bus { readonly dry: GainNode; readonly wet: readonly GainNode[]; readonly cap: number }
 interface Mood {
   seed: number; depth: number; speed: number; day: number; wind: number; rain: number; sea: number; fire: number; cold: number;
-  era: number; prosperity: number; souls: number; body: boolean; danger: number; intensity: number; boss: boolean; light: number;
+  era: number; prosperity: number; souls: number; body: boolean; danger: number; intensity: number; boss: boolean; light: number; place: string;
 }
 
 const WET = [0, 0.18, 0.45, 0.8];
@@ -208,7 +208,7 @@ export const createEngine = (ac: BaseAudioContext): Engine => {
   };
 
   /* ---------- Per-universe identity ---------- */
-  const mood: Mood = { seed: 0, depth: 0, speed: 0, day: 500, wind: 0, rain: 0, sea: 0, fire: 0, cold: 0, era: 0, prosperity: 0.5, souls: 0, body: false, danger: 0, intensity: 0.4, boss: false, light: 1 };
+  const mood: Mood = { seed: 0, depth: 0, speed: 0, day: 500, wind: 0, rain: 0, sea: 0, fire: 0, cold: 0, era: 0, prosperity: 0.5, souls: 0, body: false, danger: 0, intensity: 0.4, boss: false, light: 1, place: '' };
   let scale = MODES[0]!;
   let modeIx = 0;
   let rootSemis = 0;
@@ -431,8 +431,53 @@ export const createEngine = (ac: BaseAudioContext): Engine => {
       if (boss && s === 0 && bar % 2 === 0) { tone(b, t, note(chord, 2), 0.04, 0.55, 'sawtooth', 2); tone(b, t, note(chord, 2) * 1.4142, 0.035, 0.55, 'sawtooth', 2); }
     },
   };
-  // The street shares the open-air theme until it has one of its own.
-  const SCENES: Record<ScreenId, (b: Bus, s: number, t: number) => void> = { ...BASE_SCENES, town: BASE_SCENES.outside };
+  /* The street: the bedroom's felt key taken for a walk. The hour picks the variant (dawn thin and high,
+     day a strolling two-step, dusk slower and lower, night almost only the bass and a far bell), and the
+     district adds one colour of its own. sound.ts sends no seed here, so it is always the home key. */
+  const hour = () => (((mood.day % 1000) + 1000) % 1000) * 0.024;
+  const phase = (): 0 | 1 | 2 | 3 => { const h = hour(); return h < 5 ? 3 : h < 7 ? 0 : h < 18 ? 1 : h < 20 ? 2 : 3; };
+  const placeIs = (...keys: string[]) => { for (const k of keys) if (mood.place.includes(k)) return true; return false; };
+  const town = (b: Bus, s: number, t: number) => {
+    const ph = phase();
+    const m = motif[(bar * 3 + s) & 7]!;
+    if (ph === 1) {
+      // Day: a walking bass on one and five, the tune on the off steps, a brushed step between.
+      if (s === 0 || s === 4) tone(b, t, note(chord + (s === 4 ? 4 : 0), 1), 0.075, 0.5, 'triangle', 1, 0, 0.01);
+      if (s === 1 || s === 3 || s === 6 || (s === 7 && bar % 2 === 1)) key(b, t, note(chord + m, 3), 0.042, 0.9, 2);
+      if (s === 2 || s === 6) hat(b, t, 0.012);
+      if (s === 5 && bar % 4 === 3) key(b, t, note(chord + m + 2, 3), 0.03, 0.8, 2);
+    } else if (ph === 0) {
+      // Dawn: the same tune an octave up, half as often, over one held note.
+      if (s === 0) tone(b, t, note(chord, 2), 0.06, 2.6, 'sine', 2, 0, 0.2);
+      if (s === 2 || s === 5) bell(b, t, note(chord + m, 4), 0.026, 1.6, 3, s === 2 ? -0.4 : 0.4);
+      if (s === 7 && bar % 2 === 0) tone(b, t, note(chord + 4, 3), 0.022, 1.4, 'sine', 3, 0, 0.05);
+    } else if (ph === 2) {
+      // Dusk: the walk slows; the tune drops and leans on the fourth.
+      if (s === 0) tone(b, t, note(chord, 1), 0.08, 1.8, 'triangle', 2, 0, 0.02);
+      if (s === 4) tone(b, t, note(chord + 3, 1), 0.05, 1.2, 'sine', 2, 0, 0.03);
+      if (s === 2 || s === 6) key(b, t, note(chord + m, 2), 0.045, 1.6, 3);
+      if (s === 7 && bar % 4 === 1) bell(b, t, note(chord + 3, 3), 0.022, 2, 3, 0.3);
+    } else {
+      // Night: bass and breath, a far bell now and then, one wrong note every eighth bar.
+      if (s === 0 && bar % 2 === 0) tone(b, t, note(chord, 1), 0.075, 3.6, 'sine', 2, 0, 0.3);
+      if (s === 3 && bar % 2 === 1) bell(b, t, note(chord + m, 3), 0.022, 2.8, 3, bar % 4 === 1 ? -0.5 : 0.5);
+      if (s === 6 && bar % 8 === 7) tone(b, t, note(chord, 3) * 1.0595, 0.012, 2, 'sine', 3, 0, 0.3);
+    }
+    // District colour.
+    const quiet = ph === 3 ? 0.6 : 1;
+    if (placeIs('wood')) { if (s === 5 && bar % 2 === 0) tone(b, t, note(chord + 4, 0) * 2, 0.04 * quiet, 2.4, 'sine', 3, 0, 0.4); if (s === 1 && rnd(4) === 0) bell(b, t, note(chord + 7 + 2 * rnd(3), 4), 0.012, 0.5, 3, (rnd(17) - 8) / 9); }
+    else if (placeIs('orrin', 'church', 'yard')) { if (s === 0 && bar % 4 === 0) { bell(b, t, note(0, 2), 0.05 * quiet, 4, 3); tone(b, t, note(0, 2) * 2.4, 0.012, 2.5, 'sine', 3); } }
+    else if (placeIs('down line', 'rail')) { if (s === 0 || s === 1 || s === 4 || s === 5) tone(b, t, 62, 0.03 * quiet, 0.12, 'triangle', 0, 50, 0.004); if (s === 0 && bar % 4 === 2) tone(b, t, 233, 0.01, 2.4, 'sawtooth', 3, 231, 0.5); }
+    else if (placeIs('mast', 'hill')) { if (s === 3 || (s === 7 && rnd(2) === 0)) tone(b, t, 3100 + rnd(300), 0.006, 0.03, 'square', 2); if (s === 0 && bar % 2 === 1) tone(b, t, note(chord + 4, 4), 0.012, 3, 'sine', 3, 0, 0.6); }
+    else if (placeIs('working', 'quarry')) { if (s === 6 && bar % 2 === 1) { tone(b, t, 140, 0.035 * quiet, 0.2, 'sine', 3, 80, 0.004); hiss(b, t, 0.08, 0.01, 'bandpass', 900, 500, 3); } }
+    else if (placeIs('primary', 'school')) { if ((s === 1 || s === 2 || s === 5) && bar % 2 === 0 && ph !== 3) tone(b, t, note(chord + [4, 2, 4][s % 3]!, 4), 0.016, 0.22, 'triangle', 2); }
+    else if (placeIs('allot')) { if (s === 4 && bar % 2 === 0) key(b, t, note(chord + 2, 2), 0.03 * quiet, 1.6, 2); if (s === 7 && rnd(3) === 0) hiss(b, t, 0.05, 0.008, 'highpass', 5000, 3000, 1); }
+    else if (placeIs('rec', 'park')) { if (s === 5 && rnd(2) === 0) tone(b, t, 700 + rnd(500), 0.012, 0.09, 'sine', 3, 1300 + rnd(500)); }
+    else if (placeIs('parade')) { if (s === 3 && bar % 4 === 0 && ph !== 3) { bell(b, t, note(7, 4), 0.016, 0.5, 2, 0.5); bell(b, t + 0.09, note(9, 4), 0.014, 0.6, 2, 0.5); } if ((s & 1) === 1 && ph === 1) hat(b, t, 0.008); }
+    else if (placeIs('cut')) { if (s === 2 && bar % 2 === 1) tone(b, t, note(chord + 2, 1), 0.035 * quiet, 2.2, 'sine', 3, 0, 0.4); }
+    else if (placeIs('lowmere', 'edge', 'shore')) { if (s === 0 && bar % 2 === 1) tone(b, t, note(chord + 4, 1), 0.04 * quiet, 3.4, 'sine', 3, 0, 0.6); if (s === 4 && bar % 4 === 2) bell(b, t, note(chord + 9, 3), 0.012, 3, 3, -0.6); }
+  };
+  const SCENES: Record<ScreenId, (b: Bus, s: number, t: number) => void> = { ...BASE_SCENES, town };
 
   const padShape = (t: number, s: number) => {
     let level = 0.045;
@@ -445,6 +490,7 @@ export const createEngine = (ac: BaseAudioContext): Engine => {
       case 'system': level = 0.065; cut = 1300; break;
       case 'planet': level = mood.body ? 0.035 : 0.042; cut = (mood.body ? 320 : 380) + 900 * light() * (0.5 + 0.5 * mood.prosperity); break;
       case 'outside': level = 0.05; cut = 340; break;
+      case 'town': { const ph = phase(); level = ph === 1 ? 0.03 : ph === 3 ? 0.045 : 0.04; cut = ph === 1 ? 620 : ph === 0 ? 780 : ph === 2 ? 440 : 300; break; }
       case 'battle': level = 0.03; cut = 700 + 900 * clamp01(mood.intensity); break;
     }
     cut *= 0.6 + 0.4 * clamp01(mood.light);
@@ -470,6 +516,14 @@ export const createEngine = (ac: BaseAudioContext): Engine => {
       bugs = night * (1 - mood.rain) * (1 - mood.cold) * 0.8;
       fire = mood.fire;
     } else if (scene === 'outside') { wind = 0.3; bugs = 0.3; }
+    else if (scene === 'town') {
+      const ph = phase();
+      const water = placeIs('lowmere', 'edge', 'shore') ? 0.55 : placeIs('cut', 'rec', 'park') ? 0.25 : 0;
+      wind = Math.max(mood.wind, placeIs('mast', 'hill', 'working', 'quarry') ? 0.4 : 0.12);
+      rain = mood.rain;
+      surf = water * (0.5 + 0.5 * mood.wind);
+      bugs = (ph === 3 ? 1 : ph === 2 ? 0.45 : 0) * (1 - mood.rain) * (placeIs('parade', 'primary', 'school') ? 0.5 : 1);
+    }
     else if (scene === 'dive') wind = mood.speed * 0.45;
     windBp.frequency.setTargetAtTime(350 + 600 * wind, t, 0.6);
     windLevel.setTargetAtTime(0.1 * clamp01(wind), t, 0.5);
@@ -598,6 +652,24 @@ export const createEngine = (ac: BaseAudioContext): Engine => {
     win: () => { arp([0, 2, 4, 7, 9, 11], 2, 0.09, 0.06, 0.9, 'triangle'); arp([4, 7, 9, 11], 3, 0.09, 0.04, 1.2); },
     lose: () => { sw(note(4, 2), note(0, 1), 0.9, 0.08, 'sawtooth', 2); sw(note(2, 2), note(0, 0), 1.2, 0.06, 'sine', 2, 0.1); },
   };
+  // --- The street ---
+  Object.assign(SFX, {
+    door: () => { sw(210, 150, 0.06, 0.06, 'triangle', 1); hs(0.16, 0.022, 'bandpass', 700, 1600, 1, 0.03); sw(120, 90, 0.08, 0.07, 'sine', 1, 0.2); },
+    coin: (a: number) => { sw(2100 + 300 * a, 2100 + 300 * a, 0.05, 0.03, 'sine', 1); sw(3150 + 450 * a, 3150 + 450 * a, 0.22, 0.03, 'sine', 2, 0.05); },
+    talk: (a: number) => sw(380 + 260 * a + rnd(60), 340 + 260 * a, 0.045, 0.03, 'triangle', 0),
+    bus: () => { sw(70, 52, 1.1, 0.07, 'sawtooth', 1); sw(105, 78, 1.1, 0.03, 'triangle', 1); hs(0.5, 0.03, 'highpass', 3000, 5200, 1, 0.9); sw(520, 520, 0.12, 0.025, 'sine', 2, 1.05); sw(415, 415, 0.2, 0.025, 'sine', 2, 1.2); },
+    'bike-bell': () => { for (let i = 0; i < 2; i++) { sw(2480, 2480, 0.3, 0.03, 'sine', 2, i * 0.13); sw(3720, 3720, 0.16, 0.012, 'sine', 2, i * 0.13); } },
+    splash: (a: number) => { hs(0.22 + 0.2 * a, 0.045, 'bandpass', 2200, 600, 2); sw(300, 120, 0.14, 0.05, 'sine', 1); sw(900 + rnd(300), 1700, 0.07, 0.02, 'sine', 2, 0.1); },
+    skip: (a: number) => { const n = 2 + Math.round(a * 4); for (let i = 0; i < n; i++) { sw(700 + 140 * i, 1300 + 140 * i, 0.04, 0.035 - 0.004 * i, 'sine', 2, i * (0.16 - 0.015 * i)); hs(0.05, 0.012, 'highpass', 3000, 5000, 1, i * (0.16 - 0.015 * i)); } },
+    bite: () => { sw(520, 300, 0.07, 0.05, 'sine', 1); sw(300, 620, 0.09, 0.04, 'sine', 2, 0.08); hs(0.1, 0.02, 'bandpass', 1800, 900, 1, 0.05); },
+    'shop-bell': () => { sw(1760, 1760, 0.5, 0.035, 'sine', 2); sw(4840, 4840, 0.2, 0.01, 'sine', 2); sw(1480, 1480, 0.6, 0.03, 'sine', 2, 0.16); },
+    gate: () => { sw(520, 760, 0.3, 0.014, 'sawtooth', 1); sw(760, 600, 0.18, 0.012, 'sawtooth', 1, 0.3); sw(170, 110, 0.06, 0.07, 'triangle', 1, 0.5); hs(0.05, 0.03, 'bandpass', 2400, 1200, 1, 0.5); },
+    dog: () => { for (let i = 0; i < 2; i++) { sw(420, 230, 0.09, 0.05, 'sawtooth', 1, i * 0.19); hs(0.07, 0.03, 'bandpass', 1100, 600, 1, i * 0.19); } },
+    cat: () => { sw(620, 880, 0.14, 0.03, 'triangle', 2); sw(880, 540, 0.3, 0.03, 'triangle', 2, 0.13); },
+    train: () => { sw(311, 311, 0.9, 0.035, 'sawtooth', 3); sw(370, 370, 0.9, 0.03, 'sawtooth', 3); for (let i = 0; i < 6; i++) { th(0.07, 0.9 + i * 0.17 + (i & 1) * 0.05, 85); hs(0.05, 0.015, 'highpass', 2500, 4000, 1, 0.9 + i * 0.17); } hs(1.8, 0.03, 'lowpass', 500, 160, 2, 0.6); },
+    crossing: () => { for (let i = 0; i < 4; i++) { const f = i & 1 ? 660 : 830; sw(f, f, 0.2, 0.035, 'sine', 2, i * 0.26); sw(f * 2.7, f * 2.7, 0.08, 0.01, 'sine', 2, i * 0.26); } },
+    'step-road': () => { footfall(1100, 0.03); sw(200, 150, 0.025, 0.022, 'triangle', 0); },
+  } as Record<string, (a: number) => void>);
   SFX.panspermia = SFX.sow!;
   SFX['comet-strike'] = SFX.meteor!;
   const NAMES = Object.freeze(Object.keys(SFX).sort());
@@ -631,6 +703,7 @@ export const createEngine = (ac: BaseAudioContext): Engine => {
       mood.intensity = clamp01(m.intensity ?? 0.4);
       mood.boss = m.boss ?? false;
       mood.light = clamp01(m.light ?? 1);
+      mood.place = typeof m.place === 'string' ? m.place.toLowerCase() : '';
       identify(mood.seed);
     },
     setMix: (m, t) => {
