@@ -156,4 +156,5 @@ export const SFX_NAMES: readonly string[] = [
   'pickup', 'place', 'preach', 'pull', 'push', 'quake', 'rain', 'regen', 'rest', 'sand', 'seed', 'shine', 'shower', 'smite', 'soul', 'sow',
   'star', 'status', 'step', 'step-grass', 'step-sand', 'step-snow', 'step-stone', 'step-water', 'step-wood', 'stone', 'strike', 'swap', 'take',
   'tap', 'thunder', 'toast', 'toggle', 'village', 'war', 'ward', 'water', 'whisper', 'win', 'wind', 'zoom', 'zoom-in', 'zoom-out', 'birth', 'slider',
+  'door', 'coin', 'talk', 'bus', 'bike-bell', 'splash', 'skip', 'bite', 'shop-bell', 'gate', 'dog', 'cat', 'train', 'crossing', 'step-road',
 ];

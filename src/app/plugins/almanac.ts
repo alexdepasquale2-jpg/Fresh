@@ -64,7 +64,9 @@ type Fx =
   | { t: 'watch'; every: number; mode: 'flat' | 'souls' | 'villages' }
   | { t: 'dive'; give: 'piece' | 'toll' }
   | { t: 'record' } | { t: 'win'; give: 'sun' | 'pip' } | { t: 'tasks' } | { t: 'wake' } | { t: 'hang' }
-  | { t: 'found' } | { t: 'door' } | { t: 'body' } | { t: 'outside' } | { t: 'rest' };
+  | { t: 'found' } | { t: 'door' } | { t: 'body' } | { t: 'outside' } | { t: 'rest' }
+  /** Paid when the street is seen to change (the town's own save is only ever read). */
+  | { t: 'town'; on: 'district' | 'talk' | 'find' | 'errand' | 'night' };
 interface Omen { id: string; name: string; line: string; does: string; fx: Fx }
 const free = (kind: SkyPieceKind, id: string, name: string, line: string): Omen => ({
   id, name, line, fx: { t: 'free', kind },
@@ -93,6 +95,12 @@ const OMENS: readonly Omen[] = [
   { id: 'body-remembers', name: 'The Body Remembers', line: 'Your hands are cold this morning. They have been somewhere.', does: 'Each body you take today gives 300 light (three at most).', fx: { t: 'body' } },
   { id: 'step-outside', name: 'Step Outside', line: 'There is weather. It has been asking after you.', does: 'Each time you go outside today you find a comet on the step (three at most).', fx: { t: 'outside' } },
   { id: 'motes-rest', name: "Mote's Rest", line: 'Mote is not doing anything today. It is doing it very brightly.', does: 'Every two minutes you play, 60 light, wherever you are.', fx: { t: 'rest' } },
+  // The street. These pay Light or sky when Mote sees something happen out there; they never touch the town itself.
+  { id: 'long-way-round', name: 'The Long Way Round', line: 'Your shoes are by the door, and they are pointing out.', does: 'Each part of the neighbourhood you walk into today pays 120 light, once each.', fx: { t: 'town', on: 'district' } },
+  { id: 'kind-word', name: 'A Kind Word', line: 'People are standing at their gates today, waiting to be asked.', does: 'Each person in the street you speak to for the first time today pays 200 light (five at most).', fx: { t: 'town', on: 'talk' } },
+  { id: 'finders', name: 'Finders', line: 'Small things are shining in the gutters. Nobody else has looked down.', does: 'Each dropped thing you pick up in the street today pays 150 light.', fx: { t: 'town', on: 'find' } },
+  { id: 'good-turn', name: 'A Good Turn', line: 'Somebody out there needs something carried. The sky has noticed.', does: 'Each errand you finish in the street today leaves a moon in your hand.', fx: { t: 'town', on: 'errand' } },
+  { id: 'lamplight', name: 'Lamplight', line: 'The street lamps came on early, and one of them is following you.', does: 'The first time you stand in the street after dark today, a pip of Light.', fx: { t: 'town', on: 'night' } },
 ];
 const omenIndex = (n: number): number => {
   const i = h32(n, 77) % OMENS.length;
@@ -118,13 +126,14 @@ const FEASTS: Readonly<Record<string, Feast>> = {
 };
 
 // ---- what is counted -------------------------------------------------------------------
-const CKEYS = ['folds', 'dives', 'watch', 'hung', 'taken', 'nudged', 'wins', 'fights', 'villages', 'glow', 'bodies', 'outside', 'entered', 'caught', 'days'] as const;
+const CKEYS = ['folds', 'dives', 'watch', 'hung', 'taken', 'nudged', 'wins', 'fights', 'villages', 'glow', 'bodies', 'outside', 'entered', 'caught', 'days',
+  'tdist', 'terr', 'tskim', 'tfind', 'tmeet', 'twalk'] as const;
 type CKey = (typeof CKEYS)[number];
 type Counters = Record<CKey, number>;
-const zero = (): Counters => ({ folds: 0, dives: 0, watch: 0, hung: 0, taken: 0, nudged: 0, wins: 0, fights: 0, villages: 0, glow: 0, bodies: 0, outside: 0, entered: 0, caught: 0, days: 0 });
+const zero = (): Counters => ({ folds: 0, dives: 0, watch: 0, hung: 0, taken: 0, nudged: 0, wins: 0, fights: 0, villages: 0, glow: 0, bodies: 0, outside: 0, entered: 0, caught: 0, days: 0, tdist: 0, terr: 0, tskim: 0, tfind: 0, tmeet: 0, twalk: 0 });
 
 /** What a task may ask about before it is offered. */
-interface Able { box: number; maxDepth: number; tended: number; bestSouls: number; pieces: number; maxPieces: number; beaten: number; pips: number }
+interface Able { box: number; maxDepth: number; tended: number; bestSouls: number; pieces: number; maxPieces: number; beaten: number; pips: number; /** Has walked in the street. */ town: boolean; /** Has spoken to someone out there. */ townMet: boolean }
 interface Task {
   id: string; text: string; hint: string; group: string;
   /** A counter since the day (or week) began, or a best-of-the-day. */
@@ -149,6 +158,12 @@ const DAILY: readonly Task[] = [
   { id: 'outside', group: 'outside', key: 'outside', goal: 1, glow: 300, text: 'Go outside', hint: 'In the bedroom, press GO OUTSIDE.', can: (a) => a.box >= 1 },
   { id: 'fight', group: 'outside', key: 'fights', goal: 1, glow: 600, text: 'Stand against another box', hint: 'Outside, choose a kid.', can: (a) => a.box >= 3 && a.maxDepth > 0 },
   { id: 'win', group: 'outside', key: 'wins', goal: 1, glow: 900, piece: 'sun', text: 'Win a battle', hint: 'Watch what they mean to do next.', can: (a) => a.beaten > 0 },
+  { id: 't-walk', group: 'town', key: 'twalk', goal: 120, glow: 400, text: 'Walk 120 steps in the street', hint: 'In the bedroom, press THE STREET. Touch a place and you walk to it.', can: () => true },
+  { id: 't-visit', group: 'town', key: 'tdist', goal: 2, glow: 500, text: 'Cross into two parts of the neighbourhood', hint: 'Out in the street. The name at the top changes when you cross.', can: (a) => a.town },
+  { id: 't-errand', group: 'town', key: 'terr', goal: 1, glow: 800, piece: 'moon', text: 'Finish an errand for somebody', hint: 'Errands are in the menu under Street.', can: (a) => a.townMet },
+  { id: 't-skim', group: 'town', key: 'tskim', goal: 3, glow: 500, text: 'Throw three stones at the water', hint: 'There are places to skim from at the pond, the Cut and the mere.', can: (a) => a.town },
+  { id: 't-find', group: 'town', key: 'tfind', goal: 1, glow: 500, piece: 'dust', text: 'Pick up something somebody dropped', hint: 'Caps, feathers, glass, pennies. They lie about the neighbourhood, a little bright.', can: (a) => a.town },
+  { id: 't-meet', group: 'town', key: 'tmeet', goal: 1, glow: 500, text: 'Talk to someone new', hint: 'People move about with the hour. Try another street, or another time of day.', can: (a) => a.town },
 ];
 const WEEKLY: readonly Task[] = [
   { id: 'w-days', group: 'w', key: 'days', goal: 4, glow: 3000, piece: 'sun', text: 'Open the box on four days this week', hint: 'Come back tomorrow.', can: () => true },
@@ -156,6 +171,7 @@ const WEEKLY: readonly Task[] = [
   { id: 'w-watch', group: 'w', key: 'watch', goal: 900, glow: 3000, piece: 'moon', text: 'Watch living worlds for fifteen minutes this week', hint: 'They do better when someone is looking.', can: (a) => a.tended > 0 },
   { id: 'w-hung', group: 'w', key: 'hung', goal: 10, glow: 2500, piece: 'belt', text: 'Hang ten pieces of sky this week', hint: 'Any sky, any world.', can: (a) => a.tended > 0 },
   { id: 'w-wins', group: 'w', key: 'wins', goal: 3, glow: 4000, piece: 'sun', text: 'Win three battles this week', hint: 'Outside. Bring your three strongest.', can: (a) => a.beaten > 0 },
+  { id: 'w-town', group: 'w', key: 'terr', goal: 3, glow: 3500, piece: 'comet', text: 'Finish three errands in the street this week', hint: 'Ask around. Somebody always wants something.', can: (a) => a.townMet },
 ];
 const taskById = (id: string): Task | undefined => DAILY.find((t) => t.id === id) ?? WEEKLY.find((t) => t.id === id);
 
@@ -283,6 +299,60 @@ export const plugin: Plugin = (shell) => {
   const flagCount = (prefix: string) => st.day?.flags.filter((f) => f.startsWith(prefix)).length ?? 0;
 
   // ---- reading the game ----------------------------------------------------------------
+  /** The street, read and never written: the live state once the town has been up, else what it last saved. */
+  const townRead = (): { steps: number; met: number; done: number; found: number; throws: number; minutes: number; hasClock: boolean } | null => {
+    try {
+      const live = (window as unknown as { __sallowTown?: { town?: { state?: unknown } } }).__sallowTown?.town?.state;
+      const t = (live ?? JSON.parse(localStorage.getItem('sallow-town') ?? 'null')) as Record<string, unknown> | null;
+      if (!t || typeof t !== 'object') return null;
+      const n = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+      const o = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+      let met = 0, done = 0;
+      for (const v of Object.values(o(t.talks))) if (n(v) > 0) met++;
+      for (const v of Object.values(o(t.quests))) if (o(v).done === true) done++;
+      return { steps: n(o(t.stats).steps), met, done, found: Array.isArray(t.found) ? t.found.length : 0, throws: n(o(t.skim).throws), minutes: n(t.minutes), hasClock: typeof t.minutes === 'number' };
+    } catch { return null; }
+  };
+  let townWas: ReturnType<typeof townRead> = null;
+  let townPlace = '';
+  let townMs = 0;
+  /** Counts what changed in the street since the last look. The first look only takes stock. */
+  const observeTown = (dtMs: number, screen: string | null, o: Omen) => {
+    townMs += dtMs;
+    if (screen !== 'town' && townMs < 2000) return;
+    townMs = 0;
+    const t = townRead();
+    if (!t) return;
+    const was = townWas;
+    townWas = t;
+    const on = o.fx.t === 'town' ? o.fx.on : '';
+    if (was) {
+      if (t.steps > was.steps) bump('twalk', t.steps - was.steps);
+      if (t.throws > was.throws) bump('tskim', t.throws - was.throws);
+      if (t.met > was.met) {
+        bump('tmeet', t.met - was.met);
+        if (on === 'talk' && flagCount('tk-') < 5 && flagOnce(`tk-${flagCount('tk-')}`) && omenGive(200)) say(o.name, 'They were glad to be asked. 200 light.', 'gain');
+      }
+      if (t.found > was.found) {
+        bump('tfind', t.found - was.found);
+        if (on === 'find' && omenGive(150 * (t.found - was.found))) say(o.name, 'It was still warm from the sun. 150 light.', 'pickup');
+      }
+      if (t.done > was.done) {
+        bump('terr', t.done - was.done);
+        if (on === 'errand' && omenGive(0, 'moon')) say(o.name, 'A moon, for the trouble.', 'pickup');
+      }
+    }
+    if (screen !== 'town') { townPlace = ''; return; }
+    const place = (document.querySelector('[data-id="town-place"]')?.textContent ?? '').trim();
+    if (place && place !== townPlace) {
+      // Arriving in the street is not a crossing; walking from one part into another is.
+      if (townPlace) bump('tdist');
+      townPlace = place;
+      if (on === 'district' && flagOnce(`td-${place}`) && omenGive(120)) say(o.name, `${place}. 120 light for the walk.`, 'gain');
+    }
+    const hr = (t.minutes % 1440) / 60;
+    if (on === 'night' && t.hasClock && (hr < 5 || hr >= 20) && flagOnce('tnight') && omenGive(1000)) say(o.name, 'One of the lamps came with you. A pip of Light.', 'gain');
+  };
   const entries = () => ctx.box.slots().filter((e): e is BoxEntry => !!e);
   const able = (): Able => {
     let maxDepth = 0, tended = 0, bestSouls = 0;
@@ -296,7 +366,8 @@ export const plugin: Plugin = (shell) => {
     for (const k of SKY_PIECE_KINDS) pieces += inv[k];
     let maxPieces = 0;
     for (const s of ctx.sky.snapshot().skies) maxPieces = Math.max(maxPieces, s.pieces.length);
-    return { box: ctx.box.count(), maxDepth, tended, bestSouls, pieces, maxPieces, beaten: ctx.rivalsBeaten.size, pips: ctx.light.view().pips };
+    const tw = townRead();
+    return { box: ctx.box.count(), maxDepth, tended, bestSouls, pieces, maxPieces, beaten: ctx.rivalsBeaten.size, pips: ctx.light.view().pips, town: !!tw && tw.steps > 0, townMet: !!tw && tw.met > 0 };
   };
   const progress = (t: Task, base: Counters): number => {
     const d = st.day;
@@ -433,6 +504,7 @@ export const plugin: Plugin = (shell) => {
     const d = st.day!;
     const o = omen();
     const screen = shell.current();
+    try { observeTown(dtMs, screen, o); } catch { /* the street is optional */ }
 
     if (screen === 'dive') {
       const depth = ctx.dive.view().depth;

@@ -29,6 +29,9 @@
 | Colony | `village`, `birth`, `death`, `soul`, `festival`, `war`, `launch` |
 | Body | `step`, `step-grass`, `step-sand`, `step-stone`, `step-snow`, `step-water`, `step-wood`, `body`, `preach`, `gift`, `shine`, `rest` |
 | Battle | `strike`, `hit` (amount: weight), `crit`, `heal`, `guard`, `status`, `burn`, `chill`, `ward`, `regen`, `expose`, `energy` (amount: pitch), `swap`, `flee`, `faint`, `level`, `boss`, `win`, `lose` |
+| Street | `door`, `coin` (amount: pitch), `talk` (amount: pitch of the voice), `bus`, `bike-bell`, `splash` (amount: size), `skip` (amount: number of skips), `bite`, `shop-bell`, `gate`, `dog`, `cat`, `train`, `crossing`, `step-road`; footsteps by ground are `step-grass`, `step-sand`, `step-stone`, `step-wood`, `step-water`, `step-road`; pickups use `pickup` |
+
+The `town` scene is its own: the bedroom's key out for a walk. `mood.day` (0..999, the town clock) picks dawn, day, dusk or night; `mood.rain` and `mood.wind` raise the weather beds; insects come at dusk and night when it is dry; `mood.place` (the district's name) adds one colour per district and the water bed near the Cut, the Rec and Lowmere. Send no `seed` in the town so it stays in the home key.
 
 The same list is exported as `SFX_NAMES` and returned by `audio.sfxNames?.()`.
 

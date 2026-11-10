@@ -27,6 +27,7 @@ import { SKY_PIECE_KINDS } from '@/contracts/sky';
 import { DAY_TICKS } from '@/contracts/sim';
 import { seedToU32 } from '@/core/hash';
 import { load as loadEnd, readSeen, FRAGMENTS } from '@/ui/mirror/endgame';
+import { COLLECT, DISTRICTS, NPCS, QUESTS } from '@/game/town';
 import type { Plugin } from '../plugins';
 
 const CHECK_MS = 300;
@@ -40,6 +41,8 @@ const RIVALS_GOAL = 3;
 const LADDER_KEY = 'sallow-ladder';
 const ALMANAC_KEY = 'sallow-almanac';
 const CODEX_KEY = 'sallow-codex';
+/** The town's save. Read here, never written. */
+const TOWN_KEY = 'sallow-town';
 
 // ---- reading other units' stores without owning them ----
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
@@ -165,9 +168,23 @@ interface World {
   readonly almAnswered: number;
   readonly deeds: number;
   readonly deedsClaimed: number;
+  // The street (the town's own save, read only).
+  readonly tSteps: number;
+  readonly tDistricts: number;
+  readonly tPeople: number;
+  readonly tQuests: number;
+  /** The main thread out there has moved: its first errand is past its first step, or done. */
+  readonly tMain: boolean;
+  readonly tFound: number;
+  readonly tSets: number;
+  readonly tSkim: number;
+  /** Standing in the street after dark, now. */
+  readonly tNight: boolean;
+  /** A battle begun in the street has just been won. */
+  readonly tWonOut: boolean;
 }
 
-type Place = 'bed' | 'box' | 'dive' | 'star' | 'planet' | 'out' | 'fight' | 'room' | 'hub';
+type Place = 'bed' | 'box' | 'dive' | 'star' | 'planet' | 'out' | 'fight' | 'room' | 'hub' | 'town';
 /** Where an objective is done: the screen, what to call it, and how to get there from anywhere. */
 const PLACE: Record<Place, { screen: ScreenId | null; name: string; way: string }> = {
   bed: { screen: 'bedroom', name: 'the bedroom', way: 'Go back to the bedroom' },
@@ -179,6 +196,7 @@ const PLACE: Record<Place, { screen: ScreenId | null; name: string; way: string 
   fight: { screen: 'battle', name: 'a battle', way: 'Outside, choose a kid' },
   room: { screen: 'mirror', name: 'the room at the bottom', way: 'Fall to the floor of a universe' },
   hub: { screen: null, name: 'the menu', way: 'Open the menu in the top corner' },
+  town: { screen: 'town', name: 'the street', way: 'Bedroom, then THE STREET' },
 };
 
 interface Objective {
@@ -293,6 +311,22 @@ const CHAPTERS: readonly Chapter[] = [
     reward: { glow: 2500, pieces: [['belt', 2], ['comet', 2], ['dust', 1]], says: 'Two and a half pips of Light, two belts of stones, two comets and a veil of dust.' },
   },
   {
+    id: 'town',
+    title: 'The Street',
+    intro: 'There is a front door, and past it a street, and past the street the rest. People live out there who have never heard of your box. Some of them have heard of somebody else\'s. Go out and walk.',
+    outro: 'You know the street now, and it knows your step. Somebody has been leaving boxes out here. Not for you. Not yet.',
+    objectives: [
+      ob('town.walk', 'bed', 'Walk out of the front door', 'In the bedroom, press THE STREET. Touch a place and you walk to it.', (w) => w.tSteps >= 12, (w) => [Math.min(w.tSteps, 12), 12]),
+      ob('town.districts', 'town', 'Find four parts of the neighbourhood', 'Each has a name. It is said once, when you first cross into it.', (w) => w.tDistricts >= 4, (w) => [w.tDistricts, 4]),
+      ob('town.people', 'town', 'Speak to five people', 'Walk up to someone and touch them. They move about with the hour.', (w) => w.tPeople >= 5, (w) => [w.tPeople, 5]),
+      ob('town.errand', 'town', 'Finish an errand for somebody', 'Errands are kept in the menu under Street, with where to go next.', (w) => w.tQuests >= 1),
+      ob('town.thread', 'town', 'Find out about the box on the wall', 'Ines, two doors along from yours, has seen something. Do what she asks first.', (w) => w.tMain),
+      ob('town.rival', 'town', 'Beat a kid where they stand', 'Some of the children from the ladder are out here. Speak to one and open your Box.', (w) => w.tWonOut),
+      ob('town.night', 'town', 'Be out after dark', 'The hour moves as you walk. A bench passes it faster. After eight it is night.', (w) => w.tNight),
+    ],
+    reward: { glow: 2500, pieces: [['moon', 1], ['comet', 2], ['dust', 1]], universe: 0x57ee70, says: 'Two and a half pips of Light, a moon, two comets, a veil of dust, and a universe somebody left on your doorstep.' },
+  },
+  {
     id: 'strata',
     title: 'Strata',
     intro: 'The fall is not all one dark. It lies in layers, and each layer keeps its own things: wells, wrecks, echoes, and things that would rather you did not pass.',
@@ -324,7 +358,7 @@ const CHAPTERS: readonly Chapter[] = [
   },
   {
     id: 'street',
-    title: 'The Street',
+    title: 'The Ladder',
     intro: 'The kids outside are not all the same kid. There is an order to them, and at the end of each street somebody who has never lost. Your universes are learning. Let them.',
     outro: 'They nod at you on the street now. Not all of them. Enough.',
     objectives: [
@@ -419,6 +453,8 @@ const CHAPTERS: readonly Chapter[] = [
 ];
 /** Chapter order before the campaign grew: a v1 save's `chapter` counts along this. */
 const OLD_ORDER = ['box', 'sky', 'body', 'outside', 'deep', 'align'];
+/** Chapter order before the town chapter was set in after Outside: a v2 save's `chapter` counts along this. */
+const V2_ORDER = ['box', 'sky', 'body', 'outside', 'strata', 'deep', 'street', 'chronicle', 'kin', 'days', 'align', 'waking'];
 
 /** Side stories: always open, any order, each following one idea across the game. */
 const SIDES: readonly Chapter[] = [
@@ -531,6 +567,30 @@ const SIDES: readonly Chapter[] = [
     reward: { glow: 5000, pieces: [['sun', 2], ['comet', 2], ['rings', 1]], says: 'Five pips of Light, two suns, two comets and a set of rings.' },
   },
   {
+    id: 'door',
+    title: 'Both Sides of the Door',
+    intro: 'Inside the box it goes down for ever. Outside the door it goes on as far as the bus does. See how far you can keep both going at once.',
+    outro: 'Down and out. You have worn a path in both. Mote says they are the same direction, and will not explain.',
+    objectives: [
+      ob('side.door.1', 'town', 'Walk 400 steps outside, and fall 15 folds inside', 'Steps are counted in the street. Folds are counted in the fall.', (w) => w.tSteps >= 400 && w.maxDepth >= 15, (w) => [Math.min(400, w.tSteps) + Math.min(15, w.maxDepth), 415]),
+      ob('side.door.2', 'town', 'Finish three errands, and tend three worlds', 'Errands are out in the street. A world is tended once it has a sky of yours.', (w) => w.tQuests >= 3 && w.tended >= 3, (w) => [Math.min(3, w.tQuests) + Math.min(3, w.tended), 6]),
+      ob('side.door.3', 'town', 'Know every part of the neighbourhood, and hold ten universes', 'Twelve parts, out to the water. The Box counts the rest.', (w) => w.tDistricts >= 12 && w.boxCount >= 10, (w) => [Math.min(12, w.tDistricts) + Math.min(10, w.boxCount), 22]),
+    ],
+    reward: { glow: 4000, pieces: [['sun', 1], ['rings', 1], ['moon', 2]], says: 'Four pips of Light, a sun, a set of rings and two moons.' },
+  },
+  {
+    id: 'pockets',
+    title: 'Full Pockets',
+    intro: 'People drop things and stop looking. Caps, feathers, glass, old pennies. What you carry home in your pockets can end up in a sky.',
+    outro: 'A whole set, laid out on the desk beside the box. The people under your sky have started finding small bright things too.',
+    objectives: [
+      ob('side.pockets.1', 'town', 'Pick up ten things people dropped', 'They lie about the neighbourhood, a little bright. Walk over one.', (w) => w.tFound >= 10, (w) => [w.tFound, 10]),
+      ob('side.pockets.2', 'town', 'Skim a stone five times', 'At the water there are places to throw from. Let go when the mark is in the bright part.', (w) => w.tSkim >= 5, (w) => [w.tSkim, 5]),
+      ob('side.pockets.3', 'town', 'Complete a set, and hang a sky of four pieces', 'A set is every one of a kind. The sky is hung at a star, over one world.', (w) => w.tSets >= 1 && w.maxPieces >= 4, (w) => [Math.min(1, w.tSets) + Math.min(4, w.maxPieces), 5]),
+    ],
+    reward: { glow: 3000, pieces: [['comet', 2], ['dust', 2]], says: 'Three pips of Light, two comets and two veils of dust.' },
+  },
+  {
     id: 'keeper',
     title: 'Keeper of Days',
     intro: 'A day kept is a small thing. Seven of them is a habit. The Almanac counts.',
@@ -554,8 +614,8 @@ const ENDING = {
 };
 
 interface Saved {
-  /** 1 before the campaign grew to twelve chapters; 2 since. */
-  v: 1 | 2;
+  /** 1 before the campaign grew to twelve chapters; 2 with twelve; 3 since the town chapter was set in after Outside. */
+  v: 1 | 2 | 3;
   /** Index of the open chapter; CHAPTERS.length once the last one is closed. */
   chapter: number;
   /** Objectives completed and rewarded. */
@@ -571,7 +631,7 @@ interface Saved {
   paid: string[];
   hist?: Hist;
 }
-const blank = (): Saved => ({ v: 2, chapter: 0, done: [], met: [], been: [], intro: [], fresh: 0, paid: [], hist: blankHist() });
+const blank = (): Saved => ({ v: 3, chapter: 0, done: [], met: [], been: [], intro: [], fresh: 0, paid: [], hist: blankHist() });
 const strs = (v: unknown, cap = 400) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(-cap) : []);
 const cleanHist = (raw: unknown): Hist => {
   const h = blankHist();
@@ -601,8 +661,16 @@ const clean = (raw: unknown): Saved => {
   s.intro = Array.isArray(r.intro) ? r.intro.filter((x): x is number => typeof x === 'number') : [];
   s.hist = cleanHist(r.hist);
   const at = typeof r.chapter === 'number' && Number.isInteger(r.chapter) ? Math.max(0, r.chapter) : 0;
-  if (r.v === 2) s.chapter = Math.min(CHAPTERS.length, at);
-  else {
+  if (r.v === 3) s.chapter = Math.min(CHAPTERS.length, at);
+  else if (r.v === 2) {
+    // A save from before the town chapter. Closed chapters stay closed (their marks are in `done`, and
+    // `paid` keeps them from paying again). The open one becomes the first that is not closed: the town
+    // chapter for anyone already past Outside. Once it closes, chapters closed before are stepped over.
+    const closed = new Set(V2_ORDER.slice(0, at));
+    const next = CHAPTERS.findIndex((c) => !closed.has(c.id));
+    s.chapter = next < 0 ? CHAPTERS.length : next;
+    s.intro = s.intro.map((i) => (i >= V2_ORDER.length ? CHAPTERS.length : CHAPTERS.findIndex((c) => c.id === V2_ORDER[i]))).filter((i) => i >= 0);
+  } else {
     // A save from the six-chapter journal. Its closed chapters stay closed (their marks are all in
     // `done`, and `paid` keeps them from paying again); the open one is the first that is not.
     const closed = new Set(OLD_ORDER.slice(0, at));
@@ -822,6 +890,27 @@ export const plugin: Plugin = (shell) => {
     let deeds = 0, deedsClaimed = 0;
     for (const v of Object.values(deedMap)) { if (num(v) >= 1) deeds++; if (num(v) >= 2) deedsClaimed++; }
 
+    // The street: the live state while the town has been up this session, else what it last saved.
+    let tSteps = 0, tDistricts = 0, tPeople = 0, tQuests = 0, tMain = false, tFound = 0, tSets = 0, tSkim = 0, tNight = false, tWonOut = false;
+    try {
+      const live = (window as unknown as { __sallowTown?: { town?: { state?: unknown } } }).__sallowTown?.town?.state;
+      const t = rec(live ?? readJson(TOWN_KEY));
+      tSteps = num(rec(t.stats).steps);
+      tDistricts = arr(t.districts).length;
+      for (const v of Object.values(rec(t.talks))) if (num(v) > 0) tPeople++;
+      const qs = rec(t.quests);
+      for (const v of Object.values(qs)) if (rec(v).done === true) tQuests++;
+      const m1 = rec(qs.m1);
+      tMain = m1.done === true || num(m1.stage) >= 1;
+      const found = arr(t.found).filter((x): x is string => typeof x === 'string');
+      tFound = found.length;
+      for (const k of COLLECT) if (found.filter((x) => x.startsWith(`${k.id}-`)).length >= k.count) tSets++;
+      tSkim = num(rec(t.skim).best);
+      const hr = (num(t.minutes) % 1440) / 60;
+      tNight = screen === 'town' && typeof t.minutes === 'number' && (hr < 5 || hr >= 20);
+      tWonOut = t.fromTown === true && battle?.outcome === 'won';
+    } catch { /* the street is not there to be read: nothing out there counts yet */ }
+
     if (histDirty) { histDirty = false; st.hist = h; store.set({ ...st, done: [...done], met: [...met], been: [...been] }); }
 
     return {
@@ -836,6 +925,7 @@ export const plugin: Plugin = (shell) => {
       almStreak: Math.max(num(alm.streak), num(alm.best)), almPaid: arr(day.claimed).length, almTasks: arr(day.tasks).length,
       almAnswered: arr(alm.haps).filter((x) => typeof rec(x).done === 'string').length,
       deeds, deedsClaimed,
+      tSteps, tDistricts, tPeople, tQuests, tMain, tFound, tSets, tSkim, tNight, tWonOut,
     };
   };
 
@@ -898,6 +988,8 @@ export const plugin: Plugin = (shell) => {
         st.chapter++;
         changed = true;
         shell.toast(`${ch.outro} ${says}`, { title: `Chapter ${st.chapter} closed · ${ch.title}`, sfx: 'win' });
+        // Chapters closed and paid before a new one was set in ahead of them are stepped over without a word.
+        for (let nx = CHAPTERS[st.chapter]; nx && st.paid.includes(`chapter:${nx.id}`) && nx.objectives.every((o) => done.has(o.id)); nx = CHAPTERS[st.chapter]) st.chapter++;
       } else if (now.length) {
         if (now.length === 1) shell.toast(now[0]!.text, { title: `Journal · ${ch.title}`, sfx: 'gain' });
         else shell.toast(now.length === 2 ? `${now[0]!.text}. ${now[1]!.text}.` : `${now.length} marks at once. The Journal has them.`, { title: `Journal · ${ch.title}`, sfx: 'gain' });
@@ -1008,6 +1100,16 @@ export const plugin: Plugin = (shell) => {
     const unclaimed = w.deeds - w.deedsClaimed;
     out.push(`The Codex holds ${Object.keys(rec(cdx.u)).length} universes, ${Object.keys(rec(cdx.w)).length} worlds and ${w.deeds} deeds${unclaimed > 0 ? `, ${unclaimed} of them unclaimed` : ''}. Its empty lines are what you have not seen.`);
     if (w.boxCount < 25) out.push(`${25 - w.boxCount} slots of the box are empty.`);
+    const lost = COLLECT.reduce((n, k) => n + k.count, 0) - w.tFound;
+    if (w.tSteps === 0) out.push('The street past your front door, where you have not set foot.');
+    else {
+      const parts: string[] = [];
+      if (w.tDistricts < DISTRICTS.length) parts.push(`${DISTRICTS.length - w.tDistricts} of its ${DISTRICTS.length} parts unwalked`);
+      if (w.tQuests < QUESTS.length) parts.push(`${QUESTS.length - w.tQuests} errands nobody has done`);
+      if (w.tPeople < NPCS.length) parts.push(`${NPCS.length - w.tPeople} people you have not spoken to`);
+      if (lost > 0) parts.push(`${lost} small things still lying where they were dropped`);
+      if (parts.length) out.push(`The street: ${parts.join(', ')}.`);
+    }
     return out;
   };
 

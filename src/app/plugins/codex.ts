@@ -30,6 +30,7 @@ import type { Fighter, Element, Weather } from '@/contracts/battle';
 import type { Stratum, FoldThingKind } from '@/contracts/fold';
 import { load as loadEnd, FRAGMENTS, BOONS, topLayer } from '@/ui/mirror/endgame';
 import type { EndState } from '@/ui/mirror/endgame';
+import { COLLECT, DISTRICTS, NPCS, PLACES, QUESTS } from '@/game/town';
 import type { Plugin } from '../plugins';
 
 // ---------- stored shape ----------
@@ -173,6 +174,8 @@ const TABS = [
   ['u', 'Universes', 'Every lid you have lifted.'], ['d', 'Strata', 'What lies in the folds.'], ['l', 'Laws', 'The ways a universe can be.'], ['s', 'Stars', 'Places to stop.'],
   ['w', 'Worlds', 'Ground you have watched.'], ['p', 'Peoples', 'What they made of it.'], ['k', 'Skies', 'What hangs overhead.'], ['c', 'Creatures', 'What universes become.'],
   ['r', 'Rivals', 'The street, and its ladder.'], ['m', 'Materials', 'What things are made of.'], ['x', 'Mirror', 'The room at the bottom.'], ['a', 'Almanac', 'Omens and feast days.'],
+  // New pages go last: the pages opened are remembered by position.
+  ['t', 'Street', 'Past the front door.'],
 ] as const;
 type TabId = (typeof TABS)[number][0];
 const MILESTONES = [1, 10, 25, 50, 100, 200, 500] as const;
@@ -262,6 +265,9 @@ interface Q {
   omens: number; feasts: number; haps: number; astreak: number;
   // Sky bodies and the book itself
   bodyKinds: number; heard: number; matLaws: number; cp: number; tabs: number;
+  // The street (read from the town's save; never written)
+  tSteps: number; tDistricts: number; tPeople: number; tQuests: number; tMain: number; tMainAll: boolean; tFound: number; tSets: number; tSetsAll: boolean;
+  tSkim: number; tRides: number; tSits: number; tStops: number; tDays: number;
 }
 type Tier = 'bronze' | 'silver' | 'gold';
 interface Deed { id: string; tier: Tier; name: string; desc: string; hidden?: string; ok(q: Q): boolean; fam?: string; rung?: number; of?: number }
@@ -432,6 +438,21 @@ const DEEDS: readonly Deed[] = [
   D('book50', 'silver', 'Half the book', 'Fill half of the Codex.', (q) => q.cp >= 50),
   D('book80', 'gold', 'A full book', 'Fill four fifths of the Codex.', (q) => q.cp >= 80),
   D('most90', 'gold', 'Nearly all of it', 'Unlock ninety deeds.', (q) => q.unlocked >= 90, 'The list is longer than it looks.'),
+  // The street. Added after the rest: rewards go by position, so nothing above moves.
+  ...F('twalk', 'Shoe leather', [50, 1000, 5000], (n) => `Walk ${fmt(n)} steps past the front door.`, (q) => q.tSteps),
+  ...F('tdist', 'Out of bounds', [3, 8, 12], (n) => (n === 12 ? 'Walk into every part of the neighbourhood.' : `Walk into ${n} parts of the neighbourhood.`), (q) => q.tDistricts),
+  ...F('tmeet', 'Faces', [3, 12, 24], (n) => `Speak to ${n} people in the street.`, (q) => q.tPeople),
+  ...F('terr', 'Errand runner', [1, 5, 12], (n) => (n === 1 ? 'Finish an errand for somebody.' : `Finish ${n} errands.`), (q) => q.tQuests),
+  ...F('tfind', 'Magpie', [5, 20, 40], (n) => `Pick up ${n} things people dropped.`, (q) => q.tFound),
+  ...F('tskim', 'Flat stones', [3, 5, 7], (n) => `Skim a stone ${n} times in one throw.`, (q) => q.tSkim),
+  D('tset1', 'silver', 'One of each', 'Find every one of a kind of dropped thing.', (q) => q.tSets >= 1),
+  D('tsetAll', 'gold', 'Nothing left lying', 'Complete every set.', (q) => q.tSetsAll, 'People stop looking. You did not.'),
+  D('tbus', 'bronze', 'The 4', 'Ride the bus.', (q) => q.tRides >= 1),
+  D('tstops', 'silver', 'End of the line', 'Find every bus stop.', (q) => q.tStops >= 5),
+  D('tbench', 'bronze', 'Sat a while', 'Sit on a bench and let the hour go.', (q) => q.tSits >= 1),
+  D('tmain', 'silver', 'The box on the wall', 'Finish what Ines first asks of you.', (q) => q.tMain >= 1),
+  D('tmainAll', 'gold', 'Whose boxes', 'Follow the business of the boxes to its end.', (q) => q.tMainAll, 'Somebody is leaving them out. Find out who.'),
+  D('tweek', 'silver', 'A week of streets', 'Be out there across seven of its days.', (q) => q.tDays >= 7),
 ];
 const TIER_MARK: Record<Tier, string> = { bronze: '◇', silver: '◈', gold: '◆' };
 const TIER_N: Record<Tier, number> = { bronze: 1, silver: 2, gold: 3 };
@@ -1193,6 +1214,18 @@ export const plugin: Plugin = (shell) => {
   const rivalSerials = (): number[] => {
     try { return [...new Set(ctx.battles.rivals().flatMap((r) => [...r.serials]))]; } catch { return []; }
   };
+  const streetQ = () => {
+    const t = townView();
+    const mains = QUESTS.filter((x) => x.thread === 'main');
+    const tMain = mains.filter((x) => t.done.includes(x.id)).length;
+    let tSets = 0;
+    for (const k of COLLECT) if (t.found.filter((x) => x.startsWith(`${k.id}-`)).length >= k.count) tSets++;
+    return {
+      tSteps: t.steps, tDistricts: t.districts.length, tPeople: t.met.length, tQuests: t.done.length, tMain, tMainAll: mains.length > 0 && tMain >= mains.length,
+      tFound: t.found.length, tSets, tSetsAll: COLLECT.length > 0 && tSets >= COLLECT.length, tSkim: t.skim, tRides: t.rides, tSits: t.sits,
+      tStops: PLACES.filter((x) => x.stop && t.places.includes(x.id)).length, tDays: t.any ? Math.floor(t.minutes / 1440) + 1 : 0,
+    };
+  };
   const judge = (): Q => {
     const us = Object.values(S.u);
     const laws = new Set(us.map((r) => r[3]).filter((i) => i >= 0));
@@ -1304,9 +1337,64 @@ export const plugin: Plugin = (shell) => {
       left: e ? arr(e.left).length : 0, lamps: e ? num(e.lamps) : 0,
       omens: Object.keys(X.om).length, feasts: a.feasts.length, haps: a.haps.length, astreak: Math.max(a.best, a.streak),
       bodyKinds: Object.keys(X.hv).length, heard: X.hs.length, matLaws: Object.values(S.m).filter((ids) => ids.length > 0).length, cp: X.cp, tabs: bits(X.tb),
+      ...streetQ(),
     };
   };
   const deedQ: Deed[] = [];
+  /** The town's save, made safe. The live state once its screen has been up; else what it last wrote. Never written here. */
+  const townView = () => {
+    let raw: unknown = null;
+    try { raw = (window as unknown as { __sallowTown?: { town?: { state?: unknown } } }).__sallowTown?.town?.state ?? readJson('sallow-town'); } catch { raw = null; }
+    const t = obj<Record<string, unknown>>(raw, {});
+    const strs = (v: unknown) => arr<unknown>(v).filter((x): x is string => typeof x === 'string');
+    const talks = obj<Record<string, unknown>>(t.talks, {});
+    const quests = obj<Record<string, unknown>>(t.quests, {});
+    const stats = obj<Record<string, unknown>>(t.stats, {});
+    const skim = obj<Record<string, unknown>>(t.skim, {});
+    return {
+      any: !!raw && num(stats.steps) > 0,
+      districts: strs(t.districts), places: strs(t.places), found: strs(t.found), log: strs(t.log),
+      met: Object.keys(talks).filter((k) => num(talks[k]) > 0), talksOf: (id: string) => num(talks[id]),
+      done: Object.keys(quests).filter((k) => obj<{ done?: unknown }>(quests[k], {}).done === true),
+      open: Object.keys(quests).filter((k) => obj<{ done?: unknown }>(quests[k], {}).done !== true),
+      steps: num(stats.steps), talks: num(stats.talks), rides: num(stats.rides), sits: num(stats.sits),
+      skim: num(skim.best), throws: num(skim.throws), coins: num(t.coins), minutes: num(t.minutes),
+    };
+  };
+  const tabStreet = (): Built => {
+    const t = townView();
+    const dist: Entry[] = DISTRICTS.filter((d) => t.districts.includes(d.id)).map((d) => ({ k: `td${d.id}`, name: d.name, say: d.says, fresh: isNew('t', `td${d.id}`) }));
+    const placesKnown = PLACES.filter((x) => t.places.includes(x.id));
+    const places: Entry[] = placesKnown.map((x) => ({ k: `tp${x.id}`, name: x.name, slim: true, sub: x.stop ? 'bus stop' : x.skim ? 'a place to throw from' : x.bench ? 'a bench' : x.hidden ? 'hidden' : 'found' }));
+    if (!dist.length) dist.push(unknown(t.any ? 'Each part has a name. It is said once, when you cross into it.' : 'Past the front door there is a street. You have not walked it.'));
+    if (DISTRICTS.length > t.districts.length && t.districts.length) dist.push(unknown(`${DISTRICTS.length - t.districts.length} more, further out.`));
+    const people: Entry[] = NPCS.filter((n) => t.met.includes(n.id)).map((n) => ({ k: `tn${n.id}`, name: n.name, sub: `spoken to ${plural(t.talksOf(n.id), 'time')}`, say: n.about, chips: n.kid ? ['a kid'] : n.shop ? ['keeps a shop'] : undefined, n: t.talksOf(n.id), fresh: isNew('t', `tn${n.id}`) }));
+    if (!people.length) people.push(unknown('Walk up to someone and touch them.'));
+    const doneQ: Entry[] = QUESTS.filter((x) => t.done.includes(x.id)).map((x) => ({ k: `tq${x.id}`, name: x.name, sub: x.thread === 'main' ? 'the boxes' : 'an errand', say: x.end, fresh: isNew('t', `tq${x.id}`) }));
+    for (const x of QUESTS.filter((y) => t.open.includes(y.id))) doneQ.push({ k: `tq${x.id}`, name: x.name, sub: 'not finished', slim: true });
+    if (!doneQ.length) doneQ.push(unknown('Somebody out there wants something done.'));
+    let foundN = 0, foundOf = 0;
+    const sets: Entry[] = COLLECT.map((k) => {
+      const have = t.found.filter((x) => x.startsWith(`${k.id}-`)).length;
+      foundN += Math.min(have, k.count); foundOf += k.count;
+      return have > 0 ? { k: `tc${k.id}`, name: k.name, sub: `${have} of ${k.count}`, say: have >= k.count ? k.says : undefined, n: have, slim: have < k.count } : unknown('Something small, lying where it was dropped.');
+    });
+    const games: Entry[] = [];
+    if (t.throws > 0) games.push({ k: 'tskim', name: 'Skimming stones', slim: true, sub: `${plural(t.throws, 'throw')} · best ${plural(t.skim, 'skip')}` });
+    if (t.rides > 0) games.push({ k: 'tbus', name: 'The 4 bus', slim: true, sub: plural(t.rides, 'ride') });
+    if (t.sits > 0) games.push({ k: 'tsit', name: 'Benches', slim: true, sub: `sat on ${plural(t.sits, 'time')}` });
+    if (!games.length) games.push(unknown('There is water to throw at, a bus, and benches.'));
+    const g: Group[] = [
+      { title: 'Parts of the neighbourhood', count: `${t.districts.length}/${DISTRICTS.length}`, e: dist },
+      ...(places.length ? [{ title: 'Places found', count: `${places.length}`, e: places }] : []),
+      { title: 'People met', count: `${t.met.filter((id) => NPCS.some((n) => n.id === id)).length}/${NPCS.length}`, e: people },
+      { title: 'Errands', count: `${doneQ.filter((e) => !e.un && !e.slim).length}/${QUESTS.length}`, e: doneQ },
+      { title: 'Things people dropped', count: `${foundN}/${foundOf}`, e: sets },
+      { title: 'Pastimes', e: games },
+    ];
+    const known = dist.filter((e) => !e.un).length + people.filter((e) => !e.un).length + doneQ.filter((e) => !e.un && !e.slim).length + foundN;
+    return { known, total: DISTRICTS.length + NPCS.length + QUESTS.length + foundOf, g };
+  };
   const check = () => {
     const q = judge();
     for (const d of DEEDS) {
@@ -1916,7 +2004,7 @@ export const plugin: Plugin = (shell) => {
     return { known: Object.keys(X.om).length + a.feasts.length + a.haps.length, total: 0, g };
   };
 
-  const BUILD: Record<TabId, () => Built> = { u: tabUniverses, d: tabStrata, l: tabLaws, s: tabStars, w: tabWorlds, p: tabPeoples, k: tabSkies, c: tabCreatures, r: tabRivals, m: tabMaterials, x: tabMirror, a: tabAlmanac };
+  const BUILD: Record<TabId, () => Built> = { u: tabUniverses, d: tabStrata, l: tabLaws, s: tabStars, w: tabWorlds, p: tabPeoples, k: tabSkies, c: tabCreatures, r: tabRivals, m: tabMaterials, x: tabMirror, a: tabAlmanac, t: tabStreet };
   const build = (id: TabId): Built => { try { return BUILD[id](); } catch { return { known: 0, total: 0, g: [{ e: [unknown('This page could not be read.')] }] }; } };
   let lastTab: TabId | null = null;
   let sortBy: SortId = 'found';
@@ -2265,6 +2353,18 @@ export const plugin: Plugin = (shell) => {
           ['skills', 'Skills learned', () => fmt(Object.values(X.sk).reduce((n, l) => n + l.length, 0))],
           ['merges', 'Merges', () => fmt(N.merges)],
           ['gen', 'Deepest lineage', () => fmt(N.gen)],
+        ]],
+        ['The street', [
+          ['tsteps', 'Steps walked outside', () => fmt(townView().steps)],
+          ['tdist', 'Parts of the neighbourhood', () => `${townView().districts.length} of ${DISTRICTS.length}`],
+          ['tmet', 'People spoken to', () => `${townView().met.length} of ${NPCS.length}`],
+          ['ttalks', 'Things said to you', () => fmt(townView().talks)],
+          ['terr', 'Errands finished', () => `${townView().done.length} of ${QUESTS.length}`],
+          ['tfound', 'Dropped things found', () => fmt(townView().found.length)],
+          ['tskim', 'Best skim', () => fmt(townView().skim)],
+          ['trides', 'Bus rides', () => fmt(townView().rides)],
+          ['tsits', 'Benches sat on', () => fmt(townView().sits)],
+          ['tday', 'Days out there', () => fmt(townView().any ? Math.floor(townView().minutes / 1440) + 1 : 0)],
         ]],
         ['The mirror and the days', [
           ['frags', 'Pieces of the answer', () => `${fmt(num(end()?.fragments))} of ${FRAGMENTS.length}`],
