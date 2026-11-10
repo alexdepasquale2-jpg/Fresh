@@ -120,11 +120,47 @@ export interface Village {
   /** 0..100: fed, rich and glad. */
   readonly prosperity: number;
   readonly buildings: readonly Building[];
+  /** True era 0..8 (tech is held at 5 for older readers; see LATE_ERAS). */
+  readonly era?: number;
+  /** Name of the creed kept here, e.g. 'the Patient Tide'. */
+  readonly creed?: string;
+  /** Name of the ruler, if one sits. */
+  readonly ruler?: string;
+  /** What weighs on the village right now. */
+  readonly state?: 'war' | 'plague' | 'tribute' | 'festival' | 'building' | 'heresy';
+  /** The other village of a war or tribute. */
+  readonly stateWith?: number;
+  /** Great works finished here, by name. */
+  readonly works?: readonly string[];
+  /** True when it keeps a school. */
+  readonly school?: boolean;
+}
+/** Eras past star-reaching: tech 6, 7, 8. Village.tech and CivView.era stay at 5 for them. */
+export const LATE_ERAS = ['engines', 'far-speaking', 'leaving'] as const;
+/** A named person other than the notable: a ruler, a heretic. */
+export interface Figure {
+  readonly name: string;
+  readonly title: 'ruler' | 'heretic';
+  readonly villageId: number;
+}
+/** How two villages stand. */
+export interface Relation {
+  readonly a: number;
+  readonly b: number;
+  readonly kind: 'pact' | 'alliance' | 'rivalry' | 'war' | 'tribute';
 }
 export type CivEventKind =
   | 'found' | 'grow' | 'split' | 'die' | 'migrate' | 'light'
   | 'famine' | 'tech' | 'convert' | 'feud' | 'festival' | 'burn' | 'flooded' | 'frozen' | 'launch' | 'merged'
-  | 'born' | 'deed' | 'passed' | 'built' | 'traded' | 'struck' | 'preached' | 'gift' | 'omen' | 'stranger' | 'attack' | 'slain' | 'worship' | 'enlightened' | 'smitten' | 'blessed';
+  | 'born' | 'deed' | 'passed' | 'built' | 'traded' | 'struck' | 'preached' | 'gift' | 'omen' | 'stranger' | 'attack' | 'slain' | 'worship' | 'enlightened' | 'smitten' | 'blessed'
+  // Between villages. villageId acts, `other` is acted on.
+  | 'pact' | 'alliance' | 'wedding' | 'rivalry' | 'raid' | 'war' | 'peace' | 'tribute' | 'razed' | 'absorbed'
+  // Faith.
+  | 'creed' | 'schism' | 'heresy' | 'exile' | 'holy' | 'sign'
+  // Hardship and recovery.
+  | 'plague' | 'plagueEnd' | 'refugees' | 'resettled' | 'recovered'
+  // Culture, works and people.
+  | 'song' | 'wonder' | 'school' | 'invention' | 'ark' | 'voyage' | 'crowned' | 'fell';
 export interface CivEvent {
   readonly kind: CivEventKind;
   readonly tick: number;
@@ -134,6 +170,16 @@ export interface CivEvent {
   /** Tech level for 'tech', other village id for 'feud'/'migrate'. */
   readonly detail?: number;
   readonly belief?: Belief;
+  /** The other village of the event (foe, partner, source, the ruin resettled). */
+  readonly other?: number;
+  /** A named figure: ordinal + 4096 * house. The name is a pure function of (planet seed, who). */
+  readonly who?: number;
+  /** Why it happened, as a small code particular to the kind; the chronicle turns it into the reason. */
+  readonly cause?: number;
+  /** Creed id. The creed's name is a pure function of (planet seed, creed, belief). */
+  readonly creed?: number;
+  /** Souls involved: the dead, the refugees, those aboard. */
+  readonly count?: number;
 }
 /** Person roles in CivView.people. */
 export const ROLE = { idle: 0, farm: 1, fish: 2, pray: 3, travel: 4, lamp: 5, attack: 6, kneel: 7, watch: 8, flee: 9, listen: 10, carry: 11, chat: 12, dance: 13, sleep: 14, mine: 15, craft: 16, trade: 17, build: 18 } as const;
@@ -162,6 +208,17 @@ export interface CivView {
   readonly notable?: Notable | null;
   /** The player's incarnation on this surface, if any. */
   readonly avatar: Avatar | null;
+  /** True highest era, 0..8 (era stays at 5 past star-reaching). */
+  readonly age?: number;
+  /** Rulers and heretics alive now. */
+  readonly figures?: readonly Figure[];
+  /** Creeds kept by at least one village. */
+  readonly creeds?: readonly { readonly id: number; readonly name: string; readonly belief: Belief; readonly villages: number }[];
+  readonly relations?: readonly Relation[];
+  /** Ghost towns waiting to be resettled. */
+  readonly ruins?: number;
+  /** Colony ships that have left for good (also counted in launches). */
+  readonly arks?: number;
 }
 
 /**
