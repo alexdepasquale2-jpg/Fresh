@@ -7,7 +7,8 @@ import { SKY_PIECE_KINDS } from '@/contracts/sky';
 import { child } from '@/core/hash';
 import { el, backChip, label, button, skyPieceTile, stat, narration, tag, burst, shake, flash } from '@/ui/kit';
 import type { Tool, BodyAction } from '@/contracts/sim';
-import { GRID_W, GRID_H } from '@/contracts/sim';
+import { GRID_W, GRID_H, PERSON_STRIDE } from '@/contracts/sim';
+import './notable.css';
 
 const ensureSystem = (c: AppContext) => {
   const u = c.selection.universe ?? c.universes.fromSerial(c.box.slots()[c.box.selected()]?.serialNumber ?? 0);
@@ -257,6 +258,33 @@ const planet: ScreenFactory = () => {
   let walkSent = 0;
   let lastTick = -1;
   let planetSpec: import('@/contracts/system').PlanetSpec | null = null;
+  // The notable: the one named person the chronicle follows. A card by the village list, and Find.
+  const nName = el('span', { class: 'k-narration notable-name' });
+  const nMeta = el('span', { class: 'k-label notable-meta' });
+  const nDeeds = el('p', { class: 'k-narration notable-deeds' });
+  const nFind = el('button', { class: 'k-btn notable-find', type: 'button', 'data-id': 'notable-find' }, 'Find');
+  const nCard = el('div', { class: 'notable-card', 'data-id': 'notable', hidden: true }, el('div', { class: 'notable-head' }, el('div', { class: 'notable-who' }, nName, nMeta), nFind), nDeeds);
+  let nKey = '';
+  let nFollow = 0;
+  /** Where the notable stands right now (grid cells), from the people buffer. */
+  const notableAt = () => {
+    const civ = ctx?.sim.latest()?.civ;
+    const id = civ?.notable?.personId;
+    if (!civ || id === undefined) return null;
+    for (let i = 0; i < civ.peopleCount; i++) if (civ.people[i * PERSON_STRIDE + 4] === id) return { x: civ.people[i * PERSON_STRIDE]! + 0.5, y: civ.people[i * PERSON_STRIDE + 1]! };
+    return null;
+  };
+  nFind.addEventListener('click', () => {
+    if (!ctx || !ui) return;
+    if (view.fp) { ui.hint.textContent = 'Leave your eyes (−) to look for them from above.'; ctx.audio.sfx('deny'); return; }
+    const at = notableAt();
+    if (!at) return;
+    // Jump the camera onto them, glide in to street level, and stay with them for a few seconds.
+    view.cx = at.x; view.cy = at.y - 2;
+    if (view.zoom < 11) zoomGoal = 11;
+    nFollow = 4000;
+    ctx.audio.sfx('nav');
+  });
   return {
     id: 'planet',
     mount: (root, c) => {
@@ -503,6 +531,7 @@ const planet: ScreenFactory = () => {
         el('div', { class: 'row' }, ui.weather, ui.era),
         el('div', { class: 'row start' }, label('THEIR SKY'), ...(sky.pieces.length ? sky.pieces.map((k) => tag(k)) : [label('empty')])),
         el('div', { class: 'row' }, ui.souls.el, ui.villages.el, ui.glow.el),
+        nCard,
         ui.vlist,
         label('THEIR CHRONICLE'),
         ui.chron,
@@ -510,6 +539,7 @@ const planet: ScreenFactory = () => {
         button('Change their sky', () => c.go('system'), { primary: true, id: 'change-sky' }),
       );
       lastTick = -1;
+      nKey = ''; nFollow = 0; nCard.hidden = true;
     },
     frame: (dt) => {
       if (!ctx?.selection.universe || !ui || !planetSpec) return;
@@ -570,6 +600,16 @@ const planet: ScreenFactory = () => {
           p.bob = Math.sin(stride / 330 * Math.PI) * 0.12;
         } else { p.bob *= 0.8; if (av0 && walkSent > 200 && walkSent < 1e8) { walkSent = 1e9; ctx.sim.walk(av0.x); } }
       }
+      if (nFollow > 0 && !view.fp) {
+        // Find: keep the camera on the notable while it glides in.
+        nFollow -= dt;
+        const at = notableAt();
+        if (at) {
+          const hx = GRID_W / (2 * view.zoom), hy = GRID_H / (2 * view.zoom);
+          view.cx = Math.max(hx, Math.min(GRID_W - hx, at.x));
+          if (view.zoom < 7) view.cy = Math.max(hy, Math.min(GRID_H - hy, at.y - 2));
+        } else nFollow = 0;
+      }
       const cr = ctx.gl.canvas.getBoundingClientRect();
       const sr = ui.slot.getBoundingClientRect();
       const sky = ctx.sky.skyOf(planetSpec);
@@ -601,6 +641,17 @@ const planet: ScreenFactory = () => {
       bodyRow?.toggleAttribute('hidden', !av);
       if (av && av.hp < lastHp) { shake(ui.slot); ui.slot.classList.add('hurt'); setTimeout(() => ui?.slot.classList.remove('hurt'), 250); ctx.audio.sfx('strike'); }
       lastHp = av ? av.hp : 100;
+      const nb = f.civ.notable;
+      const nk = nb ? `${nb.name}|${nb.calling}|${nb.age}|${nb.villageId}|${nb.deeds.length}|${nb.deeds[nb.deeds.length - 1] ?? ''}|${nb.metYou}` : '';
+      if (nk !== nKey) {
+        nKey = nk;
+        nCard.hidden = !nb;
+        if (nb) {
+          nName.textContent = nb.name;
+          nMeta.textContent = `${nb.calling} · ${nb.age} · ${ctx.names.village(child(planetSpec.seed, nb.villageId + 1))}${nb.metYou ? ' · has seen you' : ''}`.toUpperCase();
+          nDeeds.textContent = nb.deeds.length ? nb.deeds.slice(-2).join(' ') : 'Nothing is told of them yet.';
+        }
+      }
       ui.vlist.replaceChildren(...f.civ.villages.slice(0, 4).map((v) => el('div', { class: 'vrow' },
         el('span', { class: 'k-narration' }, ctx!.names.village(child(planetSpec!.seed, v.id + 1))),
         label(`${v.souls} souls · ${v.belief === 'none' ? 'no faith' : v.belief} · ${ERA_NAMES[v.tech]}${v.enlightenment >= 100 ? ' · enlightened' : v.enlightenment >= 50 ? ' · wondering' : ''} · ${v.food > 300 ? 'fed' : v.food > 60 ? 'lean' : 'hungry'}${v.mood < -30 ? ' · restless' : v.mood > 50 ? ' · joyful' : ''}${v.wealth ? ` · ${v.wealth} coin` : ''}`),

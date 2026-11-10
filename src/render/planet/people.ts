@@ -9,17 +9,18 @@ import { PERSON_STRIDE, ROLE } from '@/contracts/sim';
 
 const VS = `#version 300 es
 layout(location=0) in vec2 a_pos;
-layout(location=1) in vec4 a_a;   // x, y (feet, world), z, role
+layout(location=1) in vec4 a_a;   // x, y (feet, world), z, role (+100 for the notable)
 layout(location=2) in vec4 a_b;   // walk phase, facing, moving 0..1, seed
 uniform int u_mode;               // 0 map, 1 first person
 uniform vec4 u_cam;               // map: view cx, cy, zoom, _ ; fp: yaw, pitch, aspect, _
 uniform vec3 u_ro; uniform vec2 u_grid;
-out vec2 v_p; out vec4 v_b; out float v_role; out float v_dist;
+out vec2 v_p; out vec4 v_b; out float v_role; out float v_dist; out float v_mark;
 void main(){
-  float big = a_a.w > 98.5 ? 1.35 : 1.0;
+  float mark = step(99.5, a_a.w), role = a_a.w - 100.0 * mark;
+  float big = role > 98.5 ? 1.35 : 1.0 + 0.12 * mark;
   vec2 size = vec2(2.2, 3.0) * big;        // sprite box in cells
   vec2 l = vec2(a_pos.x * 0.5 * size.x, (a_pos.y * 0.5 + 0.5) * size.y);
-  v_p = l / big; v_b = a_b; v_role = a_a.w; v_dist = 0.0;
+  v_p = l / big; v_b = a_b; v_role = role; v_dist = 0.0; v_mark = mark;
   if (u_mode == 0) {
     vec2 w = vec2(a_a.x + l.x, a_a.y - l.y);
     vec2 q = (w - u_cam.xy) * u_cam.z / u_grid + 0.5;
@@ -37,7 +38,7 @@ void main(){
 
 const FS = `#version 300 es
 precision highp float; precision highp int;
-in vec2 v_p; in vec4 v_b; in float v_role; in float v_dist; out vec4 o;
+in vec2 v_p; in vec4 v_b; in float v_role; in float v_dist; in float v_mark; out vec4 o;
 uniform int u_mode; uniform float u_time, u_amb, u_night, u_zoom; uniform sampler2D u_pal, u_depth; uniform vec4 u_vp;
 vec3 pal(int i){ return texelFetch(u_pal, ivec2(i & 15, 0), 0).rgb; }
 float seg(vec2 p, vec2 a, vec2 b, float r){ vec2 pa = p - a, ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)) - r; }
@@ -82,7 +83,15 @@ void main(){
   float arms = min(seg(p, shP, handF, 0.075), seg(p, shP, handB, 0.075));
   float head = length(p - headP) - 0.27;
   float d = min(min(legs, torso), min(arms, head));
-  float all = min(d, extra);
+  // The one the chronicle follows: a pale hood and cloak, and a tall staff with a bone cap.
+  float staff = 9.0, hood = 9.0;
+  if (v_mark > 0.5) {
+    vec2 foot = vec2(-0.5, 0.05), tip = vec2(-0.5 + lean * 0.5, 2.62 - hip * squat);
+    staff = min(seg(p, foot, tip, 0.05), length(p - tip - vec2(0.0, 0.1)) - 0.12);
+    hood = length(p - headP - vec2(-0.03, 0.03)) - 0.35;
+    d = min(d, hood);
+  }
+  float all = min(min(d, extra), staff);
   float aa = fwidth(all) * 0.9 + 0.001;
   float alpha = smoothstep(aa, -aa, all);
   if (alpha < 0.02) discard;
@@ -96,7 +105,14 @@ void main(){
   if (zl > 14.0 && torso < 0.0 && abs(p.y - hipP.y - 0.12) < 0.05) col = pal(3) * u_amb;
   if (zl > 19.0 && head < 0.0) { vec2 e = p - headP; if (length(vec2(abs(e.x - 0.08) - 0.08, e.y - 0.03)) < 0.035) col = pal(0); }
   if (zl > 26.0 && head < -0.02 && (p.y - headP.y) > 0.13) col = mix(pal(3), pal(1), step(0.5, seed)) * u_amb;   // hair
+  if (v_mark > 0.5) {
+    vec3 pale = mix(pal(9), pal(8), 0.35);
+    if (torso < min(legs, min(arms, head))) col = pale * 0.8 * (0.75 + 0.25 * smoothstep(0.1, -0.1, p.x - lean)) * u_amb;
+    // The hood covers all but the face.
+    if (hood < 0.0 && !(head < 0.0 && p.x - headP.x > 0.06 && p.y - headP.y < 0.13)) col = pale * u_amb;
+  }
   if (extra < d) { col = extraCol * (emis > 0.5 ? 1.6 : u_amb); }
+  if (staff < min(d, extra)) col = (length(p - vec2(-0.5 + lean * 0.5, 2.72 - hip * squat)) < 0.13 ? mix(pal(9), pal(8), 0.35) : pal(3)) * u_amb;
   if (role == 99) { col = mix(pal(9), pal(10), 0.5 + 0.5 * sin(u_time * 5.0)) * 1.5; }
   if (role == ${ROLE.lamp}) col += pal(13) * u_night * 0.25 * smoothstep(1.2, 0.0, length(p - handF));
   if (u_mode == 1) {
@@ -137,6 +153,7 @@ export const createPeople = (core: GlCore) => {
 
   const souls = new Map<number, Soul>();
   let frame = 0;
+  let notableId = -2;
   const AVATAR = -1;
   const ease = (s: Soul, x: number, y: number, role: number, dt: number) => {
     const k = Math.min(1, dt * 0.009);
@@ -157,6 +174,7 @@ export const createPeople = (core: GlCore) => {
     update: (civ: CivView, dt: number) => {
       frame++;
       const pp = civ.people;
+      notableId = civ.notable?.personId ?? -2;
       for (let i = 0; i < civ.peopleCount; i++) {
         const k = i * PERSON_STRIDE;
         const id = pp[k + 4]!, x = pp[k]! + 0.5, y = pp[k + 1]! + 1, role = pp[k + 2]!;
@@ -191,7 +209,7 @@ export const createPeople = (core: GlCore) => {
         const k = n * 8;
         if (o.fp) { const [x, y, z] = o.fp.place(s); data[k] = x; data[k + 1] = y; data[k + 2] = z; }
         else { data[k] = s.x; data[k + 1] = s.y; data[k + 2] = 0; }
-        data[k + 3] = s.role; data[k + 4] = s.phase; data[k + 5] = s.face; data[k + 6] = s.moving; data[k + 7] = s.seed;
+        data[k + 3] = id === notableId ? s.role + 100 : s.role; data[k + 4] = s.phase; data[k + 5] = s.face; data[k + 6] = s.moving; data[k + 7] = s.seed;
         n++;
       }
       if (!n) return;
