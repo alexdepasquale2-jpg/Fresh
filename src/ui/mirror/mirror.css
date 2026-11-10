@@ -1,16 +1,33 @@
 /* The room at the bottom. Tokens only. */
 .mr-stage { position: relative; min-height: 0; cursor: pointer; }
 .mr-box { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); display: grid; grid-template-columns: repeat(5, 16px); gap: 3px; padding: 8px; background: var(--panel); border: 2px solid var(--line); animation: mr-in 1.2s ease-out both; }
+.mr-box[hidden], .mr-panel[hidden] { display: none; }
 .mr-box i { width: 16px; height: 16px; border: 1px solid var(--line-dim); background: var(--bg); }
 .mr-box i.held { background: var(--line-dim); border-color: var(--line); }
 .mr-box i.lit { background: var(--glow); border-color: var(--ink-bright); box-shadow: 0 0 10px var(--glow); animation: mr-lit 1.6s ease-in-out infinite; }
-.mr-says { display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; min-height: 104px; cursor: pointer; }
-.mr-says .k-narration { animation: mr-in .9s ease-out both; }
+.mr-panel { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; animation: mr-in .6s ease-out both; }
+.mr-their { display: grid; grid-template-columns: repeat(5, var(--touch)); gap: 4px; padding: 8px; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 2px solid var(--line); }
+.mr-slot { width: var(--touch); height: var(--touch); padding: 0; display: grid; place-items: center; border: 1px solid var(--line-dim); background: var(--bg); color: var(--ink-muted); font: 400 20px/1 var(--font-ui); cursor: pointer; }
+.mr-slot:disabled { cursor: default; }
+.mr-slot.held { background: var(--raised); border-color: var(--line); }
+.mr-slot.above { color: var(--gold); border-color: var(--gold); }
+.mr-slot.lit { color: var(--bg); background: var(--glow); border-color: var(--ink-bright); box-shadow: 0 0 10px var(--glow); }
+.mr-slot[aria-pressed='true'] { outline: 2px solid var(--ink-bright); outline-offset: -2px; }
+.mr-head { padding-right: calc(var(--touch) + var(--gap)); }
+.mr-says { display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; min-height: 104px; cursor: pointer; padding: 6px 8px; margin: 0 -8px; background: color-mix(in srgb, var(--bg) 82%, transparent); }
+.mr-says .k-narration { animation: mr-in .9s ease-out both; text-wrap: pretty; }
 .mr-says .k-narration.old { color: var(--ink-off); font-size: 14px; animation: none; }
 .mr-says .mr-peak { font: 400 28px/1.2 var(--font-voice); color: var(--ink-bright); text-align: center; padding: 10px 0; animation: mr-in 1.8s ease-out both; }
 .mr-says .mr-peak.old { color: var(--gold); font-size: 20px; padding: 2px 0; }
+.mr-says .mr-child { color: var(--ink-bright); }
+.mr-says .mr-you { color: var(--ink-muted); font-style: normal; font-size: 14px; }
+.mr-says .mr-note { color: var(--glow); font-size: 14px; }
+.mr-says .mr-kicker { color: var(--gold); }
+.mr-says .mr-piece { color: var(--ink-bright); font-size: 17px; padding: 8px 10px; background: color-mix(in srgb, var(--panel) 90%, transparent); border-left: 2px solid var(--glow); animation: mr-in 1.6s ease-out both; }
 .mr-actions { display: flex; flex-direction: column; gap: var(--gap); min-height: calc(var(--btn-primary) + var(--touch) + var(--gap)); }
 .mr-actions .k-btn { animation: mr-in .9s ease-out both; }
+.mr-menu { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
+.mr-menu .mr-small { min-width: 0; padding: 0 6px; font-size: 14px; letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @keyframes mr-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes mr-lit { 50% { box-shadow: 0 0 3px var(--glow); } }
-@media (prefers-reduced-motion: reduce) { .mr-box, .mr-box i.lit, .mr-says .k-narration, .mr-says .mr-peak, .mr-actions .k-btn { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .mr-box, .mr-box i.lit, .mr-panel, .mr-says .k-narration, .mr-says .mr-peak, .mr-says .mr-piece, .mr-actions .k-btn { animation: none; } }
