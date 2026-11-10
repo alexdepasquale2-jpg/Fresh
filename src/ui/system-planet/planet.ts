@@ -3,7 +3,7 @@
 import type { ScreenFactory, AppContext } from '@/contracts/app';
 import type { SkyPieceKind, Heavens } from '@/contracts/sky';
 import type { PlanetSpec } from '@/contracts/system';
-import type { BodyAction, ChronicleEntry, Village, Tool } from '@/contracts/sim';
+import type { BodyAction, BodyOption, ChronicleEntry, Village, Tool } from '@/contracts/sim';
 import { SKY_PIECE_KINDS, SKY_MAX_PIECES } from '@/contracts/sky';
 import { GRID_W, GRID_H, PERSON_STRIDE } from '@/contracts/sim';
 import { el, backChip, label, button, stat, narration, burst, shake, flash } from '@/ui/kit';
@@ -11,6 +11,7 @@ import { ensureSystem, keyOf, villageName, seenOf, setSeen } from './shared';
 import type { Seen } from './shared';
 import { TOOLS, GROUPS, BRUSH, applyTool } from './tools';
 import type { ToolDef } from './tools';
+import './body.css';
 
 // Zoom layers. The first three are the map; the next seven are the close layers before a body's eyes.
 const LAYERS: [number, string, string][] = [
@@ -38,16 +39,30 @@ const TABS = ['watch', 'tools', 'body', 'sky', 'people', 'chronicle'] as const;
 type Tab = (typeof TABS)[number];
 const TAB_LABEL: Record<Tab, string> = { watch: 'Watch', tools: 'Tools', body: 'Body', sky: 'Sky', people: 'People', chronicle: 'Chronicle' };
 
-// Chronicle kinds. The entries carry no kind of their own, so they are read from the words (and from a kind field, should one appear).
+// Chronicle kinds. An entry that carries a kind is filed by it; the words are only read for one that does not.
 const KINDS: readonly { id: string; label: string; re: RegExp }[] = [
   { id: 'all', label: 'All', re: /./ },
   { id: 'lives', label: 'Lives', re: /made a home|is named|came of age|did not wake|no one answers|last fire|door of their own|elder|long road|families left|walkers|more lamps|first lamp|born|died|passed|found|grow|split|die|migrate/i },
-  { id: 'wars', label: 'Wars', re: /blood between|stones|spears|struck|raised their hands|death fell|drove at|feud|attack|slain|smit/i },
-  { id: 'faith', label: 'Faith', re: /pray|knelt|looked up and knew|omen|priests|keepers|callers|readers|tenders|watchers|festival|listen|heard it speak|warmth|convert|worship|enlighten|bless|preach/i },
+  { id: 'wars', label: 'Wars', re: /blood between|threw stones|with stones|spears|struck|marched|war between|raid|tribute|raised their hands|death fell|drove at|feud|attack|slain|smit/i },
+  { id: 'faith', label: 'Faith', re: /pray|creed|faith|heretic|shrine|knelt|looked up and knew|omen|priests|keepers|callers|readers|tenders|watchers|festival|listen|heard it speak|warmth|convert|worship|enlighten|bless|preach/i },
   { id: 'works', label: 'Works', re: /built|the work of|traders|forge|market|boats|fields|seam|light rose|lamp burning|tech|trade|launch/i },
   { id: 'sky', label: 'Sky', re: /sky|storm|clouds|froze|frost|ice|thaw|wildfire|waters|water rose|moss|lightning|stone fell|ground|trembled|fire ran|sun|moon|comet|flood|drought|quake|impact/i },
 ];
-const kindsOf = (en: ChronicleEntry): string => `${(en as { kind?: unknown }).kind ?? ''} ${en.event}`;
+const FILE: Record<string, string> = {};
+for (const [id, list] of Object.entries({
+  lives: 'found grow split die migrate born deed passed refugees resettled recovered crowned fell famine plague plagueEnd wedding quiet',
+  wars: 'feud attack slain struck smitten rivalry raid war peace tribute razed absorbed',
+  faith: 'convert festival preached omen worship enlightened blessed creed schism heresy exile holy sign light stranger gift',
+  works: 'tech built traded launch song wonder school invention ark voyage pact alliance merged',
+  sky: 'impact flood drought freeze thaw fire storm bloom blight ore lightning quake flooded frozen burn',
+})) for (const k of list.split(' ')) FILE[k] = id;
+const BODY_FILE: Record<string, string> = { creed: 'faith', 'creed-spread': 'faith', 'creed-schism': 'faith', vigil: 'faith', challenge: 'faith', 'challenge-lost': 'faith', side: 'faith', bless: 'faith', curse: 'faith', peace: 'wars', refused: 'wars', incite: 'wars', stand: 'wars', 'stand-fell': 'wars', hunt: 'wars', tribute: 'wars', 'tribute-kept': 'wars', fled: 'wars', work: 'works', trade: 'works', teach: 'works', deliver: 'works' };
+/** Does this entry belong under that filter? */
+const filed = (en: ChronicleEntry, k: { id: string; re: RegExp }): boolean => {
+  if (k.id === 'all') return true;
+  const home = en.kind === 'body' ? BODY_FILE[en.deed ?? ''] ?? 'lives' : en.kind ? FILE[en.kind] : undefined;
+  return home ? home === k.id : k.re.test(en.event);
+};
 
 interface Named { id: number; name: string; calling: string; villageId: number }
 /** Any other named people a newer CivView may carry. Read by shape; nothing here is assumed to exist. */
@@ -78,6 +93,8 @@ export const planet: ScreenFactory = () => {
   const view: { cx: number; cy: number; zoom: number; fp: { x: number; z: number; yaw: number; pitch: number; bob: number } | null } = { cx: GRID_W / 2, cy: GRID_H / 2, zoom: 1, fp: null };
   let walking = false, stride = 0, walkSent = 0;
   let lastBolt = 9999, lastLayer = 0, zoomGoal = 0, lastHp = 100, lastTick = -1;
+  let lastFrame: unknown = null;
+  let settle = false;
   let heavens: Heavens | null = null;
   let skyKey = '';
   let focus: Target | null = null;
@@ -280,6 +297,7 @@ export const planet: ScreenFactory = () => {
       const two = () => { const [a, b] = [...pts.values()] as [{ x: number; y: number }, { x: number; y: number }]; return { dist: Math.max(8, Math.hypot(a.x - b.x, a.y - b.y)), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; };
       const isTool = () => mode.mode !== 'watch' && mode.mode !== 'body';
       slotEl.addEventListener('pointerdown', (e) => {
+        settle = false;
         if (photo) { setPhoto(false); return; }
         slotEl.setPointerCapture(e.pointerId);
         const at = local(e);
@@ -378,7 +396,7 @@ export const planet: ScreenFactory = () => {
         nFollow = 0;
         clampView();
       };
-      mini.addEventListener('pointerdown', (e) => { mini.setPointerCapture(e.pointerId); miniJump(e); c.audio.sfx('tap'); });
+      mini.addEventListener('pointerdown', (e) => { settle = false; mini.setPointerCapture(e.pointerId); miniJump(e); c.audio.sfx('tap'); });
       mini.addEventListener('pointermove', (e) => { if (mini.hasPointerCapture(e.pointerId)) miniJump(e); });
       const drawMini = (dt: number) => {
         const show = !view.fp && !photo && view.zoom > 1.4;
@@ -530,8 +548,11 @@ export const planet: ScreenFactory = () => {
         b.addEventListener('click', () => {
           c.sim.act(t.a);
           c.audio.sfx(t.sfx);
-          hint.textContent = t.hint;
-          bodyHint.textContent = t.hint;
+          // Say truthfully what it did, or why it did nothing.
+          const o = c.sim.latest()?.civ.avatar?.options?.find((q) => q.id === t.a);
+          const said = o && !o.ready ? (o.wait > 0 ? `${t.label} is not ready for ${Math.ceil(o.wait / 20)}s.` : o.reason ?? t.hint) : o?.does ?? t.hint;
+          hint.textContent = said;
+          bodyHint.textContent = said;
           const r = slotEl.getBoundingClientRect();
           burst(slotEl, r.width / 2, r.height * 0.6, t.a === 'rest' ? 6 : 12, t.a === 'shine' || t.a === 'strike');
           if (t.a === 'strike') shake(slotEl);
@@ -543,10 +564,88 @@ export const planet: ScreenFactory = () => {
       const bodyHint = el('p', { class: 'k-label pl-tip' }, 'Eyes looks through the body. Zooming all the way in does the same.');
       const ascend = button('Ascend', () => { leaveBody(); c.sim.ascend(); c.audio.sfx('zoom-out'); pick(TOOLS[0]!); }, { id: 'ascend' });
       ascend.hidden = true;
+      // Needs, and what the body is: role, followers, load, weather.
+      const need = (name: string, id: string) => {
+        const fill = el('i', {});
+        const text = el('span', { class: 'k-label', 'data-id': `body-${id}` }, name);
+        return { fill, text, name, box: el('div', { class: 'pl-need' }, text, el('div', { class: 'pl-bar' }, fill)) };
+      };
+      const needs = [need('Hunger', 'hunger'), need('Weariness', 'weariness'), need('Wounds', 'wound')] as const;
+      const needRow = el('div', { class: 'pl-needs', 'data-id': 'body-needs', hidden: true }, ...needs.map((n) => n.box));
+      const bodyTags = el('p', { class: 'k-label pl-bodytags', 'data-id': 'body-tags', hidden: true }, '');
+      // What can be done here: only what applies, each with what it will do, or why not yet.
+      const DEEDS: Record<string, [string, string]> = {
+        heal: ['Heal', 'rest'], work: ['Work beside them', 'step'], trade: ['Trade', 'gift'], teach: ['Teach', 'preach'], plead: ['Ask the ruler for peace', 'preach'],
+        incite: ['Incite a war', 'crit'], petition: ['Plead against the tribute', 'preach'], stand: ['Stand between the armies', 'shine'], challenge: ['Challenge the heretic', 'preach'],
+        side: ['Side with the heretic', 'preach'], blessHarvest: ['Bless the harvest', 'shine'], curseHarvest: ['Curse the harvest', 'crit'], vigil: ['Keep vigil at the shrine', 'rest'],
+        bury: ['Bury the dead', 'step'], carry: ['Carry for them', 'gift'], deliver: ['Deliver', 'gift'], found: ['Found a village', 'body'], role: ['Accept the role', 'tap'], eat: ['Eat with them', 'rest'], steal: ['Steal bread', 'tap'],
+      };
+      const OLD = new Set<string>(ACTS.map((t) => t.a));
+      const deedsLabel = el('span', { class: 'k-label pl-group', hidden: true }, 'HERE YOU CAN');
+      const deedsBox = el('div', { class: 'pl-deeds', 'data-id': 'body-deeds', hidden: true });
+      const deedBtns = new Map<string, { b: HTMLElement; sub: HTMLElement }>();
+      const waitWord = (w: number) => `Ready in ${Math.ceil(w / 20)}s.`;
+      const subOf = (o: BodyOption) => (o.ready ? o.does ?? '' : o.wait > 0 ? waitWord(o.wait) : o.reason ?? 'Not here.');
+      const setText = (n: HTMLElement, t: string) => { if (n.textContent !== t) n.textContent = t; };
+      let deedKey = '';
+      const renderDeeds = (opts: readonly BodyOption[]) => {
+        const mine = opts.filter((o) => !OLD.has(o.id) && DEEDS[o.id]);
+        const key = mine.map((o) => o.id).join();
+        if (key !== deedKey) {
+          deedKey = key;
+          deedBtns.clear();
+          deedsBox.replaceChildren(...mine.map((o) => {
+            const sub = el('span', {}, '');
+            const b = el('button', { class: 'k-tag pl-deed', type: 'button', 'data-id': `act-${o.id}` }, el('b', {}, DEEDS[o.id]![0]), sub);
+            b.addEventListener('click', () => {
+              const now = c.sim.latest()?.civ.avatar?.options?.find((q) => q.id === o.id);
+              if (!now) return;
+              if (!now.ready) { bodyHint.textContent = `${DEEDS[o.id]![0]}: ${subOf(now)}`; c.audio.sfx('tap'); return; }
+              c.sim.act(o.id);
+              c.audio.sfx(DEEDS[o.id]![1]);
+              const said = now.does ?? '';
+              hint.textContent = said; bodyHint.textContent = said;
+              const r = slotEl.getBoundingClientRect();
+              burst(slotEl, r.width / 2, r.height * 0.6, 8, o.id === 'blessHarvest' || o.id === 'stand');
+            });
+            deedBtns.set(o.id, { b, sub });
+            return b;
+          }));
+        }
+        for (const o of mine) {
+          const d = deedBtns.get(o.id);
+          if (!d) continue;
+          setText(d.sub, subOf(o));
+          d.b.classList.toggle('cooling', !o.ready && o.wait > 0);
+          d.b.classList.toggle('off', !o.ready && o.wait === 0);
+          d.b.setAttribute('aria-disabled', String(!o.ready));
+        }
+        deedsLabel.hidden = deedsBox.hidden = !mine.length;
+      };
+      // How each village that knows the body stands toward it, and why.
+      const standLabel = el('span', { class: 'k-label pl-group', hidden: true }, 'HOW THEY STAND TOWARD YOU');
+      const standList = el('ul', { class: 'pl-standing', 'data-id': 'body-standing', hidden: true });
+      const LEVEL_SAY: Record<string, string> = { hunted: 'wants you dead', shunned: 'turns its back on you', tolerated: 'lets you pass', welcome: 'makes room for you at the fire', followed: 'would follow you anywhere' };
+      let standKey = '';
+      const logLabel = el('span', { class: 'k-label pl-group', hidden: true }, 'THIS LIFE');
+      const logList = el('ol', { class: 'pl-bodylog', 'data-id': 'body-log', hidden: true });
+      let logKey = '';
+      const toldLabel = el('span', { class: 'k-label pl-group', hidden: true }, 'WHAT THEY WRITE OF YOU');
+      const toldList = el('ol', { class: 'pl-told', 'data-id': 'body-told', hidden: true });
+      let toldKey = '';
+      const renderTold = (all: readonly ChronicleEntry[]) => {
+        const mine = all.filter((e) => e.kind === 'body' || e.kind === 'slain').slice(0, 4);
+        const key = mine.map((e) => `${e.id}${e.reason ? 'r' : ''}`).join();
+        if (key === toldKey) return;
+        toldKey = key;
+        toldList.replaceChildren(...mine.map((e) => el('li', {}, e.event, ...(e.reason ? [el('small', {}, e.reason)] : []))));
+        toldLabel.hidden = toldList.hidden = !mine.length;
+      };
       pages.body = el('section', { class: 'pl-page', 'data-id': 'page-body' },
         bodyState,
         el('div', { class: 'row nowrap' }, toolBtn(TOOLS[1]!, 'k-btn pl-wide'), ascend),
-        hpRow, think, bodyRow, lastAct, bodyHint,
+        hpRow, needRow, bodyTags, think, bodyRow, lastAct, bodyHint,
+        deedsLabel, deedsBox, standLabel, standList, logLabel, logList, toldLabel, toldList,
       );
 
       /* ---------- Sky ---------- */
@@ -587,6 +686,7 @@ export const planet: ScreenFactory = () => {
             }
             const res = c.sky.place(k, sys, orbit.index);
             if (!res.ok) { c.audio.sfx('deny'); renderSky(); return; }
+            c.box.recordPieceHung?.(c.box.selected());
             changed('place', `You hung a ${k} in their sky${have ? '' : ', made from your own light'}.`);
           });
           return b;
@@ -725,11 +825,11 @@ export const planet: ScreenFactory = () => {
       tickerBox.addEventListener('click', () => { openTab('chronicle'); c.audio.sfx('tap'); });
       /** Where an entry happened, if it can be told: its own x should one appear, else the village it names. */
       const whereOf = (en: ChronicleEntry): { x: number; v: Village | null } | null => {
-        const x = (en as { x?: unknown }).x;
-        if (typeof x === 'number' && x >= 0 && x < GRID_W) return { x, v: null };
         const vs = c.sim.latest()?.civ.villages ?? [];
-        const vid = (en as { villageId?: unknown }).villageId;
-        const hit = (typeof vid === 'number' ? vs.find((v) => v.id === vid) : undefined) ?? vs.find((v) => en.event.includes(vname(v.id)));
+        const byId = en.villageId !== undefined ? vs.find((v) => v.id === en.villageId) : undefined;
+        if (byId) return { x: byId.x, v: byId };
+        if (en.x !== undefined && en.x >= 0 && en.x < GRID_W) return { x: en.x, v: null };
+        const hit = vs.find((v) => en.event.includes(vname(v.id)));
         return hit ? { x: hit.x, v: hit } : null;
       };
       let cKey = '', topId = -1;
@@ -746,15 +846,15 @@ export const planet: ScreenFactory = () => {
           topId = top.id;
           ticker.replaceChildren(el('span', { class: 'k-label' }, `Y${top.year}`), ' ', narration(top.event));
         }
-        const count = (id: string) => { const re = KINDS.find((k) => k.id === id)!.re; return all.filter((e) => re.test(kindsOf(e))).length; };
+        const count = (id: string) => { const k = KINDS.find((q) => q.id === id)!; return all.filter((e) => filed(e, k)).length; };
         if (all.length) {
           const first = all[all.length - 1]!;
           const parts = [[count('lives'), 'of lives'], [count('wars'), 'of blood'], [count('faith'), 'of faith'], [count('works'), 'of their works'], [count('sky'), 'of the sky']] as const;
           const told = parts.filter(([n]) => n > 0).map(([n, w]) => `${n} ${w}`);
           story.textContent = `The story so far: ${all.length} ${all.length === 1 ? 'line' : 'lines'} since year ${first.year}${told.length ? `; ${told.join(', ')}` : ''}. It began: "${first.event}"`;
         }
-        const re = KINDS.find((k) => k.id === filter)!.re;
-        const shown = all.filter((e) => re.test(kindsOf(e))).slice(0, 30);
+        const kf = KINDS.find((k) => k.id === filter)!;
+        const shown = all.filter((e) => filed(e, kf)).slice(0, 30);
         chronList.replaceChildren(...(shown.length ? shown.map((en) => {
           const at = whereOf(en);
           const body = [el('span', { class: 'k-label' }, `Y${en.year}`), ' ', narration(en.event), en.reason ? el('small', {}, en.reason) : null];
@@ -896,16 +996,67 @@ export const planet: ScreenFactory = () => {
               : !nv ? 'There is no one here to see you.'
                 : nv.enlightenment >= 100 ? `${name} knows what you are, and is not afraid.`
                   : nv.enlightenment >= 50 ? `${name} is wondering what you are.` : `${name} fears you. Come close and they will raise their hands.`;
-          const a = av.action ? ACTS.find((x) => x.a === av.action) : undefined;
-          const left = a ? Math.max(0, a.wait - av.actionAge) : 0;
-          lastAct.textContent = a ? `LAST: ${a.label} · ${Math.round(av.actionAge / 20)}s AGO${left > 0 ? ` · ${a.label} AGAIN IN ${Math.ceil(left / 20)}s` : a.wait ? ` · ${a.label} IS READY` : ''}`.toUpperCase() : '';
-          for (const x of ACTS) actBtns.get(x.a)!.classList.toggle('cooling', !!a && x.a === a.a && left > 0);
+          const opts = av.options;
+          const a = av.action ? ACTS.find((x) => x.a === av.action) ?? { a: av.action, label: DEEDS[av.action]?.[0] ?? av.action, wait: 0 } : undefined;
+          const left = a ? opts?.find((o) => o.id === a.a)?.wait ?? Math.max(0, a.wait - av.actionAge) : 0;
+          lastAct.textContent = a ? `LAST: ${a.label} · ${Math.round(av.actionAge / 20)}s AGO${left > 0 ? ` · AGAIN IN ${Math.ceil(left / 20)}s` : a.wait ? ` · ${a.label} IS READY` : ''}`.toUpperCase() : '';
+          for (const x of ACTS) {
+            const o = opts?.find((q) => q.id === x.a);
+            const b = actBtns.get(x.a)!;
+            b.classList.toggle('cooling', o ? o.wait > 0 : !!a && x.a === a.a && left > 0);
+            b.classList.toggle('off', !!o && !o.ready && o.wait === 0);
+          }
+          // The life the sim gives the body: needs, role, what applies here, standing, the log.
+          const has = av.hunger !== undefined;
+          needRow.hidden = !has;
+          if (has) {
+            const vals = [av.hunger ?? 0, av.weariness ?? 0, av.wound ?? 0];
+            needs.forEach((n, i) => {
+              const val = vals[i]!;
+              n.fill.style.width = `${Math.max(0, Math.min(100, i === 2 ? val * 100 / 60 : val))}%`;
+              n.fill.classList.toggle('bad', i === 2 ? val >= 30 : val >= 80);
+              setText(n.text, `${n.name} ${val}`.toUpperCase());
+            });
+          }
+          const tags: string[] = [];
+          if (av.role) tags.push(av.role);
+          else if (av.roleOffer) tags.push(`they ask you to be their ${av.roleOffer}`);
+          if (av.followers) tags.push(`${av.followers} follow you`);
+          if (av.carrying) tags.push(`carrying ${av.carrying}${av.carryingTo ? ` for ${vname(av.carryingTo)}` : ''}`);
+          if (av.sick) tags.push('fever');
+          if (av.exposure) tags.push(av.exposure === 'cold' ? 'the cold is hurting you' : 'the storm is hurting you');
+          if (av.sheltered) tags.push('under a welcoming roof');
+          if (av.huntedBy) tags.push(`hunted by ${vname(av.huntedBy)}`);
+          if (av.creed) tags.push(`they keep ${av.creed}`);
+          if ((av.lives ?? 1) > 1) tags.push(`body ${av.lives}`);
+          bodyTags.hidden = !tags.length;
+          setText(bodyTags, tags.join(' · ').toUpperCase());
+          renderDeeds(opts ?? []);
+          const stand = av.standing ?? [];
+          const sk = stand.map((x) => `${x.villageId}:${x.value}:${x.level}:${x.remembered.length}`).join();
+          if (sk !== standKey) {
+            standKey = sk;
+            standList.replaceChildren(...stand.map((x) => el('li', { class: x.value < -9 ? 'bad' : '' }, el('b', {}, vname(x.villageId)), el('em', {}, `${x.level} ${x.value > 0 ? '+' : ''}${x.value}`), el('span', {}, x.remembered.length ? `You ${x.remembered.join(', ')}.` : 'They have only seen you.'))));
+            standLabel.hidden = standList.hidden = !stand.length;
+          }
+          const here = nv ? stand.find((x) => x.villageId === nv.id) : undefined;
+          if (here && nv && !av.attackers && !av.worshippers) think.textContent = `${name} ${LEVEL_SAY[here.level] ?? 'watches you'}.`;
+          const lg = av.log ?? [];
+          const lk = `${lg.length}:${lg[lg.length - 1] ?? ''}`;
+          if (lk !== logKey) {
+            logKey = lk;
+            logList.replaceChildren(...lg.slice(-6).map((t) => el('li', {}, `${t}.`)));
+            logLabel.hidden = logList.hidden = !lg.length;
+          }
           if (av.hp < lastHp) { shake(slotEl); slotEl.classList.add('hurt'); setTimeout(() => slotEl.classList.remove('hurt'), 250); c.audio.sfx('strike'); }
         } else {
           if (bodyState.textContent !== NOBODY) bodyState.textContent = NOBODY;
           lastAct.textContent = '';
+          needRow.hidden = bodyTags.hidden = deedsLabel.hidden = deedsBox.hidden = standLabel.hidden = standList.hidden = logLabel.hidden = logList.hidden = true;
+          standKey = logKey = '';
         }
         lastHp = av ? av.hp : 100;
+        renderTold(f.chronicle);
         renderPeople();
         renderChron();
         if (f.civ.souls !== seenSouls && f.tick > 200) {
@@ -942,16 +1093,24 @@ export const planet: ScreenFactory = () => {
         const g0 = f.grid;
         const cx = Math.max(0, Math.min(GRID_W - 1, Math.round(view.cx)));
         let gy = 0;
-        while (gy < GRID_H - 4 && !(g0.cells[gy * GRID_W + cx] && g0.cells[(gy + 1) * GRID_W + cx] && g0.cells[(gy + 2) * GRID_W + cx])) gy++;
+        // Ground is a run of solid cells: rain, cloud and fire in the air are not ground.
+        const solid = (y: number) => { const m = g0.cells[y * GRID_W + cx]!; return m !== 0 && m !== 5 && m !== 253; };
+        while (gy < GRID_H - 4 && !(solid(gy) && solid(gy + 1) && solid(gy + 2) && solid(gy + 3))) gy++;
         const viewH = GRID_H / view.zoom;
         const k = Math.min(1, dt * 0.006);
-        view.cy += (gy - viewH * 0.24 - view.cy) * k;
-        if (zoomGoal && zoomGoal > view.zoom) {
-          const vs = f.civ.villages;
-          let near: Village | null = null;
-          for (const v of vs) if (!near || Math.abs(v.x - view.cx) < Math.abs(near.x - view.cx)) near = v;
-          if (near && Math.abs(near.x - view.cx) < 40) view.cx += (near.x + 0.5 - view.cx) * k;
+        if (zoomGoal && zoomGoal > view.zoom) settle = true;
+        const vs = f.civ.villages;
+        let near: Village | null = null;
+        for (const v of vs) if (!near || Math.abs(v.x - view.cx) < Math.abs(near.x - view.cx)) near = v;
+        // Going in, the camera settles on the nearest village and stays on it: the deepest layers
+        // show only a few cells, so "nearly there" would be empty sky and rock.
+        if (settle) {
+          if (near && Math.abs(near.x - view.cx) < 40) { view.cx += (near.x + 0.5 - view.cx) * Math.min(1, k * 2); if (Math.abs(near.x + 0.5 - view.cx) < 0.05 && !zoomGoal) settle = false; }
+          else settle = false;
         }
+        // A village's own floor is a truer anchor than a column scan when it is right under the view.
+        if (near && Math.abs(near.x + 0.5 - view.cx) < 3) gy = near.y + 1;
+        view.cy += (gy - viewH * 0.24 - view.cy) * k;
       }
       if (view.fp) {
         const p = view.fp;
@@ -993,8 +1152,9 @@ export const planet: ScreenFactory = () => {
         view,
         quality: ctx.perf.resolutionScale(),
       }, dt);
-      if (f.tick === lastTick) return;
-      lastTick = f.tick;
+      // A deed answers with a new frame on the same tick: the page must not wait for the next one to say so.
+      if (f.tick === lastTick && f === lastFrame) return;
+      lastTick = f.tick; lastFrame = f;
       m.onTick();
     },
     unmount: () => {

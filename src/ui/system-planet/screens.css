@@ -143,3 +143,8 @@
 @media (prefers-reduced-motion: reduce) { .pl-pager, .sy-panel { scroll-behavior: auto; } }
 .pl .zoom-ctl .zoom-btn { min-width: var(--touch); min-height: var(--touch); }
 .sp-tabs .sp-tab { min-width: var(--touch); }
+
+/* Large text: the planet header wraps instead of losing the year, and stays clear of the menu button (44px, top right). */
+.sallow-text-l .pl-header { padding-right: 48px; align-items: flex-start; }
+.sallow-text-l .pl-name > * { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.15; overflow-wrap: anywhere; }
+.sallow-text-l .sy > header { padding-right: 48px; }

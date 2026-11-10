@@ -19,3 +19,7 @@
 7. snapshot/restore round-trips.
 
 Plus: `npm run check` passes, and `demo.ts` shows the unit alone in `/dev` with a fixed seed.
+
+## The body (`body.ts`)
+
+A life in a body: per-village standing (-100..100: hunted, shunned, tolerated, welcome, followed) with what each village remembers, twenty contextual deeds (`BodyDeed`), needs (hunger, weariness, wounds, fever, cold and storm; none of them hurt in the first 1,200 ticks of a life), followers, roles, a creed about the body (creed ids from 1024: `1024 + 16 * n + deed`, named in `lore.ts`), rulers who court or hunt it, and an ending told by how it lived. Every roll is the unit's stateless dice. What outlives a body is `W.body` (in the snapshot, optional: an older snapshot wakes with no memory of bodies); the avatar itself is not in the snapshot, as before. Events are CivEvent kind `'body'` with `detail` = a code from `B` in `body.ts`; `src/sim/chronicle/body.ts` keeps the same numbers.

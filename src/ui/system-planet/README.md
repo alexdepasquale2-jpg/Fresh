@@ -8,6 +8,8 @@
 
 **Current state.** `system.ts` (orbits, a card per world, cosmic picker, log, orrery scrub), `planet.ts` (surface, chronicle ticker, time bar, six tabs as pages of one scroller so every control keeps a real box), `tools.ts` (god tools and patterns built only from the sim's Tool union), `shared.ts` (selection and a small localStorage memory, key `sallow.screens.v1`, cosmetic only).
 
+**Body page.** Beside the six old controls (`tool-body`, `eyes`, `act-strike|preach|gift|shine|rest`, `ascend`) it shows what the sim reports on `Avatar`: needs (`body-needs`), role, followers and load (`body-tags`), the deeds that apply here as `act-<deed>` buttons inside `body-deeds` (each says what it will do, its cooldown, or why not), standing per village (`body-standing`), this life's log (`body-log`) and the chronicle's lines about the body (`body-told`). Styles in `body.css`.
+
 ## Acceptance criteria
 
 1. Solar system shows DIVE chip, system name, universe and fold, the selected planet card with placed pieces and one surface line, WATCH THE SURFACE and the SKY PIECES tray of six tiles with counts.

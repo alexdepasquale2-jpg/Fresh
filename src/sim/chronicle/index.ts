@@ -6,10 +6,13 @@ import type { PlanetSpec } from '@/contracts/system';
 import { child, mix, seedToU32 } from '@/core/hash';
 import type { Seed } from '@/contracts/seed';
 import type { SkyState, SurfaceModifiers } from '@/contracts/sky';
+import { BODY, bodyReason } from './body';
 import { figName, creedName, TELL, SIGN, WORKS, INVENTIONS, LATE_TECH, GRIEF, DOUBT, TEMPER, WHY_WORK, WHY_INVENT, QUIET, EMPTY } from './lore';
 
 type Kind = CivEvent['kind'] | SurfaceEvent['kind'] | 'quiet';
 type Entry = ChronicleEntry & { kind: Kind; belief?: Belief; tick: number; who?: Who; e?: CivEvent };
+/** What a reader outside the worker is given: the line, and where and what it was about. */
+const publish = ({ belief: _b, tick: _t, who: _w, e, ...en }: Entry): ChronicleEntry => (e ? { ...en, x: e.x, y: e.y, villageId: e.villageId } : en);
 
 const EVENT: Partial<Record<Kind, string[]>> = {
   found: ['%v was raised from the dust.', 'They built %v and lit its first lamp.', 'A handful of souls made a home and called it %v.'],
@@ -267,6 +270,20 @@ export const factory: ChronicleFactory = ({ names }) => {
     add({ id: nextId++, year, kind: e.kind, tick: e.tick, event: text.charAt(0).toUpperCase() + text.slice(1), e, ...(e.belief ? { belief: e.belief } : {}) });
     return true;
   };
+  /** The life of the player's body. Always told, except small deeds repeated in one village in one year. */
+  const tellBody = (e: CivEvent, year: number, p: PlanetSpec) => {
+    const code = e.detail ?? 0;
+    const tale = BODY[code];
+    if (!tale) return;
+    if (tale.small && entries.slice(-40).some((x) => x.kind === 'body' && x.year === year && x.e?.detail === code && x.e?.villageId === e.villageId)) return;
+    const opts = tale.text[e.cause ?? 0] ?? tale.text[e.count ?? 0] ?? tale.text[0] ?? Object.values(tale.text)[0]!;
+    const fig = e.who !== undefined ? figName(p.seed, e.who).full : 'the ruler';
+    const k = e.creed ? creedName(p.seed, e.creed, e.belief ?? 'sky') : 'a new creed';
+    const x = code === 3 ? WORKS[e.count ?? 0] ?? 'great work' : code === 5 ? INVENTIONS[e.count ?? 0] ?? 'a new thing' : '';
+    const o = e.other !== undefined ? vname(e.other) : 'its neighbour';
+    const text = pick(opts, nextId + e.tick + e.villageId).replace(/%v/g, vname(e.villageId)).replace(/%o/g, o).replace(/%w/g, fig).replace(/%k/g, k).replace(/%x/g, x);
+    add({ id: nextId++, year, kind: 'body', tick: e.tick, event: text.charAt(0).toUpperCase() + text.slice(1), e, deed: tale.deed, ...(e.belief ? { belief: e.belief } : {}) });
+  };
   const reasonWorld = (en: Entry, sky: SkyState, m: SurfaceModifiers, voice: string): string | undefined => {
     const e = en.e;
     if (!e || !planet) return undefined;
@@ -276,6 +293,7 @@ export const factory: ChronicleFactory = ({ names }) => {
     const first = e.who !== undefined ? figName(seed, e.who).first : 'Someone';
     const alt = en.id % 2 === 0;
     const c = e.cause ?? 0, d = e.detail ?? 0;
+    if (e.kind === 'body') return bodyReason(d, c, e.count ?? 0, e.other ?? 0, d === 22 && !e.creed ? '' : k, souls(e.count ?? 0), alt);
     const gs = GRIEF[c] ?? GRIEF[0]!;
     const grief = gs[(en.id >> 1) % gs.length]!;
     switch (e.kind) {
@@ -333,7 +351,7 @@ export const factory: ChronicleFactory = ({ names }) => {
       for (const e of surface) {
         recentSurface.push({ kind: e.kind, tick: e.tick, year });
         if (LOUD_SURFACE.has(e.kind) && !entries.slice(-30).some((x) => x.kind === e.kind && year - x.year < 6)) {
-          entries.push({ id: nextId++, year, kind: e.kind, tick: e.tick, event: pick(EVENT[e.kind] ?? ['Something happened.'], nextId) });
+          entries.push({ id: nextId++, year, kind: e.kind, tick: e.tick, x: e.x, y: e.y, event: pick(EVENT[e.kind] ?? ['Something happened.'], nextId) });
         }
       }
       recentSurface = recentSurface.filter((s) => year - s.year <= 3).slice(-24);
@@ -354,9 +372,10 @@ export const factory: ChronicleFactory = ({ names }) => {
           const argWord = u.code === 8 ? BUILT[u.arg] ?? 'new work' : u.code === 11 ? GOD[BELIEFS[u.arg] ?? 'sky'] : '';
           const text = t.replace('%n', who.name).replace('%s', who.short).replace('%c', calling).replace('%p', prev).replace('%y', nth(u.age)).replace('%x', argWord)
             .replace('%v', who.village).replace('%v', who.village).replace('%o', u.arg ? vname(u.arg) : 'its neighbour').replace('%o', u.arg ? vname(u.arg) : 'its neighbour');
-          add({ id: nextId++, year, kind: e.kind, tick: e.tick, event: text, who, ...(e.belief ? { belief: e.belief } : {}) });
+          add({ id: nextId++, year, kind: e.kind, tick: e.tick, event: text, who, e, ...(e.belief ? { belief: e.belief } : {}) });
           continue;
         }
+        if (e.kind === 'body') { tellBody(e, year, p); continue; }
         if (tellWorld(e, year, p)) continue;
         // One line per village per kind per year is enough.
         if (entries.slice(-40).some((x) => x.kind === e.kind && x.year === year && x.event.includes(vname(e.villageId)))) continue;
@@ -477,13 +496,14 @@ export const factory: ChronicleFactory = ({ names }) => {
         entries[i] = { ...e, reason };
       }
     },
-    entries: (limit = 50) => entries.slice(-limit).reverse().map(({ kind: _k, belief: _b, tick: _t, who: _w, e: _e, ...e }) => e),
-    snapshot: () => entries.map(({ kind: _k, belief: _b, tick: _t, who: _w, e: _e, ...e }) => e),
+    entries: (limit = 50) => entries.slice(-limit).reverse().map(publish),
+    snapshot: () => entries.map(publish),
     restore: (list) => {
       heard = [];
       lastYear = -1;
       recentT = [];
-      entries = list.map((e) => ({ ...e, kind: 'light' as const, tick: 0 }));
+      // Lines saved before entries carried a kind wake as plain lines; a reason once set is kept.
+      entries = list.map((e) => ({ ...e, kind: (e.kind ?? 'light') as Kind, tick: 0, ...(e.reason === undefined ? { reason: '' } : {}) }));
       nextId = entries.reduce((m, e) => Math.max(m, e.id), 0) + 1;
     },
   };
