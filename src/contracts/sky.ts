@@ -37,7 +37,9 @@ export const NEUTRAL_MODIFIERS: SurfaceModifiers = Object.freeze({
  * The sky-to-surface rule table. Pure.
  * Invariants: under 40 rules; effects() sums the effects of every matching
  * rule and clamps each key to -100..100; explain() returns the `says` of each
- * matching rule in table order.
+ * matching rule in table order, except that rules which already hold for the
+ * world's natural sky (PlanetSpec.sky) with nothing hung come first, so the
+ * last line is about what was hung.
  */
 export interface SkyRules {
   readonly rules: readonly SkyRule[];
