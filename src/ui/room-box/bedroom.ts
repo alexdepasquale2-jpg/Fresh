@@ -5,6 +5,8 @@ import type { RoomDecor } from '@/contracts/render';
 import { el, button, lightPips, narration, label } from '@/ui/kit';
 import { names, sync, roomHour, weatherAt, sleepNow, roomState, totals, TROPHIES, mostTended, pick } from './store';
 import type { Totals } from './store';
+import { charOf, bondScore, bondWord } from './character';
+import type { BoxEntry } from '@/contracts/game';
 import './room-box.css';
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
@@ -31,6 +33,8 @@ export const bedroom: ScreenFactory = () => {
   let wake: () => void = () => {};
   let speak: () => void = () => {};
   let bubble: HTMLElement | null = null;
+  let bankEl: HTMLElement | null = null;
+  let bankShown = -1;
   const decor: Mutable<RoomDecor> = { hour: 12, weather: 0, trophies: [0, 0, 0, 0, 0], poster: null, asleep: false, moteMood: 0, focus: -1 };
   const start = { x: 195, y: 400 };
   return {
@@ -54,10 +58,20 @@ export const bedroom: ScreenFactory = () => {
       // What the room knows about the box.
       const { meta, fresh } = sync(c);
       let tot: Totals = totals(c);
+      /** The universe the player is closest to, if any bond has formed at all. */
+      const closest = (): { e: BoxEntry; bond: number } | null => {
+        let best: { e: BoxEntry; bond: number } | null = null;
+        for (const e of c.box.slots()) {
+          if (!e) continue;
+          const bond = bondScore(c, e.stats);
+          if (bond > 0 && (!best || bond > best.bond)) best = { e, bond };
+        }
+        return best;
+      };
       const dress = () => {
         tot = totals(c);
         decor.trophies = TROPHIES.map((t) => t.level(tot));
-        const best = mostTended(c);
+        const best = closest()?.e ?? mostTended(c);
         const spec = best ? c.universes.fromSerial(best.serialNumber) : null;
         decor.poster = spec ? { palette: spec.palette, seed: spec.serialNumber } : null;
         decor.hour = roomHour();
@@ -73,6 +87,7 @@ export const bedroom: ScreenFactory = () => {
       const shelf = el('div', { class: 'rb-shelf', 'data-id': 'shelf-card', hidden: true });
       const use = button('Use', () => act(), { id: 'use' });
       use.hidden = true;
+      bankEl = typeof c.light.view().bank === 'number' ? el('span', { class: 'k-label rb-bank', 'data-id': 'light-bank' }, '') : null;
       bubble = el('p', { class: 'rb-say', 'data-id': 'mote-say', 'aria-live': 'polite', hidden: true });
       let action: (() => void) | null = null;
       const act = () => action?.();
@@ -123,7 +138,16 @@ export const bedroom: ScreenFactory = () => {
         // The night passes: the room clock moves on, and a little of every universe's time with it.
         sleepNow(7);
         const ticks = c.clock.advance(60000);
-        if (ticks > 0) { c.pulse().step(ticks, []); c.sim.step(ticks); }
+        if (ticks > 0) {
+          c.pulse().step(ticks, []);
+          c.sim.step(ticks);
+          // The night was spent on the world that is open in the sim, so it counts as time with its universe.
+          const u = c.selection.universe;
+          if (u && c.sim.latest() && c.box.recordTicks && c.box.slotOf) {
+            const at = c.box.slotOf(u.serialNumber);
+            if (at >= 0) c.box.recordTicks(at, ticks);
+          }
+        }
         c.audio.sfx('fold', 0.4);
         c.persist();
       };
@@ -154,15 +178,24 @@ export const bedroom: ScreenFactory = () => {
           case SPOT.shelf: {
             dress();
             const got = decor.trophies.filter((l) => l > 0).length;
-            show(got === 0 ? 'A bare shelf. It is waiting for what you do.' : got === 5 ? 'The shelf is full. Each thing on it is something you did.' : 'Your shelf. Each thing on it is something you did.');
+            const rarest = c.box.slots().reduce<{ name: string; rarity: string; tier: number } | null>((m, e) => {
+              if (!e) return m;
+              const sp = c.universes.fromSerial(e.serialNumber);
+              const ch = charOf(c, sp, e.stats);
+              return ch.tier >= 2 && (!m || ch.tier > m.tier) ? { name: names.of(sp), rarity: ch.rarity, tier: ch.tier } : m;
+            }, null);
+            const base = got === 0 ? 'A bare shelf. It is waiting for what you do.' : got === 5 ? 'The shelf is full. Each thing on it is something you did.' : 'Your shelf. Each thing on it is something you did.';
+            show(rarest ? `${base} The rarest thing you hold is ${rarest.name}: ${rarest.rarity}.` : base);
             const vals: Record<string, number> = { depth: tot.depth, tended: tot.tended, battles: tot.battles, held: tot.held, light: tot.light };
             shelf.replaceChildren(...TROPHIES.map((t, i) => el('div', { class: `rb-trophy lv${decor.trophies[i] ?? 0}`, 'data-id': `trophy-${t.key}`, 'data-level': decor.trophies[i] ?? 0, 'data-value': vals[t.key] ?? 0 }, el('b', {}, String(vals[t.key] ?? 0)), el('span', {}, t.label))));
             shelf.hidden = false;
             break;
           }
           case SPOT.poster: {
-            const best = mostTended(c);
-            show(best ? `${names.of(c.universes.fromSerial(best.serialNumber))}, in its own colours. You have tended it most.` : 'A bare sheet of paper. Tend a world and it will take that universe\'s colours.');
+            const near = closest();
+            const best = near?.e ?? mostTended(c);
+            const word = near ? bondWord(c, near.bond) : '';
+            show(best ? `${names.of(c.universes.fromSerial(best.serialNumber))}, in its own colours. ${near ? `Of all of them it is the one you are closest to${word ? `: ${word}` : ''}.` : 'You have tended it most.'}` : 'A bare sheet of paper. Tend a world and it will take that universe\'s colours.');
             break;
           }
           default:
@@ -175,16 +208,26 @@ export const bedroom: ScreenFactory = () => {
       const now = Date.now();
       if (fresh.length) lines.push({ text: fresh.length > 1 ? 'There are new ones in the box. I can hear them.' : `Something new is in the box. ${names.of(c.universes.fromSerial(fresh[0]!))}. I can hear it.`, mood: 2 });
       if (c.light.view().pips <= 2) lines.push({ text: c.light.view().pips <= 0 ? 'I am almost out. Their glow would feed me.' : 'I am dim. Their glow would feed me.', mood: 0 });
-      let stale: { name: string; days: number } | null = null, glad: { name: string; souls: number; p: number } | null = null;
+      let stale: { name: string; days: number; rarity: string; tier: number } | null = null, glad: { name: string; souls: number; p: number } | null = null;
       for (const e of c.box.slots()) {
         if (!e) continue;
         const name = names.of(c.universes.fromSerial(e.serialNumber));
         const days = Math.floor((now - (meta.last[String(e.serialNumber)] ?? now)) / DAY_MS);
-        if (days >= 1 && (!stale || days > stale.days)) stale = { name, days };
+        const ch = charOf(c, c.universes.fromSerial(e.serialNumber), e.stats);
+        // A rare one left alone is the one Mote minds most.
+        if (days >= 1 && (!stale || ch.tier > stale.tier || (ch.tier === stale.tier && days > stale.days))) stale = { name, days, rarity: ch.rarity, tier: ch.tier };
         const p = (e.stats.prosperity ?? 0) + Math.min(40, (e.stats.souls ?? 0) / 5);
         if ((e.stats.souls ?? 0) > 0 && (!glad || p > glad.p)) glad = { name, souls: e.stats.souls ?? 0, p };
       }
-      if (stale) lines.push({ text: `No one has looked in on ${stale.name} for ${stale.days === 1 ? 'a day' : `${stale.days} days`}.`, mood: 1 });
+      if (stale) lines.push({ text: stale.tier >= 2 ? `The ${stale.rarity} one, ${stale.name}, has not been opened in ${stale.days === 1 ? 'a day' : `${stale.days} days`}.` : `No one has looked in on ${stale.name} for ${stale.days === 1 ? 'a day' : `${stale.days} days`}.`, mood: 1 });
+      const near = closest();
+      if (near) {
+        const word = bondWord(c, near.bond);
+        const nm = names.of(c.universes.fromSerial(near.e.serialNumber));
+        lines.push({ text: near.bond >= 55 ? `${nm} knows your hand now. It turns toward the lid when you come in.` : near.bond >= 10 ? `${nm} is ${word || 'known'} to you. The others are still strangers.` : `${nm} has begun to know you. Only begun.`, mood: 1 });
+      }
+      const bank = c.light.view().bank;
+      if (typeof bank === 'number' && bank >= 500) lines.push({ text: 'I am keeping some glow back for later. It is in the bank until there is room.', mood: 0 });
       if (glad) lines.push({ text: (glad.p >= 50 ? `${glad.name} is doing well. ${glad.souls} souls, and glad.` : `${glad.souls} souls in ${glad.name}. They are getting by.`), mood: 1 });
       if (tot.tended === 0) lines.push({ text: 'You have not changed a sky yet. They are waiting, though they do not know it.', mood: 1 });
       lines.push({ text: decor.hour >= 21 || decor.hour < 5 ? 'It is late. The box does not sleep.' : decor.hour < 12 ? 'Morning. In there, they have had whole ages since.' : 'The light in here is yours. The light in there is theirs.', mood: 0 });
@@ -223,7 +266,7 @@ export const bedroom: ScreenFactory = () => {
         }
       });
       root.append(
-        el('header', { class: 'row rb-head' }, pips.el, sound, label(`BOX ${String(c.box.count()).padStart(2, '0')}/25`)),
+        el('header', { class: 'row rb-head' }, el('span', { class: 'rb-pipwrap' }, pips.el, bankEl), sound, label(`BOX ${String(c.box.count()).padStart(2, '0')}/25`)),
         floor,
         bubble,
         el('div', { class: 'rb-info' }, line, shelf),
@@ -235,7 +278,13 @@ export const bedroom: ScreenFactory = () => {
     frame: (dt) => {
       if (!ctx) return;
       const step = Math.min(dt, 250);
-      pips?.update(ctx.light.view().pips);
+      const lv = ctx.light.view();
+      pips?.update(lv.pips);
+      if (bankEl && typeof lv.bank === 'number' && lv.bank !== bankShown) {
+        bankShown = lv.bank;
+        bankEl.textContent = `BANK ${(lv.bank / 1000).toFixed(1)} pips`;
+        bankEl.classList.toggle('on', lv.bank > 0);
+      }
       const room = ctx.renderers.room;
       clockWait -= step;
       if (clockWait <= 0) { clockWait = 5000; decor.hour = roomHour(); decor.weather = weatherAt(decor.hour); }
@@ -253,6 +302,6 @@ export const bedroom: ScreenFactory = () => {
         if (bx !== lastBx || by !== lastBy) { lastBx = bx; lastBy = by; bubble.style.left = `${bx}px`; bubble.style.top = `${by}px`; }
       }
     },
-    unmount: () => { ctx = null; host = null; bubble = null; },
+    unmount: () => { ctx = null; host = null; bubble = null; bankEl = null; bankShown = -1; },
   };
 };
