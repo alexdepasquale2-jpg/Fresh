@@ -74,7 +74,11 @@ export interface PlanetRenderView {
   readonly modifiers: import('./sky').SurfaceModifiers;
   readonly pulse: Fx;
   /** Camera: centre in grid cells and zoom (1 shows the whole world). Above ~1.5 the renderer draws sub-cell detail. */
-  readonly view?: { cx: number; cy: number; zoom: number };
+  readonly view?: {
+    cx: number; cy: number; zoom: number;
+    /** First person: stand at column x, depth z (0 is the slice itself), looking along yaw (0 = +x) and pitch. */
+    fp?: { x: number; z: number; yaw: number; pitch: number; bob?: number } | null;
+  };
   /** CSS px rect to draw the surface into. */
   readonly rect: { x: number; y: number; w: number; h: number };
 }

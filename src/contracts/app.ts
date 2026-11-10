@@ -83,6 +83,7 @@ export interface AppContext {
   };
   readonly selection: Selection;
   readonly battles: Battles;
+  readonly merger: import('./merge').Merger;
   /** The battle in progress, kept while you go into a universe to change it. */
   battle: BattleState | null;
   readonly rivalsBeaten: Set<number>;

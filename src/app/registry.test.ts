@@ -11,8 +11,8 @@ const atlas = R['atlas/lawsets']().atlas();
 const names = R['gen/names']();
 const universes = R['gen/universe']({ atlas, names });
 
-describe('registry wires 30 units', () => {
-  it('has 30 entries', () => expect(Object.keys(R)).toHaveLength(30));
+describe('registry wires 31 units', () => {
+  it('has 31 entries', () => expect(Object.keys(R)).toHaveLength(31));
 });
 
 describe('contract smoke', () => {

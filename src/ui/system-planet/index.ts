@@ -5,7 +5,7 @@ import type { SkyPieceKind, CosmicEvent } from '@/contracts/sky';
 import { seedToHex } from '@/core/hash';
 import { SKY_PIECE_KINDS } from '@/contracts/sky';
 import { child } from '@/core/hash';
-import { el, backChip, label, button, skyPieceTile, stat, narration, tag } from '@/ui/kit';
+import { el, backChip, label, button, skyPieceTile, stat, narration, tag, burst, shake, flash } from '@/ui/kit';
 import type { Tool } from '@/contracts/sim';
 import { GRID_W, GRID_H } from '@/contracts/sim';
 
@@ -87,6 +87,7 @@ const system: ScreenFactory = () => {
             drag = null;
             if (d.overOrbit < 0) return;
             const res = c.sky.place(d.kind, sys, d.overOrbit);
+            c.audio.sfx(res.ok ? 'place' : 'deny');
             if (res.ok) {
               c.selection.planetIndex = d.overOrbit;
               c.bus.emit('sky:changed', { planetKey: res.sky.planetKey });
@@ -108,6 +109,8 @@ const system: ScreenFactory = () => {
         const o = c.renderers.system.orbitAt(at.x, at.y);
         if (cosmic === 'flare') {
           flare = 1;
+          c.audio.sfx('flare');
+          flash(root);
           for (let i = 0; i < sys.orbits.length; i++) c.sky.queue(keyOf(i), 'flare');
           note.textContent = COSMIC_SAYS.flare!;
           c.persist();
@@ -118,10 +121,13 @@ const system: ScreenFactory = () => {
         c.selection.planetIndex = o;
         if (cosmic === 'pull' || cosmic === 'push') {
           const sky = c.sky.nudge(keyOf(o), cosmic === 'pull' ? -1 : 1);
+          c.audio.sfx(cosmic);
           note.textContent = (sky.drift ?? 0) === (cosmic === 'pull' ? -3 : 3) ? 'It will not go any further.' : COSMIC_SAYS[cosmic]!;
           c.bus.emit('sky:changed', { planetKey: keyOf(o) });
         } else if (cosmic !== 'pieces') {
           c.sky.queue(keyOf(o), cosmic);
+          c.audio.sfx(cosmic);
+          burst(root, at.x - (root.getBoundingClientRect().left - c.gl.canvas.getBoundingClientRect().left), at.y, 10, true);
           note.textContent = `${COSMIC_SAYS[cosmic]} Watch the surface to see it land.`;
         }
         c.persist();
@@ -172,6 +178,7 @@ const TOOLS: { mode: Mode; label: string; r: number; paint: boolean; hint: strin
   { mode: 'whisper', label: 'Whisper', r: 0, paint: false, hint: 'Speak to the nearest village. They will look up.' },
   { mode: 'sow', label: 'Sow', r: 0, paint: false, hint: 'Set a new people down.' },
   { mode: 'smite', label: 'Smite', r: 0, paint: false, hint: 'Death from nowhere. Everyone will fear you.' },
+  { mode: 'merge', label: 'Merge', r: 0, paint: false, hint: 'Tap between two villages. They become one new people, with a new faith if theirs differed.' },
   { mode: 'water', label: 'Water', r: 4, paint: true, hint: 'Pour water.' },
   { mode: 'sand', label: 'Sand', r: 4, paint: true, hint: 'Pour sand.' },
   { mode: 'stone', label: 'Stone', r: 3, paint: true, hint: 'Raise stone.' },
@@ -187,6 +194,7 @@ const TOOLS: { mode: Mode; label: string; r: number; paint: boolean; hint: strin
   { mode: 'quake', label: 'Quake', r: 8, paint: false, hint: 'Split the ground.' },
 ];
 
+const BIG = new Set<string>(['meteor', 'quake', 'lightning', 'smite', 'merge']);
 const SEASON = ['spring', 'summer', 'autumn', 'winter'];
 const tempWord = (t: number) => (t < 96 ? 'freezing' : t < 112 ? 'cold' : t < 145 ? 'mild' : t < 185 ? 'warm' : t < 215 ? 'hot' : 'burning');
 const timeWord = (d: number) => (d < 200 || d > 800 ? 'night' : d < 300 ? 'dawn' : d < 700 ? 'day' : 'dusk');
@@ -200,9 +208,12 @@ const planet: ScreenFactory = () => {
     hint: HTMLElement; body: HTMLElement;
   } | null = null;
   let mode: (typeof TOOLS)[number] = TOOLS[0]!;
-  const view = { cx: GRID_W / 2, cy: GRID_H / 2, zoom: 1 };
+  const view: { cx: number; cy: number; zoom: number; fp: { x: number; z: number; yaw: number; pitch: number; bob: number } | null } = { cx: GRID_W / 2, cy: GRID_H / 2, zoom: 1, fp: null };
+  let walking = false;
+  let stride = 0;
   const zoomLabel = el('span', { class: 'k-label zoom-label' }, '1×');
   let lastPaint = 0;
+  let lastBolt = 9999;
   let lastTick = -1;
   let planetSpec: import('@/contracts/system').PlanetSpec | null = null;
   return {
@@ -235,13 +246,13 @@ const planet: ScreenFactory = () => {
       mode = TOOLS[0]!;
       const slotEl = ui.slot;
       // Touch the world.
-      view.cx = GRID_W / 2; view.cy = GRID_H / 2; view.zoom = 1; zoomLabel.textContent = '1×';
+      view.cx = GRID_W / 2; view.cy = GRID_H / 2; view.zoom = 1; view.fp = null; walking = false; zoomLabel.textContent = '1×';
       const clampView = () => {
-        view.zoom = Math.max(1, Math.min(10, view.zoom));
+        view.zoom = Math.max(1, Math.min(6, view.zoom));
         const hx = GRID_W / (2 * view.zoom), hy = GRID_H / (2 * view.zoom);
         view.cx = Math.max(hx, Math.min(GRID_W - hx, view.cx));
         view.cy = Math.max(hy, Math.min(GRID_H - hy, view.cy));
-        zoomLabel.textContent = view.zoom < 1.05 ? '1×' : `${view.zoom.toFixed(1)}×`;
+        zoomLabel.textContent = view.fp ? 'WALK' : view.zoom < 1.05 ? '1×' : `${view.zoom.toFixed(1)}×`;
       };
       /** Screen point (px inside the slot) to world cell, through the camera. */
       const toGrid = (px: number, py: number) => {
@@ -251,8 +262,24 @@ const planet: ScreenFactory = () => {
       /** Zoom by a factor, keeping the world point under (px, py) fixed. */
       const zoomAt = (factor: number, px: number, py: number) => {
         const r = slotEl.getBoundingClientRect();
+        if (view.fp) {
+          // Zooming out of first person rises back to the map.
+          if (factor < 0.97) { view.cx = view.fp.x; view.zoom = 4.5; view.fp = null; walking = false; walkBtn.hidden = true; c.audio.sfx('nav'); clampView(); }
+          return;
+        }
+        if (factor > 1.03 && view.zoom >= 5.9) {
+          // Zooming in past the map drops you onto the ground, in first person.
+          const g = toGrid(px, py);
+          view.fp = { x: Math.max(3, Math.min(GRID_W - 4, g.gx)), z: 5, yaw: g.gx > GRID_W / 2 ? Math.PI : 0, pitch: -0.05, bob: 0 };
+          walkBtn.hidden = false;
+          ui!.hint.textContent = 'You are standing on their world. Drag to look, hold WALK to move, tap to use a tool where you look. − rises back up.';
+          c.audio.sfx('land');
+          clampView();
+          return;
+        }
         const before = toGrid(px, py);
-        view.zoom = Math.max(1, Math.min(10, view.zoom * factor));
+        view.zoom = Math.max(1, Math.min(6, view.zoom * factor));
+        c.audio.sfx('zoom', view.zoom / 6);
         view.cx = before.gx - (px / r.width - 0.5) * (GRID_W / view.zoom);
         view.cy = before.gy - (py / r.height - 0.5) * (GRID_H / view.zoom);
         clampView();
@@ -261,6 +288,14 @@ const planet: ScreenFactory = () => {
         const r = slotEl.getBoundingClientRect();
         if (!c.sim.latest()) return null;
         const px = e.clientX - r.left, py = e.clientY - r.top;
+        if (view.fp) {
+          const f = c.sim.latest()!;
+          const reach = 10 + (0.5 - py / r.height) * 14;
+          const gx = Math.max(1, Math.min(GRID_W - 2, Math.round(view.fp.x + Math.cos(view.fp.yaw + (px / r.width - 0.5) * 1.2) * reach)));
+          let gy = 0;
+          while (gy < GRID_H - 1 && (f.grid.cells[gy * GRID_W + gx] === 0 || f.grid.cells[gy * GRID_W + gx] === 5)) gy++;
+          return { gx, gy: gy - 1, px, py };
+        }
         return { ...toGrid(px, py), px, py };
       };
       const ripple = (px: number, py: number, big: boolean) => {
@@ -274,7 +309,7 @@ const planet: ScreenFactory = () => {
         if (mode.mode === 'body') {
           if (!first) return;
           const f = c.sim.latest();
-          if (f?.civ.avatar) c.sim.walk(at.gx); else c.sim.incarnate(at.gx);
+          if (f?.civ.avatar) c.sim.walk(at.gx); else { c.sim.incarnate(at.gx); c.audio.sfx('body'); burst(slotEl, at.px, at.py, 12, true); }
           ripple(at.px, at.py, false);
           return;
         }
@@ -284,6 +319,9 @@ const planet: ScreenFactory = () => {
         lastPaint = now;
         c.sim.tool(mode.mode, at.gx, at.gy, mode.r);
         ripple(at.px, at.py, !mode.paint);
+        c.audio.sfx(mode.mode);
+        if (!mode.paint) burst(slotEl, at.px, at.py, 10, BIG.has(mode.mode));
+        if (BIG.has(mode.mode)) { shake(slotEl, true); if (mode.mode === 'lightning' || mode.mode === 'smite') flash(slotEl); }
       };
       // One finger: paint, tap a tool, or (in Watch) drag to pan. Two fingers: pinch to zoom and pan.
       const pts = new Map<number, { x: number; y: number }>();
@@ -296,7 +334,7 @@ const planet: ScreenFactory = () => {
         slotEl.setPointerCapture(e.pointerId);
         pts.set(e.pointerId, local(e));
         if (pts.size === 2) { pinched = true; pinch = two(); }
-        else if (pts.size === 1) { pinched = false; moved = 0; if (mode.paint) use(e, true); }
+        else if (pts.size === 1) { pinched = false; moved = 0; if (mode.paint && !view.fp) use(e, true); }
       });
       slotEl.addEventListener('pointermove', (e) => {
         const prev = pts.get(e.pointerId);
@@ -311,6 +349,10 @@ const planet: ScreenFactory = () => {
           view.cy -= ((t.my - pinch.my) / r.height) * (GRID_H / view.zoom);
           clampView();
           pinch = t;
+        } else if (!pinched && view.fp) {
+          moved += Math.abs(now.x - prev.x) + Math.abs(now.y - prev.y);
+          view.fp.yaw += (now.x - prev.x) * 0.007;
+          view.fp.pitch = Math.max(-0.7, Math.min(0.7, view.fp.pitch - (now.y - prev.y) * 0.005));
         } else if (!pinched) {
           moved += Math.abs(now.x - prev.x) + Math.abs(now.y - prev.y);
           if (mode.mode === 'watch') {
@@ -322,7 +364,7 @@ const planet: ScreenFactory = () => {
       });
       const stop = (e: PointerEvent) => {
         // Strike tools and Body fire on release, so a pinch never throws a meteor by accident.
-        if (e.type === 'pointerup' && pts.size === 1 && !pinched && !mode.paint && moved < 14) use(e, true);
+        if (e.type === 'pointerup' && pts.size === 1 && !pinched && (!mode.paint || view.fp) && moved < 14) use(e, true);
         pts.delete(e.pointerId);
       };
       slotEl.addEventListener('pointerup', stop);
@@ -334,6 +376,13 @@ const planet: ScreenFactory = () => {
         b.addEventListener('click', () => { const r = slotEl.getBoundingClientRect(); zoomAt(factor, r.width / 2, r.height / 2); });
         return b;
       };
+      const walkBtn = el('button', { class: 'k-btn walk-btn', type: 'button', 'data-id': 'walk', hidden: true }, 'WALK');
+      walkBtn.addEventListener('pointerdown', (e) => { e.stopPropagation(); walkBtn.setPointerCapture(e.pointerId); walking = true; });
+      const walkStop = (e: Event) => { e.stopPropagation(); walking = false; };
+      walkBtn.addEventListener('pointerup', walkStop);
+      walkBtn.addEventListener('pointercancel', walkStop);
+      walkBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+      slotEl.append(walkBtn);
       slotEl.append(el('div', { class: 'zoom-ctl' }, zoomBtn('−', 1 / 1.6, 'zoom-out'), zoomLabel, zoomBtn('+', 1.6, 'zoom-in')));
       const palette = el('div', { class: 'tools' }, ...TOOLS.map((t) => {
         const b = el('button', { class: 'k-tag tool', type: 'button', 'aria-pressed': String(t === mode), 'data-id': `tool-${t.mode}` }, t.label);
@@ -373,6 +422,17 @@ const planet: ScreenFactory = () => {
       if (!ctx?.selection.universe || !ui || !planetSpec) return;
       const f = ctx.sim.latest();
       if (!f) return;
+      if (view.fp) {
+        const p = view.fp;
+        if (walking) {
+          const sp = (dt / 1000) * 9;
+          p.x = Math.max(2, Math.min(GRID_W - 3, p.x + Math.cos(p.yaw) * sp));
+          p.z = Math.max(-70, Math.min(70, p.z + Math.sin(p.yaw) * sp));
+          stride += dt;
+          if (stride > 330) { stride = 0; ctx.audio.sfx('step'); }
+          p.bob = Math.sin(stride / 330 * Math.PI) * 0.12;
+        } else p.bob *= 0.8;
+      }
       const cr = ctx.gl.canvas.getBoundingClientRect();
       const sr = ui.slot.getBoundingClientRect();
       const sky = ctx.sky.skyOf(planetSpec);
@@ -385,6 +445,8 @@ const planet: ScreenFactory = () => {
       if (f.tick === lastTick) return;
       lastTick = f.tick;
       const e = f.env;
+      if (e.lightning < lastBolt) { ctx.audio.sfx('lightning'); flash(ui.slot); }
+      lastBolt = e.lightning;
       ui.souls.update(f.civ.souls);
       ui.villages.update(f.civ.villages.length);
       ui.glow.update(f.civ.glowPerMinute);

@@ -81,3 +81,27 @@ Every touch is an omen to the inhabitants, and it moves their faith and their fe
 The planet surface zooms from 1x to 10x: pinch, mouse wheel, or the + and − buttons. In Watch mode, drag to pan. Tools work at any zoom, and strike tools fire on release so a pinch never triggers one.
 
 Above about 1.5x the renderer draws detail smaller than a sim cell: rounded slopes and droplets, 4x4 grain per cell, rock cracks, water ripples, swaying moss blades, people with heads and legs, brick walls and framed windows. The sim grid itself stays 236x200.
+
+## First person
+
+Zooming in past 6x on the planet drops you onto the ground in first person. The same sim cells are drawn in 3D:
+- **Terrain:** each column's surface gives the height and material. The slice is extruded into depth as a valley that bends and rises away from it.
+- **Things on it:** houses (brick walls, gable roofs, windows lit at night), towers, bonfires and people stand where the sim has them. Water reflects the sky.
+- **Sky and light:** the sun, moons, rings, stars, clouds, rain and snow match the 2D view. The sun casts soft shadows, and village fires light the ground at night.
+- **Controls:** drag to look and hold WALK to move. Tap to use the selected tool where you look. The − button rises back to the map.
+
+It is ray-marched in one shader (`render/planet/first-person.ts`) into a reduced-resolution target, then scaled up.
+
+## Merging
+
+Any two things merge, and the result is always something new (`game/merge`, pure and seeded):
+- **Universe + universe:** a child universe that takes after one parent's laws. Both parents are spent, and their stats combine.
+- **Universe + sky piece:** the universe is reborn under that piece's sign (comet: cold fire, moon: salt tide, and so on).
+- **Sky piece + sky piece:** two of a third kind, from a 21-entry table.
+- **Village + village:** the Merge tool on a planet joins the two villages nearest your touch into one new people. If their faiths differed, the new people take a third faith.
+
+Merge universes and pieces from the MERGE chip in the Box.
+
+## Effects
+
+`audio.sfx(name)` plays a synthesised effect for every tool, cosmic act, dive fold, catch, landing, battle hit, heal, win, loss, merge, footstep and button. `ui/kit` adds spark bursts, screen shake and flashes.

@@ -111,7 +111,7 @@ export interface Village {
 }
 export type CivEventKind =
   | 'found' | 'grow' | 'split' | 'die' | 'migrate' | 'light'
-  | 'famine' | 'tech' | 'convert' | 'feud' | 'festival' | 'burn' | 'flooded' | 'frozen' | 'launch'
+  | 'famine' | 'tech' | 'convert' | 'feud' | 'festival' | 'burn' | 'flooded' | 'frozen' | 'launch' | 'merged'
   | 'omen' | 'stranger' | 'attack' | 'slain' | 'worship' | 'enlightened' | 'smitten' | 'blessed';
 export interface CivEvent {
   readonly kind: CivEventKind;
@@ -156,10 +156,10 @@ export interface Avatar {
  * villages (Civ.apply). Every use is seen by the inhabitants as an omen.
  */
 export type SurfaceTool = 'water' | 'sand' | 'stone' | 'seed' | 'fire' | 'freeze' | 'meteor' | 'rain' | 'quake' | 'lightning' | 'heat' | 'cold' | 'erase';
-export type SoulTool = 'bless' | 'smite' | 'sow' | 'whisper';
+export type SoulTool = 'bless' | 'smite' | 'sow' | 'whisper' | 'merge';
 export type Tool = SurfaceTool | SoulTool;
 export const SURFACE_TOOLS: readonly SurfaceTool[] = ['water', 'sand', 'stone', 'seed', 'fire', 'freeze', 'meteor', 'rain', 'quake', 'lightning', 'heat', 'cold', 'erase'];
-export const SOUL_TOOLS: readonly SoulTool[] = ['bless', 'smite', 'sow', 'whisper'];
+export const SOUL_TOOLS: readonly SoulTool[] = ['bless', 'smite', 'sow', 'whisper', 'merge'];
 /** Villages on the grid. Deterministic like SurfaceSim. Reads the grid, never writes it. */
 export interface Civ {
   init(planet: PlanetSpec, surface: PlanetSurface): void;

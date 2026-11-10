@@ -55,6 +55,10 @@ export interface Box {
   recordDepth(slot: number, depth: number): void;
   recordTended(slot: number): void;
   recordGlow(slot: number, light: number): void;
+  /** Empty a slot (used by merging). */
+  remove(slot: number): void;
+  /** Replace a slot's stats (used by merging). */
+  setStats(slot: number, stats: UniverseStats): void;
   recordLife(slot: number, life: { souls: number; era: number; belief: string; enlightenment: number }): void;
   snapshot(): (BoxEntry | null)[];
   restore(slots: readonly (BoxEntry | null)[]): void;

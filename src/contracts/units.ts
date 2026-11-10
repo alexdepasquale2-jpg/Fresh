@@ -14,6 +14,7 @@ import type { ScreenFactory } from './app';
 import type { SaveStoreFactory, AudioFactory, InputFactory, EdgeVoiceFactory, PerfFactory } from './platform';
 import type { Atlas, LawSet } from './atlas';
 import type { BattlesFactory } from './battle';
+import type { MergerFactory } from './merge';
 
 export interface TimebaseFactory {
   clock: ClockFactory;
@@ -60,6 +61,7 @@ export interface UnitFactories {
   'platform/edge-voice': EdgeVoiceFactory;
   'platform/perf': PerfFactory;
   'game/battle': BattlesFactory;
+  'game/merge': MergerFactory;
   'ui/battle': () => { outside: ScreenFactory; battle: ScreenFactory };
 }
 

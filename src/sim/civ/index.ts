@@ -406,6 +406,22 @@ export const factory: CivFactory = () => {
         for (const v of vs) v.enl = Math.max(0, enl(v) - 15);
       } else if (tool === 'sow') {
         pending.unshift({ x, belief: 'none', tech: 0 });
+      } else if (tool === 'merge') {
+        // The two villages nearest the touch become one new people.
+        const two = [...vs].sort((p, q) => Math.abs(p.x - x) - Math.abs(q.x - x)).slice(0, 2);
+        if (two.length === 2) {
+          const [a, b] = two as [V, V];
+          const mx = Math.round((a.x * a.souls + b.x * b.souls) / Math.max(1, a.souls + b.souls));
+          // Two faiths that meet make a third.
+          const others = BELIEFS.filter((k) => k !== 'none' && k !== a.belief && k !== b.belief);
+          const belief = a.belief === b.belief ? a.belief : others[(a.id * 7 + b.id * 3) % others.length]!;
+          const v: V = { id: nextId++, x: mx, y: ground.length ? ground[mx]! - 1 : a.y, souls: a.souls + b.souls, name: `#${nextId - 1}`, tech: Math.min(5, Math.max(a.tech, b.tech) + (a.tech === b.tech ? 1 : 0)), belief, food: Math.min(999, a.food + b.food), mood: 40, age: 0, scores: BELIEFS.map((k) => (k === belief ? 80 : 0)), progress: 0, wet: 0, starving: false, cold: false, lastBurn: -9999, lastLaunch: -99999, enl: Math.min(100, Math.max(enl(a), enl(b)) + 10) };
+          vs = vs.filter((o) => o !== a && o !== b);
+          vs.push(v);
+          era = Math.max(era, v.tech);
+          for (const p of people) if (p.home === a.id || p.home === b.id) { p.home = v.id; p.wait = 0; p.tx = v.x; }
+          pendingEv.push({ kind: 'merged', tick, villageId: v.id, x: v.x, y: v.y, belief, detail: a.id });
+        }
       } else if (tool === 'whisper') {
         const v = near(40).sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0];
         if (v) { v.belief = 'sky'; v.scores[BELIEFS.indexOf('sky')] = 80; v.enl = Math.min(100, enl(v) + 6); push('omen', v, 100); }

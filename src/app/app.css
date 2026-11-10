@@ -72,3 +72,8 @@
 .zoom-ctl { position: absolute; right: 6px; bottom: 6px; display: flex; align-items: center; gap: 4px; }
 .zoom-ctl .zoom-btn { min-width: 40px; min-height: 40px; padding: 0; font-size: 20px; background: color-mix(in srgb, var(--bg) 75%, transparent); }
 .zoom-ctl .zoom-label { min-width: 34px; text-align: center; color: var(--ink-bright); text-shadow: 0 0 4px var(--bg); }
+.k-tile.picked, .k-tag.swap[aria-pressed='true'] { border-color: var(--glow); color: var(--glow); }
+.screen[data-screen='box'] { overflow-y: auto; position: relative; }
+.screen { position: relative; }
+.walk-btn { position: absolute; left: 6px; bottom: 6px; min-height: 48px; min-width: 76px; background: color-mix(in srgb, var(--bg) 70%, transparent); touch-action: none; -webkit-user-select: none; user-select: none; }
+[hidden] { display: none !important; }

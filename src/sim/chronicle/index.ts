@@ -24,6 +24,7 @@ const EVENT: Partial<Record<Kind, string[]>> = {
   tech: ['%v learned %t.', '%v came into the age of %t.'],
   launch: ['From %v a small light rose and did not come down.', '%v sent a lamp into the sky.'],
   light: ['%v sang toward the sky.'],
+  merged: ['Two peoples became one and called themselves %v.', 'The walls came down between them. Now there is only %v.'],
   stranger: ['A stranger walked near %v. They kept their distance.', 'In %v they watched a shining stranger and did not know what to do.'],
   attack: ['A stranger came to %v and they met it with stones.', 'The people of %v drove at a shining stranger with spears.'],
   slain: ['%v killed the stranger who walked among them.', 'In %v they struck down the thing that came from the sky.'],
@@ -141,6 +142,7 @@ export const factory: ChronicleFactory = ({ names }) => {
             reason = prior ? `After ${CAUSE[prior.kind]}, it seemed the only answer.` : says[0] ? `They watched the sky. ${says[0]}` : 'No one remembers why.';
             break;
           case 'feud': reason = 'Each said the other prayed wrong.'; break;
+          case 'merged': reason = 'A hand they could not see pressed them together.'; break;
           case 'attack': case 'slain': reason = `${voice} it was a demon wearing light.`; break;
           case 'stranger': reason = 'Some wanted to kneel. Some wanted to run.'; break;
           case 'worship': case 'enlightened': reason = 'They had been watching your light for a long time.'; break;

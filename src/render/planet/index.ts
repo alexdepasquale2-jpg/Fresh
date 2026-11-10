@@ -7,6 +7,7 @@
 import type { PlanetRendererFactory, GlCore } from '@/contracts/render';
 import { ENGINE, FIELD, ROLE } from '@/contracts/sim';
 import { FULLSCREEN_VS } from '@/render/gl';
+import { createFirstPerson } from './first-person';
 import { FX_ONE } from '@/core/fixed';
 
 const O = { person: 1, wall: 2, roof: 3, window: 4, smoke: 5, rain: 6, snow: 7, lamp: 8, bonfire: 9, tower: 10, launch: 11, priest: 12, travel: 13, avatar: 14, attack: 15 } as const;
@@ -203,6 +204,7 @@ export const factory: PlanetRendererFactory = () => {
   let lastTick = -1;
   let time = 0;
   let flash = 0;
+  let fp: ReturnType<typeof createFirstPerson> | null = null;
   let lastLightning = 9999;
 
   const makeTex = (w: number, h: number, internal: number, format: number, linear: boolean) => {
@@ -228,6 +230,7 @@ export const factory: PlanetRendererFactory = () => {
     for (const k of ['u_res', 'u_rect', 'u_grid', 'u_view', 'u_cells', 'u_over', 'u_mat', 'u_top', 'u_temp', 'u_hum', 'u_pal', 'u_day', 'u_season', 'u_time', 'u_pulse', 'u_nl', 'u_dim', 'u_warm', 'u_dust', 'u_wind', 'u_rain', 'u_flash', 'u_moons', 'u_suns', 'u_rings', 'u_comet', 'u_belt', 'u_vill', 'u_nvill']) loc[k] = gl.getUniformLocation(prog, k);
     W = H = 0;
     matKey = '';
+    fp = null;
   };
   const put = (x: number, y: number, code: number) => {
     if (x >= 0 && y >= 0 && x < W && y < H) over[y * W + x] = code;
@@ -290,6 +293,11 @@ export const factory: PlanetRendererFactory = () => {
       lastLightning = env.lightning;
       flash = Math.max(0, flash - dt / 250);
 
+      if (v.view?.fp) {
+        fp ??= createFirstPerson(core);
+        fp.draw({ view: v, W, H, top, matTex: tex.mat!, palTex: tex.pal!, time, flash });
+        return;
+      }
       // ---- overlay ----
       over.fill(0);
       const night = env.day < 230 || env.day > 770;
