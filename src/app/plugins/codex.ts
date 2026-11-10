@@ -30,7 +30,18 @@ import type { Fighter, Element, Weather } from '@/contracts/battle';
 import type { Stratum, FoldThingKind } from '@/contracts/fold';
 import { load as loadEnd, FRAGMENTS, BOONS, topLayer } from '@/ui/mirror/endgame';
 import type { EndState } from '@/ui/mirror/endgame';
-import { COLLECT, DISTRICTS, NPCS, PLACES, QUESTS } from '@/game/town';
+import { whenLoaded, loadTown } from '@/ui/town/lazy';
+// The town's tables arrive only once the town has been loaded (it is a separate chunk).
+type TownGame = typeof import('@/game/town');
+let COLLECT = [] as unknown as TownGame['COLLECT'];
+let DISTRICTS = [] as unknown as TownGame['DISTRICTS'];
+let NPCS = [] as unknown as TownGame['NPCS'];
+let PLACES = [] as unknown as TownGame['PLACES'];
+let QUESTS = [] as unknown as TownGame['QUESTS'];
+whenLoaded((m) => { COLLECT = m.game.COLLECT; DISTRICTS = m.game.DISTRICTS; NPCS = m.game.NPCS; PLACES = m.game.PLACES; QUESTS = m.game.QUESTS; });
+// Someone who has been out before has a town to count; load it quietly in the background.
+try { if (localStorage.getItem('sallow-town')) void loadTown(); } catch { /* storage blocked */ }
+
 import type { Plugin } from '../plugins';
 
 // ---------- stored shape ----------
