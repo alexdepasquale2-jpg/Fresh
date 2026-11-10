@@ -20,11 +20,12 @@ const FS = `#version 300 es
 precision highp float;
 in vec2 v_uv; out vec4 o;
 uniform vec2 u_res; uniform vec3 u_ro; uniform vec2 u_look; uniform vec2 u_grid;
-uniform sampler2D u_cols, u_pal; uniform highp usampler2D u_mat;
+uniform sampler2D u_cols; uniform highp usampler2D u_mat; uniform vec3 u_palc[16];
 uniform float u_day, u_season, u_time, u_pulse, u_nl, u_dim, u_dust, u_wind, u_hum, u_rain, u_flash, u_moons, u_suns, u_rings, u_snow, u_orb, u_impacts, u_aurora, u_wet, u_snowc, u_fogv, u_heat, u_wslant; uniform vec3 u_bolt;
 uniform vec4 u_vill[12]; uniform int u_nvill;
+uniform vec3 u_lod;   // x cloud steps (1..5), y shadow steps (0..10), z 1 = the far dark, haze layers and sun shafts are drawn
 ${HEAVENS_GLSL}
-vec3 pal(int i){ return texelFetch(u_pal, ivec2(i & 15, 0), 0).rgb; }
+vec3 pal(int i){ return u_palc[i & 15]; }
 float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + 1.0), f.x), f.y); }
@@ -56,6 +57,8 @@ float map(vec2 p, out float layer, out vec4 tag){
 }
 vec3 sunDir(float k){ float a = (u_day - 0.25 + k * 0.07) * 6.2831853; return normalize(vec3(cos(a), sin(a), 0.35)); }
 vec3 sky(vec3 rd, float daylight, float dusk, bool hq){
+  int csteps = hq ? int(u_lod.x) : 1;
+  hq = hq && u_lod.z > 0.5;
   float up = clamp(rd.y, -0.2, 1.0);
   vec3 day = mix(mix(pal(9), pal(13), dusk * 0.6), mix(pal(12), pal(9), 0.25), smoothstep(0.0, 0.6, up));
   vec3 night = mix(pal(2), pal(0) * 0.6, smoothstep(0.0, 0.7, up));
@@ -171,7 +174,7 @@ vec3 sky(vec3 rd, float daylight, float dusk, bool hq){
   if (rd.y > 0.02) {
     vec2 drift = vec2(u_time * u_wind * 0.05 + u_time * 0.004, 0.0);
     float trans = 1.0; vec3 acc = vec3(0.0);
-    int steps = hq ? 5 : 1;
+    int steps = csteps;
     for (int i = 0; i < 5; i++) {
       if (i >= steps) break;
       float hgt = (float(i) + 0.5) / float(steps);
@@ -183,7 +186,7 @@ vec3 sky(vec3 rd, float daylight, float dusk, bool hq){
         vec3 lit = mix(pal(2) * 1.2, mix(pal(9), pal(13), dusk * 0.7), shade) * (0.25 + 0.75 * daylight) + pal(14) * dusk * 0.35 * shade;
         lit += pal(9) * pow(sd, 12.0) * shade * 0.9 * (daylight + dusk);          // silver lining
         lit += pal(9) * u_flash * 0.55;                                             // lightning inside the cloud
-        float a = d * (hq ? 0.5 : 0.9);
+        float a = d * (steps > 1 ? 1.0 - pow(0.5, 5.0 / float(steps)) : 0.9);
         acc += lit * a * trans; trans *= 1.0 - a;
       }
     }
@@ -211,7 +214,6 @@ void main(){
   float sunUp = sin((u_day - 0.25) * 6.2831853);
   float daylight = smoothstep(-0.3, 0.35, sunUp) * (1.0 - u_dim * 0.45);
   float dusk = exp(-pow(sunUp * 3.5, 2.0));
-  vec3 skyc = sky(rd, daylight, dusk, true);
   // march
   float t = 0.3, tp = 0.0, layer = 0.0; vec4 tag = vec4(0.0); bool hit = false;
   for (int i = 0; i < 96; i++) {
@@ -222,7 +224,9 @@ void main(){
     t += clamp(d * 0.45, 0.1 + 0.004 * t, 7.0);
     if (t > 260.0 || (rd.y > 0.0 && p.y > u_grid.y + 30.0)) break;
   }
-  vec3 col = skyc;
+  // The sky is only worked out where the ray reaches it.
+  vec3 col = vec3(0.0);
+  if (!hit) col = sky(rd, daylight, dusk, true);
   if (hit) {
     for (int i = 0; i < 5; i++) { float tm = 0.5 * (tp + t); vec3 pm = ro + rd * tm; float l2; vec4 g2; if (pm.y - map(pm.xz, l2, g2) < 0.0) t = tm; else tp = tm; }
     vec3 p = ro + rd * t;
@@ -296,7 +300,7 @@ void main(){
     float dif = max(dot(n, L), 0.0) * daylight;
     if (dif > 0.0 && emis < 0.5) {      // soft shadow toward the sun
       float st = 0.4, sh = 1.0;
-      for (int i = 0; i < 10; i++) { vec3 q = p + n * 0.1 + L * st; float l2; vec4 g2; float d2 = q.y - map(q.xz, l2, g2); sh = min(sh, 6.0 * d2 / st); if (sh < 0.05) break; st += clamp(d2, 0.5, 4.0); }
+      for (int i = 0; i < 10; i++) { if (float(i) >= u_lod.y) break; vec3 q = p + n * 0.1 + L * st; float l2; vec4 g2; float d2 = q.y - map(q.xz, l2, g2); sh = min(sh, 6.0 * d2 / st); if (sh < 0.05) break; st += clamp(d2, 0.5, 4.0); }
       dif *= clamp(sh, 0.0, 1.0);
     }
     float amb = mix(0.2 + u_nl * 0.4 + u_moons * 0.07, 0.42, daylight) * (0.6 + 0.4 * n.y);
@@ -342,7 +346,7 @@ void main(){
 const BLIT_FS = `#version 300 es
 precision mediump float;
 in vec2 v_uv; out vec4 o;
-uniform vec2 u_res; uniform vec4 u_rect; uniform sampler2D u_tex; uniform vec2 u_px;
+uniform vec2 u_res; uniform vec4 u_rect; uniform sampler2D u_tex, u_spr; uniform vec2 u_px; uniform float u_bloom;
 void main(){
   vec2 fc = vec2(v_uv.x * u_res.x, (1.0 - v_uv.y) * u_res.y);
   vec2 q = (fc - u_rect.xy) / u_rect.zw;
@@ -357,10 +361,13 @@ void main(){
   c = clamp((c + (n + s + e + w) * amt) / (1.0 + 4.0 * amt), 0.0, 4.0);
   // Bloom: bright things bleed light.
   vec3 bl = vec3(0.0);
-  for (int i = 0; i < 8; i++) { float a = float(i) * 0.7854; vec3 t = texture(u_tex, uv + vec2(cos(a), sin(a)) * u_px * (3.0 + float(i & 1) * 4.0)).rgb; bl += max(t - 0.75, 0.0); }
+  if (u_bloom > 0.5) for (int i = 0; i < 8; i++) { float a = float(i) * 0.7854; vec3 t = texture(u_tex, uv + vec2(cos(a), sin(a)) * u_px * (3.0 + float(i & 1) * 4.0)).rgb; bl += max(t - 0.75, 0.0); }
   c += bl * 0.16;
   // Filmic shoulder so highlights roll off instead of clipping.
   c = c * (1.0 + c * 0.25) / (1.0 + c * 0.55 + c * c * 0.12) * 1.18;
+  // Sprites (life, story, people) were drawn into a target of the same reduced size: lay them over, premultiplied.
+  vec4 sp = texture(u_spr, uv);
+  c = sp.rgb + c * (1.0 - sp.a);
   o = vec4(c, 1.0);
 }`;
 
@@ -373,6 +380,8 @@ export interface FpFrame {
   top: Uint8Array;
   matTex: WebGLTexture;
   palTex: WebGLTexture;
+  /** The palette as 16 x rgb floats. */
+  palF: Float32Array;
   time: number;
   flash: number;
   /** Eased weather from the map renderer: wet ground, snow lying, dawn fog, and the last bolt. */
@@ -384,8 +393,8 @@ export const createFirstPerson = (core: GlCore) => {
   const prog = core.program(FULLSCREEN_VS, FS);
   const blit = core.program(FULLSCREEN_VS, BLIT_FS);
   const U = (p: WebGLProgram, names: string[]) => Object.fromEntries(names.map((n) => [n, gl.getUniformLocation(p, n)])) as Record<string, WebGLUniformLocation | null>;
-  const loc = U(prog, ['u_res', 'u_ro', 'u_look', 'u_grid', 'u_cols', 'u_pal', 'u_mat', 'u_day', 'u_season', 'u_time', 'u_pulse', 'u_nl', 'u_dim', 'u_dust', 'u_wind', 'u_hum', 'u_rain', 'u_flash', 'u_moons', 'u_suns', 'u_rings', 'u_snow', 'u_orb', 'u_impacts', 'u_aurora', 'u_wet', 'u_snowc', 'u_fogv', 'u_heat', 'u_wslant', 'u_bolt', 'u_vill', 'u_nvill', ...HEAVENS_UNIFORMS]);
-  const bloc = U(blit, ['u_res', 'u_rect', 'u_tex', 'u_px']);
+  const loc = U(prog, ['u_res', 'u_ro', 'u_look', 'u_grid', 'u_cols', 'u_pal', 'u_mat', 'u_day', 'u_season', 'u_time', 'u_pulse', 'u_nl', 'u_dim', 'u_dust', 'u_wind', 'u_hum', 'u_rain', 'u_flash', 'u_moons', 'u_suns', 'u_rings', 'u_snow', 'u_orb', 'u_impacts', 'u_aurora', 'u_wet', 'u_snowc', 'u_fogv', 'u_heat', 'u_wslant', 'u_bolt', 'u_vill', 'u_nvill', 'u_lod', 'u_palc', ...HEAVENS_UNIFORMS]);
+  const bloc = U(blit, ['u_res', 'u_rect', 'u_tex', 'u_spr', 'u_px', 'u_bloom']);
   // Own quad so we can draw into a smaller target.
   const vao = gl.createVertexArray();
   const buf = gl.createBuffer();
@@ -397,7 +406,13 @@ export const createFirstPerson = (core: GlCore) => {
   gl.bindVertexArray(null);
   const fbo = gl.createFramebuffer();
   const target = gl.createTexture();
+  // Sprites go into a second target of the same size, so quality scaling covers them too.
+  const sfbo = gl.createFramebuffer();
+  const sprites = gl.createTexture();
   let fw = 0, fh = 0;
+  let lowQ = false;
+  let palette0 = '#000000';
+  let rect = { x: 0, y: 0, w: 1, h: 1 };
   const colsTex = gl.createTexture();
   let cols = new Uint8Array(0);
   let colsW = 0;
@@ -406,7 +421,7 @@ export const createFirstPerson = (core: GlCore) => {
   // One camera record, reused every frame.
   const ro: [number, number, number] = [0, 0, 0];
   let cur: FpFrame | null = null;
-  const out = { ro, yaw: 0, pitch: 0, depth: target!, ground: (x: number, z: number) => (cur ? groundAt(cur, x, z) : 0) };
+  const out = { ro, yaw: 0, pitch: 0, depth: target!, tw: 0, th: 0, ground: (x: number, z: number) => (cur ? groundAt(cur, x, z) : 0) };
 
   const linear = (t: WebGLTexture | null) => {
     gl.bindTexture(gl.TEXTURE_2D, t);
@@ -477,6 +492,10 @@ export const createFirstPerson = (core: GlCore) => {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, fw, fh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target, 0);
+        linear(sprites);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, fw, fh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, sfbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sprites, 0);
       }
       // ---- eye ----
       const want = groundAt(f, f.eyeX, fp.z) + 2.4;
@@ -488,8 +507,13 @@ export const createFirstPerson = (core: GlCore) => {
       gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
       gl.viewport(0, 0, fw, fh);
       gl.useProgram(prog);
-      const bind = (unit: number, t: WebGLTexture | null, name: string) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t); gl.uniform1i(loc[name]!, unit); };
-      bind(0, colsTex, 'u_cols'); bind(1, f.palTex, 'u_pal'); bind(2, f.matTex, 'u_mat');
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, colsTex); gl.uniform1i(loc.u_cols!, 0);
+      gl.uniform3fv(loc.u_palc!, f.palF);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, f.matTex); gl.uniform1i(loc.u_mat!, 2);
+      // Detail by quality: fewer cloud slabs and shadow steps as it falls, and the extras go at the bottom.
+      const ql = v.quality ?? 1;
+      lowQ = ql < 0.52;
+      gl.uniform3f(loc.u_lod!, ql >= 0.9 ? 5 : ql >= 0.7 ? 4 : lowQ ? 2 : 3, ql >= 0.7 ? 10 : lowQ ? 0 : 6, lowQ ? 0 : 1);
       const md = v.modifiers;
       let moons = 0, suns = 0;
       for (let i = 0; i < v.sky.pieces.length; i++) { const k = v.sky.pieces[i]; if (k === 'moon') moons++; else if (k === 'sun') suns++; }
@@ -530,20 +554,37 @@ export const createFirstPerson = (core: GlCore) => {
       gl.uniform1i(loc.u_nvill!, nv);
       gl.bindVertexArray(vao);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      // ---- the sprite target: cleared, and left bound for the sprite layers ----
+      gl.bindFramebuffer(gl.FRAMEBUFFER, sfbo);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      palette0 = v.universe.palette[0]!;
+      rect = v.rect;
+      out.tw = fw; out.th = fh;
+      cur = f; out.yaw = fp.yaw; out.pitch = fp.pitch;
+      return out;
+    },
+    /** After the sprite layers: scale the base pass up into the surface rect and lay the sprites over it. */
+    present: () => {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-      // ---- scale up into the surface rect ----
-      core.clear(v.universe.palette[0]!);
+      core.clear(palette0);
       gl.useProgram(blit);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, sprites);
+      gl.uniform1i(bloc.u_spr!, 1);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, target);
       gl.uniform1i(bloc.u_tex!, 0);
       gl.uniform2f(bloc.u_res!, core.width(), core.height());
-      gl.uniform4f(bloc.u_rect!, v.rect.x, v.rect.y, v.rect.w, v.rect.h);
+      gl.uniform4f(bloc.u_rect!, rect.x, rect.y, rect.w, rect.h);
       gl.uniform2f(bloc.u_px!, 1 / fw, 1 / fh);
+      gl.uniform1f(bloc.u_bloom!, lowQ ? 0 : 1);
+      // Only the surface rect is shaded, not the whole canvas.
+      const sx = core.canvas.width / Math.max(1, core.width()), sy = core.canvas.height / Math.max(1, core.height());
+      gl.enable(gl.SCISSOR_TEST);
+      gl.scissor(Math.floor(rect.x * sx), Math.floor(core.canvas.height - (rect.y + rect.h) * sy), Math.ceil(rect.w * sx) + 1, Math.ceil(rect.h * sy) + 1);
       core.quad(blit);
-      cur = f; out.yaw = fp.yaw; out.pitch = fp.pitch;
-      return out;
+      gl.disable(gl.SCISSOR_TEST);
     },
   };
 };

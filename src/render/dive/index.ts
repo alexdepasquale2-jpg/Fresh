@@ -272,7 +272,7 @@ export const factory: DiveRendererFactory = () => {
       gl.uniform1f(loc.u_dark!, dark);
       gl.uniform1f(loc.u_shiver!, shiver);
       gl.uniform1f(loc.u_follow!, follow);
-      gl.uniform1f(loc.u_levels!, (v.quality ?? 1) < 0.7 ? 5 : 8);
+      gl.uniform1f(loc.u_levels!, (v.quality ?? 1) < 0.52 ? 4 : (v.quality ?? 1) < 0.7 ? 5 : 8);
       gl.uniform2f(loc.u_rot!, Math.cos(turn), Math.sin(turn));
       gl.uniform2f(loc.u_drift!, driftX, driftY);
       if (cring && cring.index >= 0 && cring.index < 7) gl.uniform4f(loc.u_catch!, marks[cring.index * 4]!, marks[cring.index * 4 + 1]!, cr * 0.5, cr * 0.5 * cring.scale);

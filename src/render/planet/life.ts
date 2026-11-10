@@ -187,7 +187,12 @@ export interface LifeFrame {
   day: number;
   time: number; dt: number;
   snow: number; dry: number; leaf: number;
-  fp: null | { ro: [number, number, number]; yaw: number; pitch: number; depth: WebGLTexture; ground: (x: number, z: number) => number };
+  /** First person. tw/th: size of the off-screen sprite target bound for drawing (absent or 0 = draw to the canvas rect). */
+  fp: null | { ro: [number, number, number]; yaw: number; pitch: number; depth: WebGLTexture; ground: (x: number, z: number) => number; tw?: number; th?: number };
+  /** First person: nothing further than this many cells is drawn (falls with quality). Default 260, where the depth runs out. */
+  far?: number;
+  /** 0.5..1 from Perf.resolutionScale(); the layers thin out their smallest things as it falls. */
+  quality?: number;
   view: { cx: number; cy: number; zoom: number };
   rect: { x: number; y: number; w: number; h: number };
   amb: number; night: number; pal: WebGLTexture;
@@ -230,6 +235,9 @@ export const createLife = (core: GlCore) => {
     const k = n * 8;
     if (f.fp) {
       const w = warpZ(z);
+      // Nothing behind the eye, nothing past the far line.
+      const rx = x - w - f.fp.ro[0], rz = z - f.fp.ro[2], far = f.far ?? 260;
+      if (rx * Math.cos(f.fp.yaw) + rz * Math.sin(f.fp.yaw) < -size - 2 || rx * rx + rz * rz > far * far) return;
       data[k] = x - w; data[k + 1] = f.fp.ground(gx - w, z) + alt; data[k + 2] = z;
     } else { data[k] = x; data[k + 1] = f.top[col(gx)]! - alt; data[k + 2] = 0; }
     data[k + 3] = kind; data[k + 4] = phase; data[k + 5] = face; data[k + 6] = size; data[k + 7] = seed;
@@ -436,8 +444,9 @@ export const createLife = (core: GlCore) => {
       F = null;
       if (!n) return;
       const sx = core.canvas.width / Math.max(1, core.width()), sy = core.canvas.height / Math.max(1, core.height());
-      const vx = Math.round(f.rect.x * sx), vw = Math.round(f.rect.w * sx), vh = Math.round(f.rect.h * sy);
-      const vy = Math.round(core.canvas.height - (f.rect.y + f.rect.h) * sy);
+      let vx = Math.round(f.rect.x * sx), vw = Math.round(f.rect.w * sx), vh = Math.round(f.rect.h * sy);
+      let vy = Math.round(core.canvas.height - (f.rect.y + f.rect.h) * sy);
+      if (f.fp && f.fp.tw) { vx = 0; vy = 0; vw = f.fp.tw; vh = f.fp.th!; }
       gl.viewport(vx, vy, vw, vh);
       gl.enable(gl.SCISSOR_TEST);
       gl.scissor(vx, vy, vw, vh);

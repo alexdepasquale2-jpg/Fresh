@@ -489,7 +489,7 @@ export const createStory = (core: GlCore) => {
       const w = warpZ(z);
       const rx = x - w - f.fp.ro[0], rz = z - f.fp.ro[2];
       // Nothing behind the eye, nothing too far to see.
-      if (rx * Math.cos(f.fp.yaw) + rz * Math.sin(f.fp.yaw) < -size || rx * rx + rz * rz > 200 * 200) return;
+      if (rx * Math.cos(f.fp.yaw) + rz * Math.sin(f.fp.yaw) < -size || rx * rx + rz * rz > Math.min(200, f.far ?? 200) ** 2) return;
       data[k] = x - w; data[k + 1] = f.fp.ground(gx - w, z) + alt; data[k + 2] = z;
     } else { data[k] = x; data[k + 1] = f.top[col(gx)]! - alt; data[k + 2] = 0; }
     data[k + 3] = kind; data[k + 4] = p1; data[k + 5] = p2; data[k + 6] = size; data[k + 7] = seed;
@@ -803,18 +803,38 @@ export const createStory = (core: GlCore) => {
     }
   };
 
-  const flush = (f: LifeFrame, g: number) => {
-    const G = groups[g]!;
-    if (!G.n) return;
-    const loc = G.loc;
+  // The six groups share one set of state: viewport, scissor, blend and textures are set once per run
+  // of groups, and each group then only switches program and draws.
+  let open = false;
+  let vx = 0, vy = 0, vw = 1, vh = 1;
+  const begin = (f: LifeFrame) => {
     const sxp = core.canvas.width / Math.max(1, core.width()), syp = core.canvas.height / Math.max(1, core.height());
-    const vx = Math.round(f.rect.x * sxp), vw = Math.round(f.rect.w * sxp), vh = Math.round(f.rect.h * syp);
-    const vy = Math.round(core.canvas.height - (f.rect.y + f.rect.h) * syp);
+    vx = Math.round(f.rect.x * sxp); vw = Math.round(f.rect.w * sxp); vh = Math.round(f.rect.h * syp);
+    vy = Math.round(core.canvas.height - (f.rect.y + f.rect.h) * syp);
+    if (f.fp && f.fp.tw) { vx = 0; vy = 0; vw = f.fp.tw; vh = f.fp.th!; }
     gl.viewport(vx, vy, vw, vh);
     gl.enable(gl.SCISSOR_TEST);
     gl.scissor(vx, vy, vw, vh);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, f.fp ? f.fp.depth : f.pal);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, f.pal);
+    open = true;
+  };
+  const end = () => {
+    if (!open) return;
+    open = false;
+    gl.bindVertexArray(null);
+    gl.disable(gl.BLEND);
+    gl.disable(gl.SCISSOR_TEST);
+  };
+  const flush = (f: LifeFrame, g: number) => {
+    const G = groups[g]!;
+    if (!G.n) return;
+    if (!open) begin(f);
+    const loc = G.loc;
     gl.useProgram(G.prog);
     gl.uniform1i(loc.u_mode!, f.fp ? 1 : 0);
     if (f.fp) { gl.uniform4f(loc.u_cam!, f.fp.yaw, f.fp.pitch, vw / vh, 0); gl.uniform3f(loc.u_ro!, f.fp.ro[0], f.fp.ro[1], f.fp.ro[2]); }
@@ -826,19 +846,12 @@ export const createStory = (core: GlCore) => {
     gl.uniform1f(loc.u_zoom!, f.fp ? 40 : f.view.zoom);
     gl.uniform1f(loc.u_wind!, f.env.wind / 100);
     gl.uniform4f(loc.u_vp!, vx, vy, vw, vh);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, f.pal);
     gl.uniform1i(loc.u_pal!, 0);
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, f.fp ? f.fp.depth : f.pal);
     gl.uniform1i(loc.u_depth!, 1);
     gl.bindVertexArray(G.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, G.inst);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, G.data, 0, G.n * 8);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, G.n);
-    gl.bindVertexArray(null);
-    gl.disable(gl.BLEND);
-    gl.disable(gl.SCISSOR_TEST);
   };
   const front = (f: LifeFrame) => { flush(f, 5); flush(f, 3); flush(f, 4); flush(f, 1); flush(f, 0); };
 
@@ -853,9 +866,10 @@ export const createStory = (core: GlCore) => {
       flush(f, 2);
       // In first person there is no sprite layer of buildings to stand between: draw the rest at once.
       if (f.fp) front(f);
+      end();
     },
     /** Draw the rest, over the buildings and under the people. */
-    front: (f: LifeFrame) => { if (!f.fp) front(f); },
+    front: (f: LifeFrame) => { if (!f.fp) { front(f); end(); } },
   };
 };
 export type Story = ReturnType<typeof createStory>;
