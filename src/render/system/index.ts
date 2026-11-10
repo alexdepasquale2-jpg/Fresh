@@ -13,12 +13,12 @@ precision highp float;
 in vec2 v_uv; out vec4 o;
 uniform vec2 u_res, u_c; uniform float u_rings[4]; uniform int u_n, u_sel, u_hover;
 uniform vec3 u_planet[4]; uniform vec4 u_piece[16]; uniform vec3 u_ghost;
-uniform vec3 u_bg, u_line, u_ink, u_gold, u_glow; uniform float u_pulse, u_heat;
+uniform vec3 u_bg, u_line, u_ink, u_gold, u_glow; uniform float u_pulse, u_heat, u_flare; uniform vec3 u_touch;
 void main(){
   vec2 fc = vec2(v_uv.x * u_res.x, (1.0 - v_uv.y) * u_res.y);
   vec3 col = u_bg;
   float d = length(fc - u_c);
-  float sr = 18.0 + u_heat * 14.0 + 3.0 * sin(u_pulse * 6.2831);
+  float sr = 18.0 + u_heat * 14.0 + 3.0 * sin(u_pulse * 6.2831) + u_flare * 40.0;
   vec3 sc = mix(u_glow, u_gold, u_heat);
   col += sc * smoothstep(sr, 0.0, d) * 1.2 + sc * exp(-d * 0.03) * 0.15;
   float ang = atan(fc.y - u_c.y, fc.x - u_c.x);
@@ -51,6 +51,8 @@ void main(){
       col = mix(col, u_line * 1.3, smoothstep(9.0, 0.0, pd) * 0.45 * (0.7 + 0.3 * sin(pd * 2.0 + u_pulse * 6.28)));
     }
   }
+  col += u_gold * u_flare * 0.35 * exp(-d * 0.006);
+  if (u_touch.z > 0.0) { float tr = (1.0 - u_touch.z) * 46.0; col = mix(col, u_glow, smoothstep(2.0, 0.0, abs(length(fc - u_touch.xy) - tr)) * u_touch.z); }
   if (u_ghost.z > 0.5) col = mix(col, u_glow, smoothstep(9.0, 7.0, length(fc - u_ghost.xy)) * 0.8);
   o = vec4(col, 1.0);
 }`;
@@ -63,9 +65,10 @@ export const factory: SystemRendererFactory = () => {
   const planets = new Float32Array(12);
   const pieces = new Float32Array(64);
   let n = 0;
+  const ringR = new Float32Array(4);
   const build = () => {
     prog = core!.program(FULLSCREEN_VS, FS);
-    for (const k of ['u_res', 'u_c', 'u_rings', 'u_n', 'u_sel', 'u_hover', 'u_planet', 'u_piece', 'u_ghost', 'u_bg', 'u_line', 'u_ink', 'u_gold', 'u_glow', 'u_pulse', 'u_heat']) loc[k] = core!.gl.getUniformLocation(prog, k);
+    for (const k of ['u_res', 'u_c', 'u_rings', 'u_n', 'u_sel', 'u_hover', 'u_planet', 'u_piece', 'u_ghost', 'u_bg', 'u_line', 'u_ink', 'u_gold', 'u_glow', 'u_pulse', 'u_heat', 'u_flare', 'u_touch']) loc[k] = core!.gl.getUniformLocation(prog, k);
   };
   const rgb = (gl: WebGL2RenderingContext, l: WebGLUniformLocation | null | undefined, hex: string) => {
     const [r, g, b] = hexToRgb(hex);
@@ -81,7 +84,7 @@ export const factory: SystemRendererFactory = () => {
       if (!core) return -1;
       const L = systemLayout(core.width());
       const d = Math.hypot(x - L.cx, y - L.cy);
-      for (let i = 0; i < n; i++) if (Math.abs(d - L.ring(i)) <= 16) return i;
+      for (let i = 0; i < n; i++) if (Math.abs(d - ringR[i]!) <= 16) return i;
       return -1;
     },
     draw: (v) => {
@@ -93,7 +96,10 @@ export const factory: SystemRendererFactory = () => {
       pieces.fill(0);
       let pc = 0;
       v.system.orbits.forEach((o, i) => {
-        rings[i] = L.ring(i);
+        const key0 = seedToHex(v.system.planets[o.planet]!.seed);
+        const drift = v.skies.find((s) => s.planetKey === key0)?.drift ?? 0;
+        rings[i] = L.ring(i) + drift * 6;
+        ringR[i] = rings[i]!;
         const a = ((v.tick % o.periodTicks) / o.periodTicks) * Math.PI * 2 + i * 1.7;
         const px = L.cx + Math.cos(a) * rings[i]!, py = L.cy + Math.sin(a) * rings[i]!;
         planets.set([px, py, 6 + (i % 2) * 2], i * 3);
@@ -119,6 +125,8 @@ export const factory: SystemRendererFactory = () => {
       rgb(gl, loc.u_bg, p[0]!); rgb(gl, loc.u_line, p[3]!); rgb(gl, loc.u_ink, p[8]!); rgb(gl, loc.u_gold, p[7]!); rgb(gl, loc.u_glow, p[10]!);
       gl.uniform1f(loc.u_pulse!, v.pulse / FX_ONE);
       gl.uniform1f(loc.u_heat!, v.system.star.heat / 255);
+      gl.uniform1f(loc.u_flare!, v.flare ?? 0);
+      gl.uniform3f(loc.u_touch!, v.touch?.x ?? 0, v.touch?.y ?? 0, v.touch ? 1 - v.touch.age : 0);
       core.quad(prog);
     },
     dispose: () => void (core = null),
