@@ -12,6 +12,16 @@ const bedroom: ScreenFactory = () => {
     mount: (root, c) => {
       ctx = c;
       pips = lightPips(c.light.view().pips);
+      let muted = false;
+      try { muted = localStorage.getItem('sallow-muted') === '1'; } catch { /* storage blocked */ }
+      c.audio.setMuted(muted);
+      const sound = el('button', { class: 'k-tag swap', type: 'button', 'data-id': 'sound' }, muted ? 'SOUND OFF' : 'SOUND ON');
+      sound.addEventListener('click', () => {
+        muted = !muted;
+        c.audio.setMuted(muted);
+        sound.textContent = muted ? 'SOUND OFF' : 'SOUND ON';
+        try { localStorage.setItem('sallow-muted', muted ? '1' : '0'); } catch { /* storage blocked */ }
+      });
       const floor = el('div', { class: 'spacer floor', 'data-id': 'floor' });
       onDown = (e) => {
         const r = c.gl.canvas.getBoundingClientRect();
@@ -19,7 +29,7 @@ const bedroom: ScreenFactory = () => {
       };
       floor.addEventListener('pointerdown', onDown);
       root.append(
-        el('header', { class: 'row' }, pips.el, label(`BOX ${String(c.box.count()).padStart(2, '0')}/25`)),
+        el('header', { class: 'row' }, pips.el, sound, label(`BOX ${String(c.box.count()).padStart(2, '0')}/25`)),
         floor,
         narration(c.box.count() > 7 ? 'The box is heavier than it was.' : 'The PC hums. Mote waits by the box.'),
         button('Open the box', () => c.go('box'), { primary: true, id: 'open-box' }),

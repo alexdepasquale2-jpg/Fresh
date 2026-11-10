@@ -73,6 +73,8 @@ export interface PlanetRenderView {
   readonly sky: SkyState;
   readonly modifiers: import('./sky').SurfaceModifiers;
   readonly pulse: Fx;
+  /** Camera: centre in grid cells and zoom (1 shows the whole world). Above ~1.5 the renderer draws sub-cell detail. */
+  readonly view?: { cx: number; cy: number; zoom: number };
   /** CSS px rect to draw the surface into. */
   readonly rect: { x: number; y: number; w: number; h: number };
 }

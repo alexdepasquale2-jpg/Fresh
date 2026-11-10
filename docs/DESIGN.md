@@ -68,3 +68,16 @@ Every touch is an omen to the inhabitants, and it moves their faith and their fe
 - **How Light works at the edges.** Assumed: drains per fold fallen, not per second; at zero the dive surfaces (`Light.drainFolds`). Income from planet glow.
 - **Where sky pieces come from.** Undecided. `SkyGame.grant` exists so either dives or glow can award them; the stub starts with Comet 2, Moon 2, Belt 1, Rings 1, Sun 0, Dust 0, matching the mock.
 - **Budgets.** 236x200 grid (twice the mock's 118x100), 20 ticks/s, 350 KB gzipped JS are starting numbers, not measured ones.
+
+## Sound
+
+`platform/audio` is a WebAudio synth with no audio files. It starts on the first touch, and the bedroom has a SOUND ON/OFF chip.
+- **Clock:** the universe pulse. Each pulse cycle is 8 steps, and each screen has its own pattern of which steps sound (music-box notes in the Box, thumps and arpeggios in the dive, kicks and hats in battle).
+- **Drone:** tuned from the pulse rate. Its filter opens and closes with the pulse phase.
+- **Pause:** pausing the planet clock stops the beat, because the pulse stops.
+
+## Zoom
+
+The planet surface zooms from 1x to 10x: pinch, mouse wheel, or the + and − buttons. In Watch mode, drag to pan. Tools work at any zoom, and strike tools fire on release so a pinch never triggers one.
+
+Above about 1.5x the renderer draws detail smaller than a sim cell: rounded slopes and droplets, 4x4 grain per cell, rock cracks, water ripples, swaying moss blades, people with heads and legs, brick walls and framed windows. The sim grid itself stays 236x200.

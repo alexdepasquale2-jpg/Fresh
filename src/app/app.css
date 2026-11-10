@@ -69,3 +69,6 @@
 .screen[data-screen='planet'], .screen[data-screen='system'] { overflow-y: auto; }
 .screen[data-screen='planet'] .chronicle { min-height: 140px; flex: none; }
 .k-hold, .k-hold * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.zoom-ctl { position: absolute; right: 6px; bottom: 6px; display: flex; align-items: center; gap: 4px; }
+.zoom-ctl .zoom-btn { min-width: 40px; min-height: 40px; padding: 0; font-size: 20px; background: color-mix(in srgb, var(--bg) 75%, transparent); }
+.zoom-ctl .zoom-label { min-width: 34px; text-align: center; color: var(--ink-bright); text-shadow: 0 0 4px var(--bg); }

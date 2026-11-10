@@ -56,6 +56,7 @@ export const boot = async (host: HTMLElement) => {
         ctx.pulse().step(ticks, []);
         ctx.sim.step(ticks);
       }
+      ctx.audio.setPulse(ctx.pulse());
       ctx.audio.update(dt);
       current?.frame(dt);
     },

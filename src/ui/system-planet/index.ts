@@ -7,6 +7,7 @@ import { SKY_PIECE_KINDS } from '@/contracts/sky';
 import { child } from '@/core/hash';
 import { el, backChip, label, button, skyPieceTile, stat, narration, tag } from '@/ui/kit';
 import type { Tool } from '@/contracts/sim';
+import { GRID_W, GRID_H } from '@/contracts/sim';
 
 const ensureSystem = (c: AppContext) => {
   const u = c.selection.universe ?? c.universes.fromSerial(c.box.slots()[c.box.selected()]?.serialNumber ?? 0);
@@ -165,7 +166,7 @@ const system: ScreenFactory = () => {
 // God tools. Paint tools drag; strike tools fire once per tap. 'body' takes a body; 'watch' does nothing.
 type Mode = Tool | 'watch' | 'body';
 const TOOLS: { mode: Mode; label: string; r: number; paint: boolean; hint: string }[] = [
-  { mode: 'watch', label: 'Watch', r: 0, paint: false, hint: 'Only watch.' },
+  { mode: 'watch', label: 'Watch', r: 0, paint: false, hint: 'Only watch. Drag to look around; pinch or + to zoom in close.' },
   { mode: 'body', label: 'Body', r: 0, paint: false, hint: 'Tap to take a body there. Tap again to walk. Unless they are enlightened, they will try to kill you.' },
   { mode: 'bless', label: 'Bless', r: 0, paint: false, hint: 'Fill their stores, ease their hearts, bring them closer to understanding.' },
   { mode: 'whisper', label: 'Whisper', r: 0, paint: false, hint: 'Speak to the nearest village. They will look up.' },
@@ -199,6 +200,8 @@ const planet: ScreenFactory = () => {
     hint: HTMLElement; body: HTMLElement;
   } | null = null;
   let mode: (typeof TOOLS)[number] = TOOLS[0]!;
+  const view = { cx: GRID_W / 2, cy: GRID_H / 2, zoom: 1 };
+  const zoomLabel = el('span', { class: 'k-label zoom-label' }, '1×');
   let lastPaint = 0;
   let lastTick = -1;
   let planetSpec: import('@/contracts/system').PlanetSpec | null = null;
@@ -232,11 +235,33 @@ const planet: ScreenFactory = () => {
       mode = TOOLS[0]!;
       const slotEl = ui.slot;
       // Touch the world.
-      const gridAt = (e: PointerEvent) => {
-        const f = c.sim.latest();
+      view.cx = GRID_W / 2; view.cy = GRID_H / 2; view.zoom = 1; zoomLabel.textContent = '1×';
+      const clampView = () => {
+        view.zoom = Math.max(1, Math.min(10, view.zoom));
+        const hx = GRID_W / (2 * view.zoom), hy = GRID_H / (2 * view.zoom);
+        view.cx = Math.max(hx, Math.min(GRID_W - hx, view.cx));
+        view.cy = Math.max(hy, Math.min(GRID_H - hy, view.cy));
+        zoomLabel.textContent = view.zoom < 1.05 ? '1×' : `${view.zoom.toFixed(1)}×`;
+      };
+      /** Screen point (px inside the slot) to world cell, through the camera. */
+      const toGrid = (px: number, py: number) => {
         const r = slotEl.getBoundingClientRect();
-        if (!f) return null;
-        return { gx: ((e.clientX - r.left) / r.width) * f.grid.width, gy: ((e.clientY - r.top) / r.height) * f.grid.height, px: e.clientX - r.left, py: e.clientY - r.top };
+        return { gx: view.cx + (px / r.width - 0.5) * (GRID_W / view.zoom), gy: view.cy + (py / r.height - 0.5) * (GRID_H / view.zoom) };
+      };
+      /** Zoom by a factor, keeping the world point under (px, py) fixed. */
+      const zoomAt = (factor: number, px: number, py: number) => {
+        const r = slotEl.getBoundingClientRect();
+        const before = toGrid(px, py);
+        view.zoom = Math.max(1, Math.min(10, view.zoom * factor));
+        view.cx = before.gx - (px / r.width - 0.5) * (GRID_W / view.zoom);
+        view.cy = before.gy - (py / r.height - 0.5) * (GRID_H / view.zoom);
+        clampView();
+      };
+      const gridAt = (e: PointerEvent) => {
+        const r = slotEl.getBoundingClientRect();
+        if (!c.sim.latest()) return null;
+        const px = e.clientX - r.left, py = e.clientY - r.top;
+        return { ...toGrid(px, py), px, py };
       };
       const ripple = (px: number, py: number, big: boolean) => {
         const d = el('i', { class: `ripple${big ? ' big' : ''}`, style: `left:${px}px;top:${py}px` });
@@ -260,12 +285,56 @@ const planet: ScreenFactory = () => {
         c.sim.tool(mode.mode, at.gx, at.gy, mode.r);
         ripple(at.px, at.py, !mode.paint);
       };
-      let down = false;
-      slotEl.addEventListener('pointerdown', (e) => { down = true; slotEl.setPointerCapture(e.pointerId); use(e, true); });
-      slotEl.addEventListener('pointermove', (e) => { if (down) use(e, false); });
-      const stop = () => { down = false; };
+      // One finger: paint, tap a tool, or (in Watch) drag to pan. Two fingers: pinch to zoom and pan.
+      const pts = new Map<number, { x: number; y: number }>();
+      let pinched = false;
+      let moved = 0;
+      let pinch = { dist: 1, mx: 0, my: 0 };
+      const local = (e: PointerEvent) => { const r = slotEl.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+      const two = () => { const [a, b] = [...pts.values()] as [{ x: number; y: number }, { x: number; y: number }]; return { dist: Math.max(8, Math.hypot(a.x - b.x, a.y - b.y)), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; };
+      slotEl.addEventListener('pointerdown', (e) => {
+        slotEl.setPointerCapture(e.pointerId);
+        pts.set(e.pointerId, local(e));
+        if (pts.size === 2) { pinched = true; pinch = two(); }
+        else if (pts.size === 1) { pinched = false; moved = 0; if (mode.paint) use(e, true); }
+      });
+      slotEl.addEventListener('pointermove', (e) => {
+        const prev = pts.get(e.pointerId);
+        if (!prev) return;
+        const now = local(e);
+        pts.set(e.pointerId, now);
+        const r = slotEl.getBoundingClientRect();
+        if (pts.size >= 2) {
+          const t = two();
+          zoomAt(t.dist / pinch.dist, t.mx, t.my);
+          view.cx -= ((t.mx - pinch.mx) / r.width) * (GRID_W / view.zoom);
+          view.cy -= ((t.my - pinch.my) / r.height) * (GRID_H / view.zoom);
+          clampView();
+          pinch = t;
+        } else if (!pinched) {
+          moved += Math.abs(now.x - prev.x) + Math.abs(now.y - prev.y);
+          if (mode.mode === 'watch') {
+            view.cx -= ((now.x - prev.x) / r.width) * (GRID_W / view.zoom);
+            view.cy -= ((now.y - prev.y) / r.height) * (GRID_H / view.zoom);
+            clampView();
+          } else if (mode.paint) use(e, false);
+        }
+      });
+      const stop = (e: PointerEvent) => {
+        // Strike tools and Body fire on release, so a pinch never throws a meteor by accident.
+        if (e.type === 'pointerup' && pts.size === 1 && !pinched && !mode.paint && moved < 14) use(e, true);
+        pts.delete(e.pointerId);
+      };
       slotEl.addEventListener('pointerup', stop);
       slotEl.addEventListener('pointercancel', stop);
+      slotEl.addEventListener('wheel', (e) => { e.preventDefault(); const p = local(e as unknown as PointerEvent); zoomAt(e.deltaY < 0 ? 1.2 : 1 / 1.2, p.x, p.y); }, { passive: false });
+      const zoomBtn = (text: string, factor: number, id: string) => {
+        const b = el('button', { class: 'k-btn zoom-btn', type: 'button', 'data-id': id }, text);
+        b.addEventListener('pointerdown', (e) => e.stopPropagation());
+        b.addEventListener('click', () => { const r = slotEl.getBoundingClientRect(); zoomAt(factor, r.width / 2, r.height / 2); });
+        return b;
+      };
+      slotEl.append(el('div', { class: 'zoom-ctl' }, zoomBtn('−', 1 / 1.6, 'zoom-out'), zoomLabel, zoomBtn('+', 1.6, 'zoom-in')));
       const palette = el('div', { class: 'tools' }, ...TOOLS.map((t) => {
         const b = el('button', { class: 'k-tag tool', type: 'button', 'aria-pressed': String(t === mode), 'data-id': `tool-${t.mode}` }, t.label);
         b.addEventListener('click', () => {
@@ -311,6 +380,7 @@ const planet: ScreenFactory = () => {
         universe: ctx.selection.universe, grid: f.grid, civ: f.civ, env: f.env, sky,
         modifiers: ctx.skyRules.effects(sky, planetSpec), pulse: ctx.pulse().phase(),
         rect: { x: sr.left - cr.left, y: sr.top - cr.top, w: sr.width, h: sr.height },
+        view,
       }, dt);
       if (f.tick === lastTick) return;
       lastTick = f.tick;
