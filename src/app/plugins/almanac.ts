@@ -715,6 +715,13 @@ export const plugin: Plugin = (shell) => {
     give(x.f.glow, x.f.pieces);
     sfx('festival'); save(); rerender?.();
   };
+  const claimAll = () => {
+    const d = st.day;
+    if (d) for (const id of [...d.tasks]) { const t = taskById(id); if (t) claimTask(t); }
+    claimWeek();
+    if (d && !d.streakClaimed) claimStreak();
+    claimFeast();
+  };
   const unclaimed = (): number => {
     const d = st.day;
     if (!d) return 0;
@@ -761,6 +768,8 @@ export const plugin: Plugin = (shell) => {
       el('span', { class: 'k-label' }, `${season.name}${override() ? ' · test date' : ''}`),
       el('h3', { 'data-id': 'alm-date' }, longDate(d.iso)),
       el('p', { class: 'alm-voice' }, season.line)));
+    // Everything that is waiting, in one press.
+    if (unclaimed() > 1) kids.push(button(`Claim all ${unclaimed()}`, claimAll, { id: 'alm-claim-all', primary: true }));
 
     const feast = feastToday();
     if (feast) {

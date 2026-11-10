@@ -82,3 +82,6 @@ button.cx-card { width: 100%; text-align: left; cursor: pointer; touch-action: m
 .cx-more { align-self: stretch; }
 .cx-rare { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .cx-rarest { flex-wrap: nowrap; align-items: center; justify-content: flex-start; border-color: var(--gold); }
+
+.cx-claim-all { width: 100%; min-height: var(--btn-primary); margin: 4px 0; background: var(--gold); color: var(--bg); border-color: var(--gold); }
+.cx-claim-all[hidden] { display: none; }

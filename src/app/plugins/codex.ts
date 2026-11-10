@@ -2181,8 +2181,29 @@ export const plugin: Plugin = (shell) => {
       const later = DEEDS.length - shown.length;
       if (later > 0) frag.append(h('p', 'cx-say cx-none', `${later} more wait further up their chains.`));
       list.append(frag);
+      // Claim everything that is waiting, in one press, with one notice.
+      const all = h('button', 'k-btn cx-claim-all', '');
+      all.type = 'button';
+      all.dataset.id = 'claim-all';
+      const waiting = () => DEEDS.filter((d) => S.a[d.id] === 1);
+      const paintAll = () => { const n = waiting().length; all.hidden = n < 2; all.textContent = `Claim all ${n}`; };
+      all.addEventListener('click', () => {
+        const got: string[] = [];
+        for (const d of waiting()) {
+          let g: string | null = null;
+          try { g = claim(d); } catch { g = null; }
+          if (g) got.push(g);
+          const old = list.querySelector(`[data-id="deed-${d.id}"]`);
+          if (old) old.replaceWith(card(d));
+        }
+        if (got.length) shell.toast(`${got.length} deeds claimed: ${got.slice(0, 4).join(', ')}${got.length > 4 ? ' and more' : ''}.`, { title: 'Claimed' });
+        paintHead();
+        paintAll();
+      });
+      list.addEventListener('click', () => window.setTimeout(paintAll, 0));
+      paintAll();
       paintHead();
-      page.append(head, rare, list);
+      page.append(head, all, rare, list);
       into.append(page);
       return () => safe(save);
     },
