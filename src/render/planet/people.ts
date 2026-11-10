@@ -10,7 +10,7 @@ import { PERSON_STRIDE, ROLE } from '@/contracts/sim';
 const VS = `#version 300 es
 layout(location=0) in vec2 a_pos;
 layout(location=1) in vec4 a_a;   // x, y (feet, world), z, role (+100 for the notable)
-layout(location=2) in vec4 a_b;   // walk phase, facing, moving 0..1, seed
+layout(location=2) in vec4 a_b;   // walk phase, facing * (1 + mark: 1 at arms, 2 sick), moving 0..1, seed
 uniform int u_mode;               // 0 map, 1 first person
 uniform vec4 u_cam;               // map: view cx, cy, zoom, _ ; fp: yaw, pitch, aspect, _
 uniform vec3 u_ro; uniform vec2 u_grid;
@@ -44,7 +44,8 @@ vec3 pal(int i){ return texelFetch(u_pal, ivec2(i & 15, 0), 0).rgb; }
 float seg(vec2 p, vec2 a, vec2 b, float r){ vec2 pa = p - a, ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)) - r; }
 void main(){
   int role = int(v_role + 0.5);
-  float ph = v_b.x, face = v_b.y, mv = v_b.z, seed = v_b.w;
+  float ph = v_b.x, face = sign(v_b.y), mv = v_b.z, seed = v_b.w;
+  int tag = int(abs(v_b.y) - 0.5);                      // what weighs on their village: 1 at arms, 2 sick
   vec2 p = vec2(v_p.x * face, v_p.y);
   float t = u_time + seed * 10.0;
   // ---- pose ----
@@ -71,7 +72,12 @@ void main(){
   else if (role == ${ROLE.craft} || role == ${ROLE.build}) { float a = max(sin(t * 8.0), 0.0); lean = 0.12; handF = vec2(0.45, 1.25 + 0.6 * a);
     extra = min(seg(p, handF, handF + vec2(0.1, 0.4), 0.04), max(abs(p.x - handF.x - 0.12) - 0.17, abs(p.y - handF.y - 0.48) - 0.1)); extraCol = pal(4); }
   else if (role == ${ROLE.trade}) { lean = 0.1; extra = max(abs(p.x + 0.42) - 0.26, abs(p.y - 1.45) - 0.34); extraCol = pal(7); handB = vec2(-0.3, 1.5); }
+  else if (role == ${ROLE.travel}) { lean = 0.16; handF = vec2(0.3, 1.5);                              // on the road with what they could carry
+    extra = min(seg(p, handF, vec2(-0.7, 2.15), 0.035), length(p - vec2(-0.7, 2.0)) - 0.25); extraCol = pal(8) * 0.8; }
   else if (role == 99) { float a = sin(t * 3.0); handF = vec2(0.45, 1.3 + 0.1 * a); handB = vec2(-0.45, 1.3 - 0.1 * a); }
+  bool armed = tag == 1 && extra > 8.0 && role != ${ROLE.dance} && role != 99;
+  if (armed) { handF = vec2(0.4, 1.3); extra = min(seg(p, vec2(0.42, 0.1), vec2(0.46, 2.75), 0.04), max(abs(p.x - 0.46) - 0.1 * (1.0 - (p.y - 2.75) / 0.3), 2.75 - p.y)); extraCol = pal(4) * 1.3; }
+  if (tag == 2) { lean += 0.3; sw *= 0.4; }
   p.y -= bob;
   float k = 1.0 - squat;                                  // kneeling folds the legs
   vec2 hipP = vec2(0.0, hip * k), shP = vec2(lean, hip * k + (sh - hip)), headP = vec2(lean * 1.3, hip * k + (headY - hip));
@@ -97,7 +103,9 @@ void main(){
   if (alpha < 0.02) discard;
   // ---- colour ----
   vec3 cloth = role == ${ROLE.attack} ? pal(13) : role == ${ROLE.kneel} || role == ${ROLE.pray} || role == ${ROLE.listen} ? pal(9) : mix(mix(pal(5), pal(12), step(0.5, seed)), pal(14), step(0.8, fract(seed * 7.3)));
-  vec3 col = head < min(min(legs, torso), arms) ? pal(8) : (legs < torso ? cloth * 0.6 : cloth);
+  if (armed) cloth = mix(cloth, pal(13), 0.6);
+  if (tag == 2) cloth = mix(pal(9), pal(15), 0.3) * 0.7;
+  vec3 col = head < min(min(legs, torso), arms) ? (tag == 2 ? mix(pal(8), pal(9), 0.5) : pal(8)) : (legs < torso ? cloth * 0.6 : cloth);
   col *= 0.75 + 0.25 * smoothstep(0.1, -0.1, p.x - lean);   // a little form
   col *= u_amb;
   // Closer layers add a belt, then eyes.
@@ -125,7 +133,7 @@ void main(){
   o = vec4(col * alpha, alpha);
 }`;
 
-interface Soul { x: number; y: number; face: number; phase: number; moving: number; seen: number; role: number; seed: number; z: number }
+interface Soul { x: number; y: number; face: number; phase: number; moving: number; seen: number; role: number; seed: number; z: number; tag: number }
 
 export const createPeople = (core: GlCore) => {
   const gl = core.gl;
@@ -152,6 +160,7 @@ export const createPeople = (core: GlCore) => {
   gl.bindVertexArray(null);
 
   const souls = new Map<number, Soul>();
+  const home = new Uint8Array(4096);     // what weighs on each village, by id
   let frame = 0;
   let notableId = -2;
   const AVATAR = -1;
@@ -175,17 +184,21 @@ export const createPeople = (core: GlCore) => {
       frame++;
       const pp = civ.people;
       notableId = civ.notable?.personId ?? -2;
+      home.fill(0);
+      for (const v of civ.villages) home[v.id & 4095] = v.state === 'war' ? 1 : v.state === 'plague' ? 2 : 0;
       for (let i = 0; i < civ.peopleCount; i++) {
         const k = i * PERSON_STRIDE;
         const id = pp[k + 4]!, x = pp[k]! + 0.5, y = pp[k + 1]! + 1, role = pp[k + 2]!;
         let s = souls.get(id);
-        if (!s) { const seed = ((id * 9301 + 49297) % 233280) / 233280; souls.set(id, (s = { x, y, face: seed > 0.5 ? 1 : -1, phase: seed * 6, moving: 0, seen: frame, role, seed, z: (seed - 0.5) * 9 })); }
+        if (!s) { const seed = ((id * 9301 + 49297) % 233280) / 233280; souls.set(id, (s = { x, y, face: seed > 0.5 ? 1 : -1, phase: seed * 6, moving: 0, seen: frame, role, seed, z: (seed - 0.5) * 9, tag: 0 })); }
         ease(s, x, y, role, dt);
+        const hs = home[pp[k + 3]! & 4095]!;
+        s.tag = hs === 1 && s.seed < 0.55 ? 1 : hs === 2 && s.seed > 0.5 ? 2 : 0;
       }
       const av = civ.avatar;
       if (av) {
         let s = souls.get(AVATAR);
-        if (!s) souls.set(AVATAR, (s = { x: av.x + 0.5, y: av.y + 1, face: 1, phase: 0, moving: 0, seen: frame, role: 99, seed: 0.5, z: 0 }));
+        if (!s) souls.set(AVATAR, (s = { x: av.x + 0.5, y: av.y + 1, face: 1, phase: 0, moving: 0, seen: frame, role: 99, seed: 0.5, z: 0, tag: 0 }));
         ease(s, av.x + 0.5, av.y + 1, 99, dt);
       }
       for (const [id, s] of souls) if (s.seen !== frame) souls.delete(id);
@@ -209,7 +222,7 @@ export const createPeople = (core: GlCore) => {
         const k = n * 8;
         if (o.fp) { const [x, y, z] = o.fp.place(s); data[k] = x; data[k + 1] = y; data[k + 2] = z; }
         else { data[k] = s.x; data[k + 1] = s.y; data[k + 2] = 0; }
-        data[k + 3] = id === notableId ? s.role + 100 : s.role; data[k + 4] = s.phase; data[k + 5] = s.face; data[k + 6] = s.moving; data[k + 7] = s.seed;
+        data[k + 3] = id === notableId ? s.role + 100 : s.role; data[k + 4] = s.phase; data[k + 5] = s.face * (1 + s.tag); data[k + 6] = s.moving; data[k + 7] = s.seed;
         n++;
       }
       if (!n) return;
