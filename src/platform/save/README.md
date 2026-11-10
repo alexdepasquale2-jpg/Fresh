@@ -6,7 +6,8 @@
 
 **Must not touch.** Anything outside `src/platform/save/`. In particular: `src/contracts`, `src/core`, `src/render/gl`, `src/ui/kit`, `src/ui/tokens.css`, `src/app`, `package.json`, the lockfile, other units. No new dependencies. If the contract blocks you, write `CONTRACT_REQUEST.md` here and work around it.
 
-**Current state.** A trivial deterministic stub that satisfies the contract so the app boots. Replace it.
+**Current state.** Real. IndexedDB first (keys `sallow-save`, `sallow-save.prev`, written in one transaction), localStorage when IndexedDB is shut (`sallow-save`, `.new`, `.prev`: new is written and read back before it replaces old), memory last. `load()` takes the newest readable copy. `save()` refuses a snapshot that fails the schema, coalesces bursts, and is frozen once an import or reset is staged.
+Whole-game codes (`bundle.ts`): `SALLOW1Z.<deflate, base64url>.<checksum>` holding the main save plus every localStorage key that starts with `sallow` (not `sallow-save*`). `stageImport` / `stageReset` / `stageRestore` keep one backup (`sallow-save.backup`), write `sallow-save.pending`, and the caller reloads; the factory applies the pending change at boot before any other unit reads its keys.
 
 ## Acceptance criteria
 

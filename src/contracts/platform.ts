@@ -9,7 +9,15 @@ export type InputEvent =
   | { type: 'hold'; at: Point }
   | { type: 'release'; at: Point; heldMs: number }
   | { type: 'tap'; at: Point; target: string | null }
-  | { type: 'drag'; phase: 'start' | 'move' | 'end' | 'cancel'; at: Point; payload: string; over: string | null };
+  | { type: 'drag'; phase: 'start' | 'move' | 'end' | 'cancel'; at: Point; payload: string; over: string | null }
+  /** Keyboard or gamepad, already mapped to what the player means. Optional to handle: screens that ignore it lose nothing. */
+  | { type: 'key'; action: InputAction; phase: 'down' | 'up'; source: 'keyboard' | 'gamepad' };
+/** What a key or pad button means. tool1..tool9 are the number keys. */
+export type InputAction =
+  | 'left' | 'right' | 'up' | 'down' | 'hold' | 'confirm' | 'back' | 'menu' | 'pause' | 'slower' | 'faster'
+  | 'tool1' | 'tool2' | 'tool3' | 'tool4' | 'tool5' | 'tool6' | 'tool7' | 'tool8' | 'tool9';
+/** One row of the bindings list shown in Settings. */
+export interface InputBinding { readonly action: InputAction; readonly does: string; readonly keys: string; readonly pad: string }
 /**
  * Pointer gestures. Coordinates are CSS px relative to the attached element.
  * Invariants: a press becomes exactly one of tap / hold..release / drag;
@@ -20,6 +28,8 @@ export interface Input {
   attach(el: HTMLElement): void;
   detach(): void;
   on(cb: (e: InputEvent) => void): () => void;
+  /** Optional: the keyboard and gamepad bindings this input knows, for a help page. */
+  bindings?(): readonly InputBinding[];
 }
 export type InputFactory = () => Input;
 
@@ -60,7 +70,51 @@ export interface SaveStore {
   migrate(raw: unknown): SaveState | null;
   exportCode(serialNumber: SerialNumber): string;
   importCode(code: string): SerialNumber | null;
+  /** Optional: where saves are going and when the last one landed. */
+  status?(): SaveStatus;
+  /** Optional: how much room the game's data takes. */
+  usage?(): Promise<SaveUsage>;
+  /** Optional: everything the game keeps (the main save and every localStorage key starting with "sallow") as one checksummed code. */
+  exportAll?(): Promise<string>;
+  /** Optional: read a code from exportAll without changing anything. */
+  inspect?(code: string): Promise<SaveBundleResult>;
+  /**
+   * Optional: check a code, keep a backup of what is here now, and stage the code to replace everything at the
+   * next boot. The caller reloads the page. On failure nothing has changed.
+   */
+  stageImport?(code: string): Promise<SaveBundleResult>;
+  /** Optional: keep a backup, then stage a wipe for the next boot. `keep` lists localStorage keys to leave alone. */
+  stageReset?(keep?: readonly string[]): Promise<boolean>;
+  /** Optional: what the one automatic backup holds, or null when there is none. */
+  backup?(): SaveBundleInfo | null;
+  /** Optional: stage the backup to come back at the next boot (what is here now becomes the backup). */
+  stageRestore?(): Promise<SaveBundleResult>;
 }
+export interface SaveStatus {
+  readonly backend: 'indexeddb' | 'localstorage' | 'memory';
+  readonly lastSavedAtMs: number | null;
+  /** Plain words for the last thing that went wrong, or null. */
+  readonly lastError: string | null;
+}
+export interface SaveUsage {
+  /** Bytes of the main save and of the "sallow" localStorage keys. */
+  readonly saveBytes: number;
+  readonly localBytes: number;
+  /** From the browser's storage estimate, when it gives one. */
+  readonly usedBytes: number | null;
+  readonly quotaBytes: number | null;
+}
+export interface SaveBundleInfo {
+  readonly version: number;
+  readonly exportedAtMs: number;
+  readonly savedAtMs: number | null;
+  readonly universes: number;
+  readonly lightPips: number | null;
+  /** How many localStorage keys ride along (journal, codex, names, ...). */
+  readonly keys: number;
+  readonly bytes: number;
+}
+export type SaveBundleResult = { readonly ok: true; readonly info: SaveBundleInfo } | { readonly ok: false; readonly error: string };
 export type SaveStoreFactory = () => SaveStore;
 
 /* ---------- Audio ---------- */
