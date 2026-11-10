@@ -1,7 +1,7 @@
 import type { PlanetSpec } from './system';
 import type { UniverseSpec } from './universe';
 import type { SurfaceModifiers, SkyState } from './sky';
-import type { CivView, ChronicleEntry } from './sim';
+import type { CivView, ChronicleEntry, SurfaceEnv } from './sim';
 
 /** Messages main -> sim Worker. */
 export type ToWorker =
@@ -19,4 +19,6 @@ export type FromWorker = {
   dirty: Uint8Array;
   civ: CivView;
   chronicle: ChronicleEntry[];
+  /** Copied env; temp and humidity arrays are transferred. */
+  env: SurfaceEnv;
 };

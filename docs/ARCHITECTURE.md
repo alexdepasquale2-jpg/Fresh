@@ -65,3 +65,30 @@ Rendering re-roots at every fold: `DiveView.progress` (0..999) is the zoom into 
 ## Saves and sharing
 
 `SaveState` (versioned, zod) is stored in IndexedDB via `idb-keyval`. The share code is the universe serial; importing one just adds that serial to the Box.
+
+## Simulation layers (Worker)
+
+1. **Surface (`sim/sand`).** Falling sand in active 32x32 chunks, plus a climate:
+   - **Temperature.** A coarse field (4x4 cells) driven by day/night (`DAY_TICKS`), seasons (`YEAR_TICKS`), sky warmth and dimming, and fire heat. It diffuses and relaxes to ambient.
+   - **Phase changes.** Water freezes from the top down and boils. Ice and snow melt. Moss burns, dies of frost, and creeps onto wet sand by daylight.
+   - **Water cycle.** Evaporation feeds humidity per column. Clouds spread and drift on the wind using exact-flux transfers (moisture is conserved and the sky wraps around). Rain or snow falls when it is cold. Storms bring lightning.
+   - **Sky effects.** Tides push the seas. Impacts dig craters with molten rims and scatter debris, water and ore.
+   - **Wind and erosion.** Wind lifts loose powder. Running water carries sand.
+   - **Engine materials.** Ice, snow, ore, fire and ash use reserved ids 250..254 (`ENGINE` in `contracts/sim.ts`).
+   - **Surface events.** impact, storm, lightning, freeze, thaw, fire, flood, drought, bloom, blight and ore are drained each step.
+2. **Civilisation (`sim/civ`).**
+   - **Villages.** Each has souls, food, mood, a belief shaped by the sky and surface events (sun, moon, sea, stone, fire, sky), and a tech era (huts, fire, iron, lamps, bells, star-reaching).
+   - **Limits on growth.** Growth is capped by carrying capacity: moss, water and ice to fish through, tides and tech.
+   - **People.** Up to 240 walk the surface as farmers, fishers, priests at dusk, lamp-bearers at night, and travellers between villages.
+   - **What happens to them.** Famine, frost, fire, flooding with retreat to high ground, feuds between faiths, festivals, migration, splits, resettlement of empty worlds, and launches at star-reaching.
+3. **Chronicle (`sim/chronicle`).** Events are written first. The reasons come afterwards: the chronicle finds the surface event that best fits each hardship within about two years, and tells it in the voice of the village's faith. Repeats are merged.
+
+The Worker sends the grid, the environment (temperature field, humidity, wind, rain, snow, lightning, time of day, season), the civ view (villages and people) and the chronicle each step.
+
+## Planet rendering
+
+`render/planet` is one fragment shader:
+- **Sky:** day/night gradient, dusk, stars, suns and moons on arcs, rings, belt glints, a comet with a tail, fbm clouds from humidity pushed by the wind, dust haze and lightning flashes.
+- **Materials:** grain, rock strata, water depth and shimmer, seasonal moss, emissive fire, ice sparkle, heat glow and frost from the temperature field, dark caves.
+- **Overlay:** written by the CPU each frame. Houses with windows lit at night, chimney smoke, bonfires, bell towers, launches, people (lamps, priests) and rain or snow.
+- **Village halos:** village light breathes on the universe pulse.

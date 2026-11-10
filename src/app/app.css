@@ -29,3 +29,8 @@
 .screen .surface-slot { height: 240px; flex: none; }
 .screen .detail .k-narration { font-size: 14px; }
 .screen .tray > * { flex: 1; min-width: 0; }
+.screen .surface-slot.big { height: 290px; margin: 0 -8px; }
+.vlist { display: flex; flex-direction: column; gap: 2px; }
+.vrow { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.vrow .k-narration { font-size: 14px; white-space: nowrap; }
+.screen .chronicle { overflow-y: auto; min-height: 0; }

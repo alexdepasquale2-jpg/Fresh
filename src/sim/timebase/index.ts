@@ -2,6 +2,7 @@
 import type { TimebaseFactory } from '@/contracts/units';
 import type { ClockSpeed } from '@/contracts/time';
 import { TICKS_PER_SECOND } from '@/contracts/time';
+import { YEAR_TICKS } from "@/contracts/sim";
 import { FX_ONE, fxSin, fxMul } from '@/core/fixed';
 
 export const factory = (): TimebaseFactory => ({
@@ -9,7 +10,7 @@ export const factory = (): TimebaseFactory => ({
     let tick = 0;
     let speed: ClockSpeed = 1;
     let accMs = 0;
-    const ticksPerYear = TICKS_PER_SECOND * 6;
+    const ticksPerYear = YEAR_TICKS;
     const maxCatchUpTicks = TICKS_PER_SECOND * 60 * 10;
     return {
       speed: () => speed,

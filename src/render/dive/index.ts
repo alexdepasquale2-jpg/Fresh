@@ -8,19 +8,33 @@ const FS = `#version 300 es
 precision highp float;
 in vec2 v_uv; out vec4 o;
 uniform vec2 u_res; uniform vec2 u_c; uniform float u_R, u_zoom, u_depth, u_pulse, u_light, u_time;
-uniform vec3 u_pal[6]; uniform vec4 u_mark[7];
+uniform vec3 u_pal[6]; uniform vec4 u_mark[7]; uniform float u_family; uniform vec2 u_jc;
 float h(vec2 n){ return fract(sin(dot(n, vec2(12.9898, 78.233))) * 43758.5453); }
+float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + 1.0), f.x), f.y); }
+float fbm(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 4; i++) { s += a * vn(p); p = p * 2.1 + 3.7; a *= 0.5; } return s; }
+// Pattern inside one fold disc, in that fold's local coords (so re-rooting never pops).
+float pattern(vec2 p, float key){
+  if (u_family < 0.5) { float d = length(p); return 0.5 + 0.5 * sin(d * 18.0 + key * 6.0 - u_pulse * 6.2831); }
+  if (u_family < 1.5) { vec2 z = p * 1.4; float trap = 9.0; vec2 c = u_jc + vec2(sin(key * 3.1), cos(key * 2.3)) * 0.04;
+    for (int i = 0; i < 10; i++) { z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c; trap = min(trap, abs(length(z) - 0.6)); if (dot(z, z) > 16.0) break; }
+    return exp(-trap * 7.0); }
+  vec2 w = p * 2.4 + key; w += vec2(fbm(w + u_time * 0.05), fbm(w.yx - u_time * 0.04)) * 1.6; return fbm(w);
+}
 void main(){
   vec2 fc = vec2(v_uv.x * u_res.x, (1.0 - v_uv.y) * u_res.y);
   vec2 p = (fc - u_c) / (u_R * u_zoom);
-  vec3 col = u_pal[0];
+  float neb = fbm((fc - u_c) / u_R * 1.3 + vec2(u_time * 0.02, -u_time * 0.015));
+  vec3 col = u_pal[0] + u_pal[1] * neb * 0.35 + u_pal[3] * pow(neb, 3.0) * 0.4;
   float lvl = 0.0; float idx = 0.0;
   for (int L = 0; L < 8; L++) {
     float d = length(p);
     if (d > 1.0) break;
     float k = h(vec2(mod(u_depth + lvl, 997.0), idx));
     vec3 c = u_pal[1 + int(floor(k * 4.0))];
-    col = mix(col, c, 0.45);
+    col = mix(col, c, 0.42);
+    float pat = pattern(p, k * 10.0);
+    col = mix(col, mix(u_pal[2], u_pal[5], pat * 0.6), 0.22 * smoothstep(1.0, 0.7, d));
     float edge = smoothstep(0.05, 0.0, abs(d - 0.96));
     col += u_pal[5] * edge * (0.18 + 0.12 * sin(u_pulse * 6.2831 + lvl * 1.7));
     vec2 off = vec2(0.0); idx = 0.0;
@@ -64,7 +78,7 @@ export const factory: DiveRendererFactory = () => {
   const loc: Record<string, WebGLUniformLocation | null> = {};
   const build = () => {
     prog = core!.program(FULLSCREEN_VS, FS);
-    for (const n of ['u_res', 'u_c', 'u_R', 'u_zoom', 'u_depth', 'u_pulse', 'u_light', 'u_time', 'u_pal', 'u_mark']) loc[n] = core!.gl.getUniformLocation(prog, n);
+    for (const n of ['u_res', 'u_c', 'u_R', 'u_zoom', 'u_depth', 'u_pulse', 'u_light', 'u_time', 'u_pal', 'u_mark', 'u_family', 'u_jc']) loc[n] = core!.gl.getUniformLocation(prog, n);
   };
   return {
     init: (c) => {
@@ -104,6 +118,8 @@ export const factory: DiveRendererFactory = () => {
       gl.uniform1f(loc.u_time!, time % 1000);
       gl.uniform3fv(loc.u_pal!, pal);
       gl.uniform4fv(loc.u_mark!, marks);
+      gl.uniform1f(loc.u_family!, u ? (u.glyph + u.seed.lo) % 3 : 0);
+      gl.uniform2f(loc.u_jc!, u ? -0.8 + ((u.seed.hi >>> 8) % 100) / 250 : -0.7, u ? 0.156 + ((u.seed.lo >>> 8) % 100) / 400 : 0.27);
       core.quad(prog);
     },
     dispose: () => void (core = null),

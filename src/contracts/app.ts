@@ -7,7 +7,7 @@ import type { SkyRules, SkyGame } from './sky';
 import type { Light, Box, Dive } from './game';
 import type { GlCore, DiveRenderer, SystemRenderer, PlanetRenderer, RoomRenderer } from './render';
 import type { Input, SaveStore, Audio, EdgeVoice, Perf, ScreenId } from './platform';
-import type { GridView, CivView, ChronicleEntry } from './sim';
+import type { GridView, CivView, ChronicleEntry, SurfaceEnv } from './sim';
 import type { Clock, Pulse } from './time';
 
 export type { ScreenId };
@@ -26,6 +26,7 @@ export interface SimFrame {
   readonly civ: CivView;
   readonly chronicle: readonly ChronicleEntry[];
   readonly tick: number;
+  readonly env: SurfaceEnv;
 }
 /** Main-thread handle on the sim Worker (built in src/app). */
 export interface SimClient {

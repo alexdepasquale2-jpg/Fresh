@@ -1,12 +1,26 @@
-// Falling-sand kernel (unit 09). 32x32 chunks, active-chunk stepping, data-driven
-// by the universe material and reaction tables. Integer-only and deterministic.
-import type { SurfaceSimFactory, GridView } from '@/contracts/sim';
+// Surface sim (unit 09). Falling sand plus a living climate:
+// - 32x32 active chunks; powders, liquids, gases, fire, life by material table
+// - coarse temperature field (4x4 cells) with day/night, seasons, sky warmth and fire heat
+// - phase changes: water freezes and boils, ice and snow melt, moss burns and dies of frost
+// - water cycle: evaporation -> humidity per column -> clouds drift on the wind -> rain or snow
+// - storms with lightning; tides; impacts that dig craters, scatter debris, deliver water or ore
+// - erosion: running water lifts sand and lays it down elsewhere; wind drifts surface powders
+// Integer-only and deterministic: same planet + same steps = same world.
+import type { SurfaceSimFactory, GridView, SurfaceEnv, SurfaceEvent, SurfaceEventKind } from '@/contracts/sim';
 import type { SurfaceModifiers } from '@/contracts/sky';
 import type { ModifierKey } from '@/contracts/atlas';
-import { GRID_W as W, GRID_H as H, CHUNK } from '@/contracts/sim';
+import { GRID_W as W, GRID_H as H, CHUNK, FIELD, ENGINE, DAY_TICKS, YEAR_TICKS } from '@/contracts/sim';
+import { fxSin, FX_ONE } from '@/core/fixed';
 
 const K = { empty: 0, solid: 1, powder: 2, liquid: 3, gas: 4, fire: 5, life: 6 } as const;
 interface Rx { b: number; ta: number; tb: number; num: number; den: number; key: ModifierKey | null; min: number; max: number }
+
+const FW = Math.ceil(W / FIELD);
+const FH = Math.ceil(H / FIELD);
+const ICE = ENGINE.ice.id, SNOW = ENGINE.snow.id, ORE = ENGINE.ore.id, FIRE = ENGINE.fire.id, ASH = ENGINE.ash.id;
+
+/** sin of a 0..999 phase, as -1000..1000 integer. */
+const isin = (phase: number) => Math.trunc((fxSin(Math.trunc((phase * FX_ONE) / 1000)) * 1000) / FX_ONE);
 
 export const factory: SurfaceSimFactory = () => {
   const cells = new Uint8Array(W * H);
@@ -18,11 +32,23 @@ export const factory: SurfaceSimFactory = () => {
   let next = new Uint8Array(CX * CY);
   const kind = new Uint8Array(256);
   const dens = new Uint8Array(256);
+  const temp = new Uint8Array(FW * FH);
+  const heat = new Int16Array(FW * FH); // per-tick heat sources (fire) accumulated in the pass
+  const hum = new Uint8Array(FW);
+  const humTmp = new Uint8Array(FW);
   let rx: Rx[][] = [];
   let tick = 0;
   let seed = 0x9e3779b9;
-  let water = 0, sand = 0;
+  let WATER = 3, SAND = 2, MOSS = 4, STEAM = 5, STONE = 1;
   let mods: SurfaceModifiers | null = null;
+  let wind = 0;
+  let rain = 0;
+  let snowing = false;
+  let lightning = 9999;
+  let events: SurfaceEvent[] = [];
+  const counts = { water: 0, ice: 0, fire: 0, moss: 0 };
+  let lastCounts = { water: -1, ice: 0, fire: 0, moss: 0 };
+  let stormy = false;
 
   const rand = () => {
     seed ^= seed << 13; seed >>>= 0;
@@ -31,6 +57,9 @@ export const factory: SurfaceSimFactory = () => {
     return seed;
   };
   const ri = (n: number) => rand() % n;
+  const emit = (kindE: SurfaceEventKind, x: number, y: number, size: number) => {
+    if (events.length < 64) events.push({ kind: kindE, tick, x, y, size });
+  };
   const wake = (x: number, y: number) => {
     const cx = (x / CHUNK) | 0, cy = (y / CHUNK) | 0;
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
@@ -53,7 +82,6 @@ export const factory: SurfaceSimFactory = () => {
     wake(i % W, (i / W) | 0);
     wake(j % W, (j / W) | 0);
   };
-  // Can mover m displace target cell t (moving down if fall, else up)?
   const canSink = (m: number, t: number) => { const k = kind[t]!; return k === K.empty || ((k === K.liquid || k === K.gas || k === K.fire) && dens[t]! < dens[m]!); };
   const canRise = (m: number, t: number) => { const k = kind[t]!; return k === K.empty || ((k === K.liquid || k === K.gas) && dens[t]! > dens[m]!); };
   const tryMove = (i: number, x: number, y: number, dx: number, dy: number, rise: boolean) => {
@@ -63,6 +91,16 @@ export const factory: SurfaceSimFactory = () => {
     if (!(rise ? canRise(cells[i]!, cells[j]!) : canSink(cells[i]!, cells[j]!))) return false;
     swap(i, j);
     return true;
+  };
+  const tAt = (x: number, y: number) => temp[((y / FIELD) | 0) * FW + ((x / FIELD) | 0)]!;
+  const surfaceY = (x: number) => {
+    let y = 0;
+    while (y < H - 1) {
+      const k = kind[cells[y * W + x]!];
+      if (k !== K.empty && k !== K.gas) break;
+      y++;
+    }
+    return y;
   };
 
   const react = (i: number, x: number, y: number) => {
@@ -82,30 +120,211 @@ export const factory: SurfaceSimFactory = () => {
     }
   };
 
+  // Climate rules that hold in every universe, applied by temperature and light.
+  const climate = (i: number, x: number, y: number, c: number, T: number, daylight: number) => {
+    if (c === WATER) {
+      if (T < 100 && ri(30) === 0) {
+        // Freeze from the top down: only water with air or ice above.
+        const up = y > 0 ? cells[i - W]! : 0;
+        if (up === 0 || up === ICE || up === SNOW) set(i, ICE);
+      } else if (T > 205 && ri(25) === 0) set(i, STEAM);
+    } else if (c === ICE) {
+      if (T > 112 && ri(40) === 0) set(i, WATER);
+    } else if (c === SNOW) {
+      if (T > 108 && ri(25) === 0) set(i, WATER);
+    } else if (c === MOSS) {
+      if (T > 215 && ri(40) === 0) set(i, FIRE);
+      else if (T < 92 && ri(300) === 0) set(i, SAND);
+      else if (daylight > 300 && T > 105 && T < 190 && ri(700) === 0) {
+        // Growth toward light: moss creeps onto wet sand nearby.
+        const j = i + (ri(2) ? 1 : -1) + (ri(3) - 1) * W;
+        if (j > 0 && j < W * H && cells[j] === SAND) {
+          for (let k = -2; k <= 2; k++) if (cells[j + k] === WATER || cells[j + k + W] === WATER) { set(j, MOSS); break; }
+        }
+      }
+    } else if (c === FIRE) {
+      { const hk = ((y / FIELD) | 0) * FW + ((x / FIELD) | 0); heat[hk] = heat[hk]! + 6; }
+      const r = ri(12);
+      if (r === 0) set(i, ri(3) === 0 ? ASH : 0);
+      else if (r < 5) {
+        const j = i + (ri(2) ? 1 : -1) + (ri(3) - 1) * W;
+        if (j > 0 && j < W * H) {
+          const t = cells[j]!;
+          if (t === MOSS || (kind[t] === K.life)) set(j, FIRE);
+          else if (t === WATER) { set(i, STEAM); }
+          else if (t === ICE || t === SNOW) set(j, WATER);
+        }
+      }
+    } else if (c === STEAM) {
+      if (y < 8) {
+        set(i, 0);
+        const cx = (x / FIELD) | 0;
+        hum[cx] = Math.min(255, hum[cx]! + 4);
+      } else if (T < 110 && ri(80) === 0) set(i, WATER);
+    }
+  };
+
   const impact = (m: SurfaceModifiers) => {
     const x = 4 + ri(W - 8);
-    let y = 0;
-    while (y < H - 1 && kind[cells[y * W + x]!] === K.empty) y++;
-    const rad = 3 + ri(3);
+    const y = surfaceY(x);
+    const rad = 3 + ri(3) + (m.impacts > 50 ? 2 : 0);
     for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++) {
       const px = x + dx, py = y + dy;
       if (px < 0 || px >= W || py < 0 || py >= H || dx * dx + dy * dy > rad * rad) continue;
-      set(py * W + px, 0);
+      const pi = py * W + px;
+      // Molten rim, ore at the floor when the sky is iron-rich (impacts + night light from a belt).
+      if (dx * dx + dy * dy >= (rad - 1) * (rad - 1) && py > y && ri(3) === 0) set(pi, m.nightLight > 0 && ri(2) ? ORE : STONE);
+      else set(pi, 0);
     }
-    // Debris and, if tides or a comet, delivered water.
-    for (let k = 0; k < rad * 3; k++) {
-      const px = x - rad * 2 + ri(rad * 4 + 1), py = Math.max(0, y - rad - ri(rad * 2));
-      if (px >= 0 && px < W && kind[cells[py * W + px]!] === K.empty) set(py * W + px, m.tide > 0 && ri(2) === 0 ? water : sand);
+    for (let k = 0; k < rad * 4; k++) {
+      const px = x - rad * 2 + ri(rad * 4 + 1), py = Math.max(0, y - rad - ri(rad * 3));
+      if (px < 0 || px >= W || kind[cells[py * W + px]!] !== K.empty) continue;
+      const roll = ri(10);
+      set(py * W + px, roll < 2 ? FIRE : m.tide > 0 && roll === 2 ? WATER : roll < 5 && m.nightLight > 0 ? ORE : SAND);
     }
+    const cx = (x / FIELD) | 0;
+    hum[cx] = Math.min(255, hum[cx]! + 40); // impacts throw up vapour
+    emit('impact', x, y, rad);
+    if (m.nightLight > 0) emit('ore', x, y, rad);
+  };
+
+  const strike = () => {
+    // Lightning hits the highest point under the wettest cloud.
+    let best = 0;
+    for (let c = 1; c < FW; c++) if (hum[c]! > hum[best]!) best = c;
+    const x = Math.min(W - 1, best * FIELD + ri(FIELD));
+    const y = surfaceY(x);
+    if (y >= H - 1) return;
+    const i = y * W + x;
+    const c = cells[i]!;
+    if (c === MOSS || kind[c] === K.life || c === SAND) set(Math.max(0, i - W), FIRE);
+    if (c === MOSS) set(i, FIRE);
+    lightning = 0;
+    emit('lightning', x, y, 1);
+  };
+
+  const updateClimate = (m: SurfaceModifiers) => {
+    const day = tick % DAY_TICKS;
+    const season = tick % YEAR_TICKS;
+    const sunUp = -isin(Math.trunc((day * 1000) / DAY_TICKS) + 250); // -1000 midnight .. 1000 noon
+    const seasonal = isin(Math.trunc((season * 1000) / YEAR_TICKS)); // +summer, -winter
+    const amp = 18 + Math.max(-10, m.seasons) / 2;
+    const base = 132 + Math.trunc((m.warmth * 8) / 10) - Math.trunc((m.dimming * 4) / 10) + Math.trunc((seasonal * amp) / 1000);
+    const daily = Math.trunc((sunUp * (10 - Math.trunc(m.dimming / 20))) / 1000);
+    // Wind: seasonal swing plus dust storms.
+    wind = Math.max(-100, Math.min(100, Math.trunc(isin(Math.trunc((tick * 7) % 1000)) / 25) + Math.trunc(m.dust / 2) * (isin(Math.trunc((season * 3000) / YEAR_TICKS) % 1000) > 0 ? 1 : -1)));
+    for (let fy = 0; fy < FH; fy++) {
+      // High air is colder; deep ground holds a steady warmth.
+      const depthAdj = fy < 4 ? -8 + fy * 2 : fy > FH - 8 ? Math.trunc((140 - base) / 2) : 0;
+      for (let fx = 0; fx < FW; fx++) {
+        const k = fy * FW + fx;
+        const cloud = hum[fx]! > 120 ? -4 : 0;
+        const amb = base + daily + depthAdj + cloud;
+        let t = temp[k]!;
+        // Diffuse with neighbours, relax to ambient, add fire heat.
+        const n = (fx > 0 ? temp[k - 1]! : t) + (fx < FW - 1 ? temp[k + 1]! : t) + (fy > 0 ? temp[k - FW]! : t) + (fy < FH - 1 ? temp[k + FW]! : t);
+        t = t + Math.trunc((n - 4 * t) / 8) + Math.trunc((amb - t) / 6) + heat[k]!;
+        temp[k] = t < 0 ? 0 : t > 255 ? 255 : t;
+      }
+    }
+    heat.fill(0);
+  };
+
+  const updateWeather = (_m: SurfaceModifiers) => {
+    // Evaporation from warm open water.
+    for (let k = 0; k < 20; k++) {
+      const x = ri(W);
+      const y = surfaceY(x);
+      if (y >= H - 1) continue;
+      const i = y * W + x;
+      if (cells[i] === WATER && tAt(x, y) > 112 && ri(3) === 0) {
+        set(i, 0);
+        const cx = (x / FIELD) | 0;
+        hum[cx] = Math.min(255, hum[cx]! + 4);
+      }
+    }
+    // Clouds drift on the wind and spread.
+    if (tick % 6 === 0) {
+      // Exact-flux transfers so no moisture is created or lost. The sky wraps around the world.
+      for (let c = 0; c < FW; c++) {
+        const n = c === FW - 1 ? 0 : c + 1;
+        const f = Math.trunc((hum[c]! - hum[n]!) / 6);
+        hum[c] = hum[c]! - f;
+        hum[n] = hum[n]! + f;
+      }
+      const dir = wind > 0 ? 1 : -1;
+      const pow = Math.abs(wind);
+      if (pow > 10) {
+        humTmp.set(hum);
+        for (let c = 0; c < FW; c++) {
+          const f = Math.trunc((humTmp[c]! * pow) / 400);
+          const n = (c + dir + FW) % FW;
+          hum[c] = hum[c]! - f;
+          hum[n] = Math.min(255, hum[n]! + f);
+        }
+      }
+    }
+    // Rain or snow from heavy cloud.
+    rain = 0;
+    snowing = false;
+    for (let c = 0; c < FW; c++) {
+      const h = hum[c]!;
+      if (h <= 70) continue;
+      rain += h - 70;
+      if (ri(160) < h - 70) {
+        const x = Math.min(W - 1, c * FIELD + ri(FIELD));
+        const cold = tAt(x, 2) < 104;
+        if (cold) snowing = true;
+        if (cells[x] === 0) {
+          set(x, cold ? SNOW : WATER);
+          hum[c] = h - 4;
+        }
+      }
+    }
+    rain = Math.min(255, rain >> 2);
+    lightning++;
+    const storm = rain > 90;
+    if (storm && !stormy) emit('storm', W >> 1, 0, rain);
+    stormy = storm;
+    if (storm && ri(500) === 0) strike();
+  };
+
+  const tally = () => {
+    counts.water = counts.ice = counts.fire = counts.moss = 0;
+    for (let i = 0; i < cells.length; i++) {
+      const c = cells[i]!;
+      if (c === WATER) counts.water++;
+      else if (c === ICE) counts.ice++;
+      else if (c === FIRE) counts.fire++;
+      else if (c === MOSS) counts.moss++;
+    }
+    const L = lastCounts;
+    if (L.water >= 0) {
+      if (counts.ice > 200 && L.ice <= 200) emit('freeze', W >> 1, H >> 1, counts.ice);
+      if (counts.ice < 60 && L.ice >= 60) emit('thaw', W >> 1, H >> 1, L.ice);
+      if (counts.fire > 40 && L.fire <= 40) emit('fire', W >> 1, H >> 1, counts.fire);
+      if (counts.water > L.water + 400) emit('flood', W >> 1, H >> 1, counts.water - L.water);
+      if (counts.water + 400 < L.water) emit('drought', W >> 1, H >> 1, L.water - counts.water);
+      if (counts.moss > L.moss + 120) emit('bloom', W >> 1, H >> 1, counts.moss - L.moss);
+      if (counts.moss + 120 < L.moss) emit('blight', W >> 1, H >> 1, L.moss - counts.moss);
+    }
+    lastCounts = { ...counts };
   };
 
   const stepOnce = (m: SurfaceModifiers) => {
     tick++;
     const t = active; active = next; next = t; next.fill(0);
     if (tick % 20 === 0) active.fill(1);
-    if (m.impacts > 0 && ri(4000) < m.impacts) impact(m);
+    if (tick % 4 === 0) updateClimate(m);
+    updateWeather(m);
+    if (tick % 200 === 0) tally();
+    if (m.impacts > 0 && ri(30000) < m.impacts) impact(m);
     const now = tick & 0xffff;
-    const tideDir = ((tick / 120) | 0) & 1 ? 1 : -1;
+    const tidePhase = isin(Math.trunc(((tick % 240) * 1000) / 240));
+    const tideDir = tidePhase > 0 ? 1 : -1;
+    const daylight = Math.max(0, -isin(Math.trunc(((tick % DAY_TICKS) * 1000) / DAY_TICKS) + 250));
+    const windDir = wind > 0 ? 1 : -1;
+    const windPow = Math.abs(wind);
     const ltr = (tick & 1) === 0;
     for (let y = H - 1; y >= 0; y--) {
       const cy = (y / CHUNK) | 0;
@@ -117,21 +336,57 @@ export const factory: SurfaceSimFactory = () => {
         if (c === 0 || stamp[i] === now) continue;
         const kd = kind[c]!;
         if (kd === K.powder) {
-          if (!tryMove(i, x, y, 0, 1, false)) { const s = ri(2) ? 1 : -1; if (!tryMove(i, x, y, s, 1, false)) tryMove(i, x, y, -s, 1, false); }
+          if (!tryMove(i, x, y, 0, 1, false)) {
+            const s = ri(2) ? 1 : -1;
+            if (!tryMove(i, x, y, s, 1, false) && !tryMove(i, x, y, -s, 1, false)) {
+              // Wind lifts loose surface powder.
+              if (windPow > 30 && y > 0 && cells[i - W] === 0 && ri(400) < windPow - 30) tryMove(i, x, y, windDir, -1, true);
+            }
+          }
         } else if (kd === K.liquid) {
+          // Deep water (liquid above and below) rarely needs to move.
+          if (y > 0 && y < H - 1 && cells[i - W] === c && cells[i + W] === c && ((i + tick) & 15) !== 0) continue;
           if (!tryMove(i, x, y, 0, 1, false)) {
             let s = ri(2) ? 1 : -1;
             if (m.tide > 0 && ri(100) < m.tide) s = tideDir;
-            if (!tryMove(i, x, y, s, 1, false) && !tryMove(i, x, y, s, 0, false)) tryMove(i, x, y, -s, 0, false);
+            if (!tryMove(i, x, y, s, 1, false)) {
+              const below = y < H - 1 ? cells[i + W]! : 0;
+              if (tryMove(i, x, y, s, 0, false) || tryMove(i, x, y, -s, 0, false)) {
+                // Erosion: running water picks up the sand it runs over.
+                if (below === SAND && ri(260) === 0) {
+                  const j = i + W;
+                  if (cells[i] === 0) swap(i, j);
+                }
+              }
+            }
           }
         } else if (kd === K.gas || kd === K.fire) {
-          const s = ri(3) - 1;
-          if (!tryMove(i, x, y, s, -1, true)) tryMove(i, x, y, ri(2) ? 1 : -1, 0, true);
+          const s = ri(3) - 1 + (windPow > 40 && ri(3) === 0 ? windDir : 0);
+          if (!tryMove(i, x, y, Math.max(-1, Math.min(1, s)), -1, true)) tryMove(i, x, y, ri(2) ? 1 : -1, 0, true);
         }
-        if (stamp[i] !== now && kd !== K.empty) react(i, x, y);
-        else if (kd === K.fire || kd === K.life) react(i, x, y);
+        const slow = kd === K.solid || kd === K.life || kd === K.powder;
+        if (slow ? ((i + tick) & 7) === 0 : stamp[i] !== now || kd === K.fire) {
+          const cc = cells[i]!;
+          if (cc !== 0) {
+            climate(i, x, y, cc, tAt(x, y), daylight);
+            if (cells[i] === cc) react(i, x, y);
+          }
+        }
       }
     }
+  };
+
+  const env: SurfaceEnv = {
+    get day() { return Math.trunc(((tick % DAY_TICKS) * 1000) / DAY_TICKS); },
+    get season() { return Math.trunc(((tick % YEAR_TICKS) * 1000) / YEAR_TICKS); },
+    fieldW: FW,
+    fieldH: FH,
+    temp,
+    humidity: hum,
+    get wind() { return wind; },
+    get rain() { return rain; },
+    get snowing() { return snowing; },
+    get lightning() { return lightning; },
   };
 
   const view: GridView = { width: W, height: H, cells, chunksX: CX, chunksY: CY, dirty, clearDirty: () => dirty.fill(0) };
@@ -140,8 +395,17 @@ export const factory: SurfaceSimFactory = () => {
       kind.fill(0); dens.fill(0);
       const byName = new Map<string, number>();
       for (const mt of universe.materialTable) { kind[mt.id] = K[mt.kind]; dens[mt.id] = mt.density; byName.set(mt.name, mt.id); }
-      water = byName.get('water') ?? 0;
-      sand = byName.get('sand') ?? 0;
+      kind[ICE] = K.solid; dens[ICE] = 90;
+      kind[SNOW] = K.powder; dens[SNOW] = 60;
+      kind[ORE] = K.solid; dens[ORE] = 255;
+      kind[FIRE] = K.fire; dens[FIRE] = 2;
+      kind[ASH] = K.powder; dens[ASH] = 80;
+      WATER = byName.get('water') ?? 3;
+      SAND = byName.get('sand') ?? 2;
+      MOSS = byName.get('moss') ?? 4;
+      STEAM = byName.get('steam') ?? 5;
+      STONE = byName.get('stone') ?? 1;
+      byName.set('ice', ICE).set('snow', SNOW).set('ore', ORE).set('fire', FIRE).set('ash', ASH);
       rx = [];
       for (const r of universe.reactionTable) {
         const a = byName.get(r.a);
@@ -158,6 +422,10 @@ export const factory: SurfaceSimFactory = () => {
       stamp.fill(0);
       seed = (planet.seed.lo ^ 0x5a17) >>> 0 || 1;
       tick = 0;
+      temp.fill(132);
+      hum.fill(18);
+      events = [];
+      lastCounts = { water: -1, ice: 0, fire: 0, moss: 0 };
       active.fill(1); next.fill(1); dirty.fill(1);
     },
     step: (ticks, m) => {
@@ -166,19 +434,31 @@ export const factory: SurfaceSimFactory = () => {
     },
     grid: () => view,
     tick: () => tick,
+    env: () => env,
+    drainEvents: () => {
+      const e = events;
+      events = [];
+      return e;
+    },
     snapshot: () => {
-      const out = new Uint8Array(8 + cells.length);
+      const out = new Uint8Array(8 + cells.length + temp.length + hum.length);
       const dv = new DataView(out.buffer);
       dv.setUint32(0, tick);
       dv.setUint32(4, seed);
       out.set(cells, 8);
+      out.set(temp, 8 + cells.length);
+      out.set(hum, 8 + cells.length + temp.length);
       return out;
     },
     restore: (s) => {
       const dv = new DataView(s.buffer, s.byteOffset);
       tick = dv.getUint32(0);
       seed = dv.getUint32(4);
-      cells.set(s.subarray(8));
+      cells.set(s.subarray(8, 8 + cells.length));
+      if (s.length >= 8 + cells.length + temp.length + hum.length) {
+        temp.set(s.subarray(8 + cells.length, 8 + cells.length + temp.length));
+        hum.set(s.subarray(8 + cells.length + temp.length));
+      }
       active.fill(1); next.fill(1); dirty.fill(1);
     },
   };
