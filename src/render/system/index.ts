@@ -23,6 +23,8 @@ const KIND_SIZE: Record<string, number> = { dwarf: 0.7, giant: 1.25, pulsar: 0.4
 const TAU = Math.PI * 2;
 /** The orrery's frame: the clear band of the system screen round the star (below the star's name, above the ORRERY row). */
 const FRAME_R = 118;
+/** With a rect in the view the layout is always worked out for this width, so a system looks the same in any window. */
+const RECT_W = 390;
 
 const FS = `#version 300 es
 precision highp float;
@@ -258,7 +260,9 @@ export const factory: SystemRendererFactory = () => {
   const pinfo = new Float32Array(16);
   const prad = new Float32Array(4);
   const moonSpec = new Float32Array(36); // per planet, 3 x (radius px, look + 1, turns)
-  const S = { starR: 20, state: 0, pulsar: false, compR: 0, compOrbit: 0, compPeriod: 1, compClose: false, rogueA: 0, rogueB: 0, roguePhi: 0, roguePeriod: 1, roguePhase: 0, rogueR: 4, cometA: 0, cometB: 0, cometE: 0, cometAxis: 0, cometPeriod: 1, cometPhase: 0, fit: 1, far: 192 };
+  const S = { starR: 20, state: 0, pulsar: false, compR: 0, compOrbit: 0, compPeriod: 1, compClose: false, rogueA: 0, rogueB: 0, roguePhi: 0, roguePeriod: 1, roguePhase: 0, rogueR: 4, cometA: 0, cometB: 0, cometE: 0, cometAxis: 0, cometPeriod: 1, cometPhase: 0, fit: 1, far: 192, ext: 132 };
+  // Where the star is and how layout px map to screen px, as last drawn. orbitAt reads the same numbers.
+  const cur = { cx: 0, cy: 250, fit: 1, set: false };
 
   const build = () => {
     prog = core!.program(FULLSCREEN_VS, FS);
@@ -361,6 +365,7 @@ export const factory: SystemRendererFactory = () => {
     if (disc[2]! > 0) ext = Math.max(ext, disc[1]! + 2);
     if (S.compR > 0) ext = Math.max(ext, S.compOrbit + S.compR * 2.4);
     if (S.rogueA > 0) ext = Math.max(ext, S.rogueA + S.rogueR + 3);
+    S.ext = ext;
     S.fit = Math.min(1, Math.min(w / 2 - 6, FRAME_R) / ext);
     S.far = Math.max(ext + 30, 192);
     cachedSystem = sys;
@@ -379,10 +384,10 @@ export const factory: SystemRendererFactory = () => {
     },
     orbitAt: (x, y) => {
       if (!core) return -1;
-      const L = systemLayout(core.width());
+      if (!cur.set) { const L = systemLayout(core.width()); cur.cx = L.cx; cur.cy = L.cy; cur.fit = S.fit; }
       // Layout px: the same scale the shader draws with. The reach is 16 screen px, less where the rings sit closer than that.
-      const d = Math.hypot(x - L.cx, y - L.cy) / S.fit;
-      const reach = Math.min(16 / S.fit, 17);
+      const d = Math.hypot(x - cur.cx, y - cur.cy) / cur.fit;
+      const reach = Math.min(16 / cur.fit, 17);
       let best = -1, bd = reach;
       for (let i = 0; i < n; i++) { const e = Math.abs(d - ringR[i]!); if (e <= bd) { bd = e; best = i; } }
       return best;
@@ -390,9 +395,13 @@ export const factory: SystemRendererFactory = () => {
     draw: (v) => {
       if (!core || !prog || core.lost()) return;
       const gl = core.gl;
-      const w = core.width();
+      const R = v.rect;
+      const w = R ? RECT_W : core.width();
       if (v.system !== cachedSystem || v.universe.palette !== cachedPalette || w !== cachedW) pack(v, w);
-      const cx = w / 2, cy = 250;
+      // Phone: the fixed spot and the fit that never grows. With a rect: the star at its middle (plus the pan), the widest thing at its nearer edge (times the zoom).
+      const cx = R ? R.x + R.w / 2 + (v.pan?.x ?? 0) : w / 2, cy = R ? R.y + R.h / 2 + (v.pan?.y ?? 0) : 250;
+      const fitK = R ? (Math.max(40, Math.min(R.w, R.h) / 2 - 10) / S.ext) * Math.max(0.25, Math.min(12, v.zoom ?? 1)) : S.fit;
+      cur.cx = cx; cur.cy = cy; cur.fit = fitK; cur.set = true;
       const orbits = v.system.orbits;
       n = orbits.length;
       const tick = v.tick;
@@ -441,7 +450,7 @@ export const factory: SystemRendererFactory = () => {
       const fit = S.state === 2 ? Math.min(1, Math.max(0, Math.sin(time * 0.31) + Math.sin(time * 0.73 + 1) - 1.3) * 2.5) : 0;
       const sr = S.starR * (S.state === 1 ? 1 + 0.24 * Math.sin(time * 0.7) : 1) + 2.5 * Math.sin(pulse * TAU) * (S.pulsar ? 0.3 : 1) + (v.flare ?? 0) * 40 + fit * 7;
       gl.useProgram(prog);
-      gl.uniform2f(loc.u_res!, w, core.height());
+      gl.uniform2f(loc.u_res!, core.width(), core.height());
       gl.uniform2f(loc.u_c!, cx, cy);
       gl.uniform1fv(loc.u_rings!, rings);
       gl.uniform1i(loc.u_n!, n);
@@ -449,7 +458,6 @@ export const factory: SystemRendererFactory = () => {
       gl.uniform1i(loc.u_hover!, v.drag?.overOrbit ?? -1);
       gl.uniform3fv(loc.u_planet!, planets);
       gl.uniform4fv(loc.u_piece!, pieces);
-      const fitK = S.fit;
       gl.uniform3f(loc.u_ghost!, v.drag ? cx + (v.drag.x - cx) / fitK : 0, v.drag ? cy + (v.drag.y - cy) / fitK : 0, v.drag ? 1 : 0);
       gl.uniform3f(loc.u_fit!, fitK, S.far, (v.quality ?? 1) < 0.52 ? 0 : 1);
       gl.uniform2i(loc.u_cnt!, mc, pc);
@@ -505,6 +513,7 @@ export const factory: SystemRendererFactory = () => {
     dispose: () => {
       core = null;
       cachedSystem = null;
+      cur.set = false;
     },
   };
 };

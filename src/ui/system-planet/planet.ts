@@ -292,6 +292,8 @@ export const planet: ScreenFactory = () => {
       // One finger: paint, tap a tool, or (hands off) drag to pan. Two fingers: pinch to zoom and pan.
       const pts = new Map<number, { x: number; y: number }>();
       let pinched = false, moved = 0;
+      /** A mouse press with the right or middle button: it only ever pans (or looks), whatever tool is in hand. */
+      let alt = false;
       let pinch = { dist: 1, mx: 0, my: 0 };
       let hold: { x: number; y: number; t: number; n: number } | null = null;
       let lastTap = { x: 0, y: 0, t: -1e9 };
@@ -307,8 +309,10 @@ export const planet: ScreenFactory = () => {
         if (pts.size === 2) { pinched = true; pinch = two(); hold = null; }
         else if (pts.size === 1) {
           pinched = false; moved = 0;
-          hold = isTool() && !view.fp ? { ...at, t: 0, n: 0 } : null;
-          if (mode.paint && !view.fp) use(at.x, at.y, true);
+          alt = e.pointerType === 'mouse' && e.button !== 0;
+          if (alt) e.preventDefault();
+          hold = isTool() && !view.fp && !alt ? { ...at, t: 0, n: 0 } : null;
+          if (mode.paint && !view.fp && !alt) use(at.x, at.y, true);
         }
       });
       slotEl.addEventListener('pointermove', (e) => {
@@ -331,7 +335,7 @@ export const planet: ScreenFactory = () => {
         } else if (!pinched) {
           moved += Math.abs(now.x - prev.x) + Math.abs(now.y - prev.y);
           if (hold) { hold.x = now.x; hold.y = now.y; if (!mode.paint && moved >= 14) hold = null; }
-          if (mode.mode === 'watch') {
+          if (mode.mode === 'watch' || alt) {
             view.cx -= ((now.x - prev.x) / r.width) * (GRID_W / view.zoom);
             view.cy -= ((now.y - prev.y) / r.height) * (GRID_H / view.zoom);
             if (moved > 14 && follow) setFollow(false);
@@ -342,7 +346,7 @@ export const planet: ScreenFactory = () => {
       });
       const stop = (e: PointerEvent) => {
         const at = pts.get(e.pointerId);
-        const tap = e.type === 'pointerup' && pts.size === 1 && !pinched && moved < 14 && !!at;
+        const tap = e.type === 'pointerup' && pts.size === 1 && !pinched && moved < 14 && !!at && !alt;
         // Strike tools and Body fire on release, so a pinch never throws a meteor by accident. A held strike has already fired.
         if (tap && (!mode.paint || view.fp) && !(hold && hold.n > 0)) use(at!.x, at!.y, true);
         if (tap && mode.mode === 'watch' && !view.fp) {
@@ -358,8 +362,29 @@ export const planet: ScreenFactory = () => {
           } else lastTap = { ...at!, t: now };
         }
         pts.delete(e.pointerId);
-        if (!pts.size) hold = null;
+        if (!pts.size) { hold = null; alt = false; }
       };
+      slotEl.addEventListener('contextmenu', (e) => e.preventDefault());
+      slotEl.addEventListener('auxclick', (e) => e.preventDefault());
+      // Read-only window onto the camera for whoever lays the game out (the desktop plugin's tooltip): see README.md.
+      Object.defineProperty(slotEl, 'sallowView', {
+        configurable: true,
+        value: Object.freeze({
+          camera: () => ({ cx: view.cx, cy: view.cy, zoom: view.zoom, eyes: !!view.fp, gridW: GRID_W, gridH: GRID_H }),
+          pick: (clientX: number, clientY: number) => {
+            const f = c.sim.latest();
+            if (!f || view.fp) return null;
+            const r = slotEl.getBoundingClientRect();
+            if (clientX < r.left || clientY < r.top || clientX >= r.right || clientY >= r.bottom) return null;
+            const g = toGrid(clientX - r.left, clientY - r.top);
+            // A village counts as under the cursor within 14 screen px of its column, and from its roofs down to its floor.
+            const reachX = Math.max(3, (14 / r.width) * (GRID_W / view.zoom)), reachY = Math.max(10, (40 / r.height) * (GRID_H / view.zoom));
+            let best: Village | null = null;
+            for (const v of f.civ.villages) if (Math.abs(v.x - g.gx) <= reachX && g.gy >= v.y - reachY && g.gy <= v.y + reachY * 0.5 && (!best || Math.abs(v.x - g.gx) < Math.abs(best.x - g.gx))) best = v;
+            return { gx: g.gx, gy: g.gy, village: best ? { id: best.id, name: vname(best.id), souls: best.souls } : null };
+          },
+        }),
+      });
       slotEl.addEventListener('pointerup', stop);
       slotEl.addEventListener('pointercancel', stop);
       slotEl.addEventListener('wheel', (e) => { e.preventDefault(); const q = local(e); zoomAt(e.deltaY < 0 ? 1.2 : 1 / 1.2, q.x, q.y); }, { passive: false });

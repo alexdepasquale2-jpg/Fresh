@@ -139,7 +139,8 @@ export const factory: RoomRendererFactory = () => {
   };
   const bedroom = (c: GlCore, v: RoomRenderView, dtMs: number) => {
     const d = v.decor ?? NO_DECOR;
-    const R = ROOM_RECT(c.width());
+    // A rect from the view (the desktop's play area) or the phone's fixed spot.
+    const R = v.rect ?? ROOM_RECT(c.width());
     const ps = c.pixelScale();
     const s = Math.max(1, Math.floor(Math.min((R.w * ps) / BW, (R.h * ps) / HH))) / ps;
     map.s = s; map.x = R.x + (R.w - BW * s) / 2; map.y = R.y + (R.h - HH * s) / 2;
@@ -215,11 +216,17 @@ export const factory: RoomRendererFactory = () => {
     draw: (v, dt) => {
       if (!core || core.lost()) return;
       if ((v.scene ?? 0) === 0) { bedroom(core, v, dt); return; }
-      const R = ROOM_RECT(core.width());
-      const s = R.w / BW;
-      if (!started || (v.scene ?? 0) !== scene) { kid.x = (v.kid.x - R.x) / s; kid.y = (v.kid.y - R.y) / s; mote.x = kid.x + 6; mote.y = kid.y - 6; started = true; scene = v.scene ?? 0; }
+      const R = v.rect ?? ROOM_RECT(core.width());
+      // Given a rect, the room sits where blit will put it: a whole-pixel scale, centred. Without one, the phone's old mapping.
+      let s = R.w / BW, ox = R.x, oy = R.y;
+      if (v.rect) {
+        const ps = core.pixelScale();
+        s = Math.max(1, Math.floor(Math.min((R.w * ps) / BW, (R.h * ps) / BH))) / ps;
+        ox = R.x + (R.w - BW * s) / 2; oy = R.y + (R.h - BH * s) / 2;
+      }
+      if (!started || (v.scene ?? 0) !== scene) { kid.x = (v.kid.x - ox) / s; kid.y = (v.kid.y - oy) / s; mote.x = kid.x + 6; mote.y = kid.y - 6; started = true; scene = v.scene ?? 0; }
       if (v.target) {
-        const tx = Math.max(3, Math.min(BW - 4, (v.target.x - R.x) / s)), ty = Math.max(8, Math.min(BH - 4, (v.target.y - R.y) / s));
+        const tx = Math.max(3, Math.min(BW - 4, (v.target.x - ox) / s)), ty = Math.max(8, Math.min(BH - 4, (v.target.y - oy) / s));
         const dx = tx - kid.x, dy = ty - kid.y, d = Math.hypot(dx, dy);
         if (d > 0.4) { kid.x += (dx / d) * 0.4; kid.y += (dy / d) * 0.4; }
       }
@@ -232,8 +239,8 @@ export const factory: RoomRendererFactory = () => {
       rect(kx - 1, ky - 3, 3, 3, 8, buf); rect(kx - 1, ky, 3, 3, 12, buf); rect(kx - 1, ky + 3, 1, 1, 0, buf); rect(kx + 1, ky + 3, 1, 1, 0, buf);
       const mx = Math.round(mote.x), my = Math.round(mote.y);
       rect(mx - 1, my, 3, 1, 14, buf); rect(mx, my - 1, 1, 3, 14, buf); rect(mx, my, 1, 1, 9 + (v.lightPips > 2 ? 1 : 0), buf);
-      moteCss.x = R.x + mx * s; moteCss.y = R.y + my * s;
-      kidCss.x = R.x + kx * s; kidCss.y = R.y + ky * s;
+      moteCss.x = ox + mx * s; moteCss.y = oy + my * s;
+      kidCss.x = ox + kx * s; kidCss.y = oy + ky * s;
       nearSpot = -1;
       if (!idx) idx = core.indexTexture(BW, BH);
       if (!pal) pal = core.paletteTexture(PAL);

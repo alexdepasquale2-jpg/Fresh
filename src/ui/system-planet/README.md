@@ -20,3 +20,11 @@
 6. Kit components and tokens only; 44 px targets.
 
 Plus: `npm run check` passes, and `demo.ts` shows the unit alone in `/dev` with a fixed seed.
+
+## Desktop hooks (read-only)
+
+- **Mouse buttons on the surface.** Only the primary button uses the tool in hand. A right or middle drag always pans (in Eyes it looks), and never counts as a tap. The context menu is suppressed on the surface.
+- **`sallowView` on the surface element** (`[data-id=surface]`), a frozen object the layout plugin may read; it changes nothing:
+  - `camera()` returns `{ cx, cy, zoom, eyes, gridW, gridH }`: the camera centre in grid cells, the zoom (1 shows the whole world), whether first person is on, and the grid size.
+  - `pick(clientX, clientY)` returns `null` outside the surface, in Eyes, or before the first frame; otherwise `{ gx, gy, village }` where `village` is `{ id, name, souls }` for the village under that viewport point, or `null`.
+- **Orrery rect, zoom and pan.** While the root has the class `sallow-desktop`, the system screen hands the renderer the rect of `[data-id=orbits]` (less the ORRERY row) and the system is fitted to it. Wheel zooms toward the cursor (0.5x to 8x), a right or middle drag pans, a primary drag that starts on empty space pans while the Pieces mode is on, and `[data-id=orrery-fit]` (shown only when the view is off its fit) puts it back. `orbitAt()` and dropped sky pieces follow the same view. On the phone layout no rect is passed and nothing changes.

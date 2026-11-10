@@ -42,6 +42,30 @@ const mirror: ScreenFactory = () => {
   let prevTransform = '';
   // One view object, changed in place each frame.
   let view: { -readonly [K in keyof RoomRenderView]: RoomRenderView[K] } | null = null;
+  // Desktop: the room is drawn into the stage element's rect. The canvas is flipped about its own middle,
+  // so the rect handed to the renderer is the stage's rect mirrored across the canvas.
+  const area = { x: 0, y: 0, w: 0, h: 0 };
+  let stageEl: HTMLElement | null = null;
+  let rectWait = 0;
+  const measure = () => {
+    if (!ctx || !view) return;
+    const wide = document.documentElement.classList.contains('sallow-desktop');
+    if (!wide || !stageEl) {
+      if (view.rect) { const sc = (ctx.gl.width() - 30) / 60; view = { ...view, rect: undefined, target: { x: 15 + 41 * sc, y: 84 + 68 * sc } }; }
+      return;
+    }
+    const f = stageEl.getBoundingClientRect(), cr = ctx.gl.canvas.getBoundingClientRect();
+    if (f.width < 60 || f.height < 84) return;
+    const w = Math.round(f.width) - 24, h = Math.round(f.height) - 24;
+    // getBoundingClientRect sees the flipped canvas in the same place: mirror by its width.
+    const x = Math.round(cr.right - f.right) + 12, y = Math.round(f.top - cr.top) + 12;
+    if (view.rect && x === area.x && y === area.y && w === area.w && h === area.h) return;
+    area.x = x; area.y = y; area.w = w; area.h = h;
+    const sc = Math.max(1, Math.floor(Math.min(w / 60, h / 84)));
+    const ox = x + (w - 60 * sc) / 2, oy = y + (h - 84 * sc) / 2;
+    view = { ...view, rect: area, kid: { x: ox + 30 * sc, y: oy + 53 * sc }, target: { x: ox + 41 * sc, y: oy + 68 * sc } };
+  };
+  const onLayout = () => { rectWait = 0; };
   return {
     id: 'mirror',
     mount: (root, c) => {
@@ -75,6 +99,10 @@ const mirror: ScreenFactory = () => {
         ...Array.from({ length: 25 }, (_, i) => el('i', { class: i === slot ? 'lit' : slots[i] ? 'held' : undefined })));
       const panel = el('div', { class: 'mr-panel', hidden: true });
       const stage = el('div', { class: 'spacer mr-stage', 'data-id': 'mirror-stage' }, grid, panel);
+      stageEl = stage;
+      rectWait = 0;
+      window.addEventListener('sallow:layout', onLayout);
+      window.addEventListener('resize', onLayout);
       let boxShown = false;
 
       const put = (text: string, cls = '', id = 'mirror-line') => {
@@ -414,12 +442,17 @@ const mirror: ScreenFactory = () => {
         wait -= Math.min(dt, 250);
         if (wait <= 0) advance?.();
       }
+      rectWait -= dt;
+      if (rectWait <= 0) { rectWait = 400; measure(); }
       view.pulse = ctx.pulse().phase();
       view.lightPips = ctx.light.view().pips;
       ctx.renderers.room.draw(view, dt);
     },
     unmount: () => {
       if (ctx) ctx.gl.canvas.style.transform = prevTransform;
+      window.removeEventListener('sallow:layout', onLayout);
+      window.removeEventListener('resize', onLayout);
+      stageEl = null;
       ctx = null;
       view = null;
       advance = null;

@@ -43,6 +43,26 @@ export const system: ScreenFactory = () => {
   let orrery = 1;
   let visTick = 0;
   let lastClock = 0;
+  // Desktop: the orrery is fitted to the field's own rect (canvas px) and can be zoomed and panned.
+  // On the phone layout `rect` stays null and the renderer keeps its fixed spot and scale.
+  const area = { x: 0, y: 0, w: 0, h: 0 };
+  const pan = { x: 0, y: 0 };
+  let zoom = 1;
+  let rect: typeof area | null = null;
+  let fieldEl: HTMLElement | null = null;
+  let fitBtn: HTMLElement | null = null;
+  let rectWait = 0;
+  const showFit = () => { if (fitBtn) fitBtn.hidden = !rect || (zoom === 1 && pan.x === 0 && pan.y === 0); };
+  const measure = () => {
+    const wide = document.documentElement.classList.contains('sallow-desktop');
+    if (!wide || !fieldEl || !ctx) { if (rect) { rect = null; zoom = 1; pan.x = pan.y = 0; showFit(); } return; }
+    const f = fieldEl.getBoundingClientRect(), cr = ctx.gl.canvas.getBoundingClientRect();
+    if (f.width < 80 || f.height < 80) return;
+    // The ORRERY row sits along the bottom of the field: the picture keeps clear of it.
+    area.x = f.left - cr.left; area.y = f.top - cr.top; area.w = f.width; area.h = f.height - 40;
+    if (!rect) { rect = area; showFit(); }
+  };
+  const onLayout = () => { rectWait = 0; };
   return {
     id: 'system',
     mount: (root, c) => {
@@ -57,7 +77,7 @@ export const system: ScreenFactory = () => {
       const logList = el('ol', { class: 'sy-log', 'data-id': 'sys-log' });
       noteEl = note;
       align = Math.min(1, sys.planets.reduce((n, p) => n + (c.sky.skyOf(p).built ?? 0), 0) / 8);
-      const local = (e: PointerEvent) => {
+      const local = (e: { clientX: number; clientY: number }) => {
         const r = c.gl.canvas.getBoundingClientRect();
         return { x: e.clientX - r.left, y: e.clientY - r.top };
       };
@@ -161,8 +181,47 @@ export const system: ScreenFactory = () => {
       const renderAll = () => { renderCards(); renderTray(); };
 
       const field = el('div', { class: 'spacer sy-field', 'data-id': 'orbits' });
+      fieldEl = field;
+      rect = null; zoom = 1; pan.x = pan.y = 0; rectWait = 0;
+      window.addEventListener('sallow:layout', onLayout);
+      window.addEventListener('resize', onLayout);
+      // Desktop only (a rect is set): wheel zooms toward the cursor; right or middle drag pans, and so does a
+      // primary drag that starts on empty space while no cosmic tool is armed. FIT puts it back.
+      let panBy = -1, panX = 0, panY = 0;
+      const zoomAt = (factor: number, x: number, y: number) => {
+        if (!rect) return;
+        const z = Math.max(0.5, Math.min(8, zoom * factor));
+        if (z === zoom) return;
+        // The layout point under (x, y) stays under it.
+        const ox = x - (rect.x + rect.w / 2), oy = y - (rect.y + rect.h / 2);
+        pan.x = ox - (ox - pan.x) * (z / zoom); pan.y = oy - (oy - pan.y) * (z / zoom);
+        zoom = z;
+        if (Math.abs(zoom - 1) < 0.02 && Math.hypot(pan.x, pan.y) < 6) { zoom = 1; pan.x = pan.y = 0; }
+        showFit();
+      };
+      field.addEventListener('wheel', (e) => { if (!rect) return; e.preventDefault(); const at = local(e); zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, at.x, at.y); }, { passive: false });
+      field.addEventListener('contextmenu', (e) => { if (rect) e.preventDefault(); });
+      field.addEventListener('pointermove', (e) => {
+        if (panBy !== e.pointerId || !rect) return;
+        pan.x += e.clientX - panX; pan.y += e.clientY - panY;
+        panX = e.clientX; panY = e.clientY;
+        showFit();
+      });
+      const panEnd = (e: PointerEvent) => { if (panBy === e.pointerId) { panBy = -1; field.classList.remove('sy-panning'); } };
+      field.addEventListener('pointerup', panEnd);
+      field.addEventListener('pointercancel', panEnd);
+      const fit = el('button', { class: 'k-tag tool sy-fit', type: 'button', 'data-id': 'orrery-fit', hidden: true, 'aria-label': 'Fit the whole system in view' }, 'Fit');
+      fit.addEventListener('pointerdown', (e) => e.stopPropagation());
+      fit.addEventListener('click', () => { zoom = 1; pan.x = pan.y = 0; showFit(); c.audio.sfx('tap'); });
+      fitBtn = fit;
       field.addEventListener('pointerdown', (e) => {
         const at = local(e);
+        if (rect && e.pointerType === 'mouse' && (e.button !== 0 || (cosmic === 'pieces' && c.renderers.system.orbitAt(at.x, at.y) < 0))) {
+          panBy = e.pointerId; panX = e.clientX; panY = e.clientY;
+          try { field.setPointerCapture(e.pointerId); } catch { /* a made-up pointer */ }
+          field.classList.add('sy-panning');
+          if (e.button !== 0) { e.preventDefault(); return; }
+        }
         touch = { ...at, age: 0 };
         const o = c.renderers.system.orbitAt(at.x, at.y);
         const tool = COSMIC.find((t) => t.mode === cosmic)!;
@@ -210,6 +269,7 @@ export const system: ScreenFactory = () => {
         });
         return b;
       }));
+      scrub.append(fit);
       field.append(scrub);
 
       // Cosmic picker.
@@ -282,12 +342,14 @@ export const system: ScreenFactory = () => {
         ctx.audio.sfx('win');
         if (noteEl) noteEl.textContent = 'ALIGNMENT. Every world in this system turns as one. Mote brightens, and a new sun is yours.';
       }
+      rectWait -= dt;
+      if (rectWait <= 0) { rectWait = 400; measure(); }
       // The orrery's own time: at 1x it keeps the clock's pace, otherwise it runs on screen time alone.
       const now = ctx.clock.tick();
       if (orrery === 1) visTick += now - lastClock; else visTick += (dt / 50) * orrery;
       lastClock = now;
-      ctx.renderers.system.draw({ universe: s.universe, system: s.system, skies, selectedOrbit: s.system.orbits.find((o) => o.planet === s.planetIndex)?.index ?? s.planetIndex, drag, tick: Math.floor(visTick), pulse: ctx.pulse().phase(), flare, touch, align, quality: ctx.perf.resolutionScale() }, dt);
+      ctx.renderers.system.draw({ universe: s.universe, system: s.system, skies, selectedOrbit: s.system.orbits.find((o) => o.planet === s.planetIndex)?.index ?? s.planetIndex, drag, tick: Math.floor(visTick), pulse: ctx.pulse().phase(), flare, touch, align, quality: ctx.perf.resolutionScale(), rect: rect ?? undefined, zoom, pan }, dt);
     },
-    unmount: () => void (ctx = null),
+    unmount: () => { window.removeEventListener('sallow:layout', onLayout); window.removeEventListener('resize', onLayout); fieldEl = null; fitBtn = null; rect = null; ctx = null; },
   };
 };

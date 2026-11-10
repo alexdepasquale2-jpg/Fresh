@@ -34,7 +34,10 @@
 .sallow-desktop .hub-head [data-id='hub-back'] { display: none; }
 .sallow-desktop .hub-body { grid-column: 2; padding: 20px 28px; }
 .sallow-desktop .hub-body > * { width: 100%; max-width: 760px; margin-inline: auto; }
-.sallow-desktop .hub-toasts { left: auto; right: 16px; top: 62px; width: 340px; zoom: var(--ui-scale, 1); }
+/* Notices dock at the bottom left of the play area, growing upward: never over the side panel or the battle log. */
+.sallow-desktop .hub-toasts { left: 20px; right: auto; top: auto; bottom: 200px; width: 340px; flex-direction: column-reverse; zoom: var(--ui-scale, 1); }
+/* Anything scaled with zoom keeps its type as written: the generated text rules (desktop.ts) must not scale it twice. */
+.sallow-desktop .hub-sheet, .sallow-desktop .hub-toasts, .sallow-desktop .dt-tip { --dt-text: 1; }
 .dt-nav { display: none; }
 .sallow-desktop .dt-nav { grid-column: 1; display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; overflow-y: auto; border-right: 1px solid var(--line-dim); background: var(--panel); }
 .dt-nav-item { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 10px; background: transparent; border: 1px solid transparent; border-left: 3px solid transparent; color: var(--ink-muted); font: 600 12px var(--font-ui); letter-spacing: .08em; text-transform: uppercase; text-align: left; }
@@ -72,7 +75,8 @@
 /* ---------- system: the orrery large, worlds beside it ---------- */
 .sallow-desktop .screen[data-screen='system'] .sy > header { position: absolute; left: 20px; top: 16px; width: calc(var(--play-w) - 40px); }
 .sallow-desktop .screen[data-screen='system'] .sy > .sy-title { position: absolute; left: 20px; top: 66px; width: min(calc(var(--play-w) - 40px), 620px); pointer-events: none; }
-.sallow-desktop .screen[data-screen='system'] .sy > .sy-field { position: absolute; left: 20px; top: 136px; width: calc(var(--play-w) - 40px); bottom: 132px; }
+.sallow-desktop .screen[data-screen='system'] .sy > .sy-field { position: absolute; left: 20px; top: 56px; width: calc(var(--play-w) - 40px); bottom: 132px; cursor: grab; }
+.sallow-desktop .screen[data-screen='system'] .sy > .sy-title { z-index: 1; }
 .sallow-desktop .screen[data-screen='system'] .sy > .sy-field.dt-over-orbit { cursor: pointer; }
 .sallow-desktop .screen[data-screen='system'] .sy > .sy-note { position: absolute; left: 20px; bottom: 106px; width: calc(var(--play-w) - 40px); }
 .sallow-desktop .screen[data-screen='system'] .sy > .sy-trayrow { position: absolute; left: 20px; bottom: 16px; width: min(calc(var(--play-w) - 40px), 560px); }
@@ -83,7 +87,7 @@
 .sallow-desktop .screen[data-screen='planet'] .pl > .pl-header { position: absolute; left: 20px; top: 12px; width: calc(var(--play-w) - 40px); padding-right: 0; }
 .sallow-desktop .screen[data-screen='planet'] .pl > .surface-slot { position: absolute; left: 20px; top: 64px; width: calc(var(--play-w) - 40px); height: auto; bottom: 80px; margin: 0; border: 1px solid var(--line-dim); }
 .sallow-desktop .screen[data-screen='planet'] .pl > .surface-slot:has([data-id='tool-chip'][hidden]) { cursor: grab; }
-.sallow-desktop .screen[data-screen='planet'] .pl > .surface-slot:has([data-id='tool-chip'][hidden]):active, .sallow-desktop .screen[data-screen='planet'] .pl > .surface-slot.dt-grabbing { cursor: grabbing; }
+.sallow-desktop .screen[data-screen='planet'] .pl > .surface-slot.dt-grabbing { cursor: grabbing; }
 .sallow-desktop .screen[data-screen='planet'] .pl > .pl-ticker { position: absolute; left: 20px; bottom: 16px; width: calc(var(--play-w) - 40px); min-height: 52px; }
 .sallow-desktop .screen[data-screen='planet'] .pl > .pl-status { margin-right: 44px; }
 .sallow-desktop .screen[data-screen='planet'] .pl-status .k-stat span { letter-spacing: 0; font-size: 9px; }

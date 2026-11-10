@@ -155,6 +155,7 @@ export const plugin: Plugin = (shell) => {
   store();
 
   // ---- DOM (built once) ----
+  const wide = (): boolean => document.documentElement.classList.contains('sallow-desktop');
   const mk = (tag: string, cls: string, text = '') => { const e = document.createElement(tag); e.className = cls; if (text) e.textContent = text; return e; };
   const root = mk('div', 'guide');
   root.setAttribute('aria-live', 'polite');
@@ -270,7 +271,9 @@ export const plugin: Plugin = (shell) => {
   const findOrbit = (): { x: number; y: number } | null => {
     // The rings settle as the system opens, so the point is found afresh a few times a second.
     const cr = canvas.getBoundingClientRect();
-    const x = cr.width / 2;
+    // Desktop: the star sits in the middle of the orrery's own field, not the middle of the canvas.
+    const fd = wide() ? byId('orbits')?.getBoundingClientRect() : undefined;
+    const x = fd && fd.width > 0 ? fd.left + fd.width / 2 - cr.left : cr.width / 2;
     const at = (y: number) => ctx.renderers.system.orbitAt(x, y - cr.top);
     orbitAge += frameMs;
     // A point that is no longer on a ring is thrown away at once.
@@ -1191,7 +1194,9 @@ export const plugin: Plugin = (shell) => {
     e.textContent = v;
     return true;
   };
-  const hits = (y: number, h: number, r: Rect) => y < r.y + r.h && y + h > r.y;
+  /** Desktop: the card is a narrow thing docked at the left of a wide stage, so only what shares its columns is in its way. On a phone these stay unbounded. */
+  let cardX0 = -1e9, cardX1 = 1e9;
+  const hits = (y: number, h: number, r: Rect) => y < r.y + r.h && y + h > r.y && r.x < cardX1 && r.x + r.w > cardX0;
   const hard: Rect[] = [];
   const soft: Rect[] = [];
   const addRect = (list: Rect[], e: Element, pad: number) => {
@@ -1210,17 +1215,21 @@ export const plugin: Plugin = (shell) => {
     let n = 0;
     for (const e of layer.querySelectorAll('button, [data-drag], input')) {
       const r = e.getBoundingClientRect();
-      if (r.height > 0 && r.top < y + h && r.bottom > y) n++;
+      if (r.height > 0 && r.top < y + h && r.bottom > y && r.left < cardX1 && r.right > cardX0) n++;
     }
     return n;
   };
   const SIDE_LABEL: Record<Side, string> = { skip: 'Skip', drop: 'Not now', no: 'No', none: '' };
   /** The 390x844 play frame, centred in the window. Steady even while a screen is mid-transition. */
   const frameRect = { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
+  /** The wide desktop layout is on (root class set by the desktop plugin). Read once per measure. */
+  let desk = false;
   const measure = () => {
     const hr = host.getBoundingClientRect();
     const cs = getComputedStyle(layer);
-    const w = Math.min(hr.width, parseFloat(cs.maxWidth) || 390, 390), h = Math.min(hr.height, 844);
+    desk = wide();
+    // Desktop: the frame is the whole stage, so rings and arrows are placed and clipped in stage coordinates.
+    const w = desk ? hr.width : Math.min(hr.width, parseFloat(cs.maxWidth) || 390, 390), h = desk ? hr.height : Math.min(hr.height, 844);
     frameRect.width = w; frameRect.height = h;
     frameRect.left = hr.left + (hr.width - w) / 2; frameRect.top = hr.top + (hr.height - h) / 2;
     frameRect.right = frameRect.left + w; frameRect.bottom = frameRect.top + h;
@@ -1252,7 +1261,10 @@ export const plugin: Plugin = (shell) => {
     cls('go-on', go, 'on', !!cue.act);
     if (txt('side', side, SIDE_LABEL[sideMode])) cardDirty = true;
     cls('side-on', side, 'on', sideMode !== 'none');
-    const w = Math.round(b.width - 16);
+    // Desktop: a card of its own width docked at the left of the play area. Phone: the width of the frame.
+    const w = desk ? Math.round(Math.min(440, b.width - 32)) : Math.round(b.width - 16);
+    const cardLeft = Math.round(b.left + (desk ? 16 : 8));
+    if (desk) { cardX0 = cardLeft - 8; cardX1 = cardLeft + w + 8; } else { cardX0 = -1e9; cardX1 = 1e9; }
     if (last.get('card-w') !== `${w}px`) cardDirty = true;
     put('card-w', card, 'width', `${w}px`);
     if (cardDirty) { cardH = card.offsetHeight; cardDirty = false; }
@@ -1271,6 +1283,7 @@ export const plugin: Plugin = (shell) => {
       else if (hi.y + hi.h - Math.min(hi.h, 44) / 2 < b.top + 4) off = -1;
     }
     show('arrow', arrow, off !== 0);
+    const arrowX = hi && desk ? Math.max(b.left + 4, Math.min(b.right - 48, hi.x + hi.w / 2 - 22)) : b.left + b.width / 2 - 22;
     if (off !== 0) hi = null;
     show('ring', ring, !!hi);
     if (hi) {
@@ -1299,7 +1312,7 @@ export const plugin: Plugin = (shell) => {
     // Where the card sits: never over what it points at, a main button, an open page of the game's own,
     // or the band at the top where notices land. With no such place it folds down to the chip.
     const h = cardH;
-    const minY = b.top + 112, maxY = b.bottom - 8 - h;
+    const minY = b.top + (desk ? 64 : 112), maxY = b.bottom - (desk ? 16 : 8) - h;
     hard.length = 0; soft.length = 0;
     if (hi) hard.push({ x: hi.x, y: hi.y - 10, w: hi.w, h: hi.h + 20 });
     if (to) hard.push({ x: to.x - 30, y: to.y - 30, w: 60, h: 60 });
@@ -1318,7 +1331,7 @@ export const plugin: Plugin = (shell) => {
     if (mid && mid.height > 0) soft.push(scr === 'bedroom' ? { x: mid.left, y: mid.top, w: mid.width, h: mid.height * 0.45 } : { x: mid.left, y: mid.top + mid.height * 0.2, w: mid.width, h: mid.height * 0.6 });
     const free = (y: number, list: Rect[]): boolean => { for (const r of list) if (hits(y, h, r)) return false; return true; };
     const under = Math.max(minY, cue.under?.isConnected ? cue.under.getBoundingClientRect().bottom + 10 : minY);
-    const wish = cue.place === 'top' ? under : cue.place === 'bottom' ? maxY : hi ? (cue.place === 'above' || (cue.place !== 'below' && hi.y + hi.h / 2 > b.top + b.height / 2) ? hi.y - 18 - h : hi.y + hi.h + 18) : under;
+    const wish = desk && cue.place !== 'top' ? maxY : cue.place === 'top' ? under : cue.place === 'bottom' ? maxY : hi ? (cue.place === 'above' || (cue.place !== 'below' && hi.y + hi.h / 2 > b.top + b.height / 2) ? hi.y - 18 - h : hi.y + hi.h + 18) : under;
     const good = (y: number): boolean => y >= minY && y <= maxY && free(y, hard);
     if (cardY === null || !good(cardY) || recheck) {
       recheck = false;
@@ -1354,9 +1367,9 @@ export const plugin: Plugin = (shell) => {
     if (off !== 0) {
       let ay = off > 0 ? b.bottom - 52 : b.top + 8;
       if (ay < y + h && ay + 44 > y) ay = off > 0 ? y - 48 : y + h + 4;
-      put('arrow-t', arrow, 'transform', `translate(${Math.round(b.left + b.width / 2 - 22)}px,${Math.round(ay)}px) rotate(${off > 0 ? 0 : 180}deg)`);
+      put('arrow-t', arrow, 'transform', `translate(${Math.round(arrowX)}px,${Math.round(ay)}px) rotate(${off > 0 ? 0 : 180}deg)`);
     }
-    put('card-t', card, 'transform', `translate(${Math.round(b.left + 8)}px,${Math.round(y)}px)`);
+    put('card-t', card, 'transform', `translate(${cardLeft}px,${Math.round(y)}px)`);
     return true;
   };
 
