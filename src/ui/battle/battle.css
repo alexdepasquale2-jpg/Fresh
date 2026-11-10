@@ -4,7 +4,7 @@
 .screen .fighter.pet-card.down { opacity: .8; }
 .pet-card .f-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .pet-card .f-info .k-title.small { min-width: 0; line-height: 1.1; }
-.pet-card .f-pet { position: relative; flex: none; width: 136px; height: 136px; }
+.pet-card .f-pet { position: relative; flex: none; width: 112px; height: 112px; }
 .pet-card .hp.low i { background: var(--gold); }
 .pet-card .float { top: 20px; }
 .screen[data-screen='battle'] .battle-log { flex: none; padding: 6px 10px; }
@@ -19,3 +19,49 @@
 .catch { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
 .catch .k-btn { width: 100%; }
 .caught:empty { display: none; }
+
+/* Ladder, growth, weather, chains, relics, summary. */
+.screen[data-screen='battle'] { gap: 6px; }
+.k-tag.tip { position: relative; background: transparent; cursor: pointer; min-height: 22px; font: 400 11px var(--font-ui); }
+.k-tag.tip::after, .k-tag.relic::after { content: ''; position: absolute; inset: -11px -2px; }
+.k-tag.relic { position: relative; }
+.k-tag.tip.relic, .k-tag.swap.relic:not(:disabled) { border-color: var(--gold); color: var(--gold); }
+.k-tag.tip.good { border-color: var(--glow); color: var(--glow); }
+.k-tag.tip.bad { border-color: var(--gold); color: var(--gold); }
+.k-tag.lv { flex: 0 0 auto; border-color: var(--line-dim); }
+.k-tag.lv.up { border-color: var(--glow); color: var(--glow); box-shadow: 0 0 8px color-mix(in srgb, var(--glow) 50%, transparent); }
+.field { flex: none; justify-content: flex-start; flex-wrap: nowrap; gap: 6px; }
+.xp { height: 4px; border: 1px solid var(--line-dim); }
+.xp i { display: block; height: 100%; background: var(--gold); }
+.screen[data-screen='battle'] .battle-log { height: 78px; overflow-y: auto; scrollbar-width: none; padding: 4px 8px; gap: 2px; }
+.screen[data-screen='battle'] .battle-log li { font-size: 12px; line-height: 1.25; }
+.screen[data-screen='battle'] .skills { grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.screen[data-screen='battle'] .skills .skill { min-height: 46px; min-width: 0; padding: 2px; font-size: 12px; }
+.screen[data-screen='battle'] .skills .skill b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.screen[data-screen='battle'] .skills .skill small { font-size: 9px; letter-spacing: .04em; }
+.skills .skill.kind-finisher { border-color: var(--gold); }
+.skills .skill.ask[aria-pressed='true'] { border-color: var(--glow); color: var(--glow); }
+.screen[data-screen='battle'] .tool-hint { min-height: 30px; margin: 0; flex: none; text-transform: none; letter-spacing: .02em; }
+.screen[data-screen='battle'] .bench { flex-wrap: wrap; }
+.pet-card .chips { row-gap: 4px; }
+.pet-card .float { display: flex; flex-direction: column; align-items: center; line-height: 1; }
+.float small { font: 600 10px var(--font-ui); letter-spacing: .08em; }
+.float.strong { color: var(--ink-bright); }
+.float.weak { color: var(--ink-off); }
+.summary { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; background: color-mix(in srgb, var(--panel) 90%, transparent); border: 2px solid var(--glow); flex: none; }
+.sum-row { display: flex; align-items: center; gap: 8px; }
+.summary .learned, .summary .rewards { color: var(--glow); text-transform: none; letter-spacing: .02em; }
+.summary .k-narration { font-size: 14px; }
+.screen[data-screen='outside'] { gap: 8px; }
+.screen[data-screen='outside'] .tool-hint { margin: 0; flex: none; text-transform: none; letter-spacing: .02em; min-height: 26px; }
+.screen[data-screen='outside'] .team { flex: none; gap: 4px; }
+.screen[data-screen='outside'] .team-row .k-narration { font-size: 14px; }
+.tier-head { padding-top: 4px; color: var(--gold); flex: none; }
+.rival { flex: none; }
+.rival.boss { border-color: var(--gold); border-width: 3px; }
+.rival.boss.locked { border-style: dashed; border-color: var(--line); }
+.rival-say { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.rival-say .taunt { font-size: 13px; }
+.rival-say .mech { color: var(--gold); text-transform: none; letter-spacing: .02em; }
+.screen[data-screen='battle'] > header, .screen[data-screen='outside'] > header { padding-right: 30px; flex-wrap: nowrap; }
+.screen[data-screen='battle'] > header .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
