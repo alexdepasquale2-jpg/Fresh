@@ -35,6 +35,7 @@ import { factory as gameBattle } from '@/game/battle';
 import { factory as uiBattle } from '@/ui/battle';
 import { factory as gameMerge } from '@/game/merge';
 import { factory as uiMirror } from '@/ui/mirror';
+import { factory as uiTown } from '@/ui/town';
 
 export const registry: UnitFactories = {
   'gen/universe': genUniverse,
@@ -69,4 +70,5 @@ export const registry: UnitFactories = {
   'ui/battle': uiBattle,
   'game/merge': gameMerge,
   'ui/mirror': uiMirror,
+  'ui/town': uiTown,
 };

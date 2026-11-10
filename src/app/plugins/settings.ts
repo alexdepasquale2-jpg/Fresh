@@ -26,7 +26,7 @@ const DEFAULTS: Settings = { text: 1, contrast: false, reduceMotion: false, conf
 const GUIDE_KEY = 'sallow-guide';
 /** Device preferences: a new game does not forget them. */
 const KEEP_ON_RESET = ['sallow-settings', 'sallow-quality-mode', 'sallow-sound', 'sallow-muted'];
-const SCREEN_NAMES: Record<ScreenId, string> = { bedroom: 'The bedroom', box: 'The Box', dive: 'A dive', system: 'A star and its worlds', planet: 'A world', outside: 'Outside', battle: 'A battle', mirror: 'The mirror' };
+const SCREEN_NAMES: Record<ScreenId, string> = { bedroom: 'The bedroom', box: 'The Box', dive: 'A dive', system: 'A star and its worlds', planet: 'A world', outside: 'Outside', battle: 'A battle', mirror: 'The mirror', town: 'The street' };
 const SPEED_LABEL: Record<number, string> = { 0: 'Pause', 1: '1x', 3: '3x' };
 
 const mk = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string): HTMLElementTagNameMap[K] => {

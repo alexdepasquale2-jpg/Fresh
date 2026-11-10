@@ -348,7 +348,7 @@ export const createEngine = (ac: BaseAudioContext): Engine => {
     }
     if (s === 4 && bar % 2 === 1) tone(b, t, note(chord + 4, 2), 0.035, 1.8, 'sine', 2, 0, 0.04);
   };
-  const SCENES: Record<ScreenId, (b: Bus, s: number, t: number) => void> = {
+  const BASE_SCENES: Record<Exclude<ScreenId, 'town'>, (b: Bus, s: number, t: number) => void> = {
     bedroom: (b, s, t) => bedroom(b, s, t, false),
     // The bedroom theme seen in glass: intervals inverted, the bar read backwards.
     mirror: (b, s, t) => { inv = true; bedroom(b, 7 - s, t, true); inv = false; },
@@ -431,6 +431,8 @@ export const createEngine = (ac: BaseAudioContext): Engine => {
       if (boss && s === 0 && bar % 2 === 0) { tone(b, t, note(chord, 2), 0.04, 0.55, 'sawtooth', 2); tone(b, t, note(chord, 2) * 1.4142, 0.035, 0.55, 'sawtooth', 2); }
     },
   };
+  // The street shares the open-air theme until it has one of its own.
+  const SCENES: Record<ScreenId, (b: Bus, s: number, t: number) => void> = { ...BASE_SCENES, town: BASE_SCENES.outside };
 
   const padShape = (t: number, s: number) => {
     let level = 0.045;

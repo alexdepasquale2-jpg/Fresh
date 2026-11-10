@@ -34,7 +34,7 @@ export interface Input {
 export type InputFactory = () => Input;
 
 /* ---------- Save ---------- */
-export const ScreenIdSchema = z.enum(['bedroom', 'box', 'dive', 'system', 'planet', 'outside', 'battle', 'mirror']);
+export const ScreenIdSchema = z.enum(['bedroom', 'box', 'dive', 'system', 'planet', 'outside', 'battle', 'mirror', 'town']);
 export type ScreenId = z.infer<typeof ScreenIdSchema>;
 const n = z.number().int().min(0);
 const BoxEntrySchema = z.object({
