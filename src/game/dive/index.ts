@@ -4,6 +4,7 @@ import { RELIQUARIES_PER_DIVE } from '@/contracts/game';
 import type { UniverseSpec } from '@/contracts/universe';
 import type { FoldAddress } from '@/contracts/seed';
 import type { FoldNode } from '@/contracts/fold';
+import { child, rng } from '@/core/hash';
 
 const FALL_PER_TICK = 45; // progress units (1000 per fold): ~1.1 s per fold
 const LINES: Record<DivePhase, string[]> = {
@@ -12,6 +13,21 @@ const LINES: Record<DivePhase, string[]> = {
   falling: ['The folds open under you.', 'Deeper. The light thins.', 'Rings inside rings inside rings.'],
   stopped: ['A star. Mote settles beside it.'],
 };
+
+// Every universe ends somewhere: a floor, 24..36 folds down, fixed by its seed.
+export const bottomDepthOf = (u: UniverseSpec): number => rng(child(u.seed, 'bottom')).range(24, 36);
+const NEAR_BOTTOM = 6;
+// Indexed by folds remaining (1..6).
+const NEAR_LINES = [
+  '',
+  'Someone is down there.',
+  'A light below. Square. Yellow. Not a star.',
+  'The rings are narrowing toward a floor.',
+  'A hum comes up through the dark.',
+  'Something is below.',
+  'The folds are fewer here.',
+];
+const BOTTOM_LINE = 'The folds end. There is a floor.';
 
 export const factory: DiveFactory = ({ fold, light, box }) => {
   let phase: DivePhase = 'surfaced';
@@ -24,6 +40,8 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
   let aim = 0;
   let cameFrom = 0;
   let landed: import('@/contracts/fold').StarRef | null = null;
+  let bottomDepth = 0;
+  let atBottom = false;
   const nearStar = () => children.find((c) => c.star)?.star ?? null;
   const surface = () => {
     if (address) box.recordDepth(box.selected(), address.depth);
@@ -40,9 +58,12 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
       aim = 0;
       cameFrom = 0;
       landed = null;
+      bottomDepth = bottomDepthOf(u);
+      atBottom = false;
       phase = 'hovering';
     },
     hold: () => {
+      if (atBottom) return; // nothing lies under the floor
       if (phase === 'hovering' || phase === 'stopped') { phase = 'falling'; landed = null; }
     },
     release: () => {
@@ -82,11 +103,21 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
         children = fold.childrenOf(address);
         best = Math.max(best, address.depth);
         light.drainFolds(1);
+        // The last fold opens on a floor. The fall ends here, with no star.
+        if (address.depth >= bottomDepth) {
+          progress = 0;
+          phase = 'stopped';
+          atBottom = true;
+          return;
+        }
       }
     },
     aim: (i) => { if (i >= 0 && i <= 6 && phase !== 'surfaced' && progress < 600) aim = i; },
     surface,
     view: (): DiveView => {
+      const depth = address?.depth ?? 0;
+      const toBottom = address ? Math.max(0, bottomDepth - depth) : 0;
+      const near = !atBottom && address !== null && toBottom <= NEAR_BOTTOM && phase !== 'surfaced';
       const lines = phase === 'falling' && light.view().pips === 0 ? ['Mote is spent. The folds go dim, but you can still fall.', 'Darker here. Let go to rest and gather light.'] : LINES[phase];
       return {
         phase,
@@ -97,10 +128,12 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
         progress,
         children,
         reliquaries,
-        star: landed ?? nearStar(),
+        star: atBottom ? null : landed ?? nearStar(),
         aim,
         cameFrom,
-        narration: lines[(address?.depth ?? 0) % lines.length]!,
+        narration: atBottom ? BOTTOM_LINE : near ? NEAR_LINES[toBottom]! : lines[depth % lines.length]!,
+        toBottom,
+        bottom: atBottom,
       };
     },
   };

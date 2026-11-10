@@ -1,0 +1,5 @@
+/* Dive HUD: the floor of a universe, shown on the depth bar once it is near. */
+.depth-bar .bar-floor { position: absolute; top: -5px; bottom: -5px; width: 4px; margin-left: -4px; background: var(--ink-bright); box-shadow: 0 0 8px var(--gold); animation: bar-floor 1.1s steps(2) infinite; }
+.depth-bar.near-floor { border-color: var(--line); }
+@keyframes bar-floor { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .depth-bar .bar-floor { animation: none; } }

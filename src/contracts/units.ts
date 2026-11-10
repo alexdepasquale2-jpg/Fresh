@@ -63,6 +63,7 @@ export interface UnitFactories {
   'game/battle': BattlesFactory;
   'game/merge': MergerFactory;
   'ui/battle': () => { outside: ScreenFactory; battle: ScreenFactory };
+  'ui/mirror': () => { mirror: ScreenFactory };
 }
 
 /**

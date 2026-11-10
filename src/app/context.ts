@@ -118,7 +118,7 @@ export const createApp = (gl: GlCore, go: (to: ScreenId) => void, persist: () =>
   const dh = R['ui/dive-hud']();
   const sp = R['ui/system-planet']();
   const bt = R['ui/battle']();
-  const screens: Record<ScreenId, () => Screen> = { bedroom: rb.bedroom, box: rb.box, dive: dh.dive, system: sp.system, planet: sp.planet, outside: bt.outside, battle: bt.battle };
+  const screens: Record<ScreenId, () => Screen> = { bedroom: rb.bedroom, box: rb.box, dive: dh.dive, system: sp.system, planet: sp.planet, outside: bt.outside, battle: bt.battle, mirror: R['ui/mirror']().mirror };
 
   let screen: ScreenId = 'bedroom';
   bus.on('navigate', ({ to }) => void (screen = to));

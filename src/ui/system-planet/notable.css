@@ -1,0 +1,9 @@
+/* The notable's card on the planet screen: the one named person the chronicle follows. */
+.notable-card { display: flex; flex-direction: column; gap: 2px; padding: 4px 8px; background: var(--panel); border: 2px solid var(--line-dim); border-left-color: var(--ink-bright); }
+.notable-card[hidden] { display: none; }
+.notable-head { display: flex; align-items: center; justify-content: space-between; gap: var(--gap); }
+.notable-who { display: flex; flex-direction: column; min-width: 0; }
+.notable-name { font-size: 16px; color: var(--ink-bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.notable-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.notable-deeds { margin: 0; font-size: 13px; line-height: 1.2; color: var(--ink-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.notable-find { flex: none; min-width: 64px; min-height: var(--touch); padding: 0 12px; }

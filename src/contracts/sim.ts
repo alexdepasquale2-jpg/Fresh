@@ -124,7 +124,7 @@ export interface Village {
 export type CivEventKind =
   | 'found' | 'grow' | 'split' | 'die' | 'migrate' | 'light'
   | 'famine' | 'tech' | 'convert' | 'feud' | 'festival' | 'burn' | 'flooded' | 'frozen' | 'launch' | 'merged'
-  | 'built' | 'traded' | 'struck' | 'preached' | 'gift' | 'omen' | 'stranger' | 'attack' | 'slain' | 'worship' | 'enlightened' | 'smitten' | 'blessed';
+  | 'born' | 'deed' | 'passed' | 'built' | 'traded' | 'struck' | 'preached' | 'gift' | 'omen' | 'stranger' | 'attack' | 'slain' | 'worship' | 'enlightened' | 'smitten' | 'blessed';
 export interface CivEvent {
   readonly kind: CivEventKind;
   readonly tick: number;
@@ -158,8 +158,28 @@ export interface CivView {
   readonly launches: number;
   /** Ticks since the last launch (for the rocket animation). */
   readonly launchAge: number;
+  /** The one person on this world the chronicle follows by name, if any. */
+  readonly notable?: Notable | null;
   /** The player's incarnation on this surface, if any. */
   readonly avatar: Avatar | null;
+}
+
+/**
+ * A named person the chronicle follows through their life: born, does deeds, grows
+ * old, dies, and is succeeded. personId matches the id in CivView.people while alive.
+ */
+export interface Notable {
+  readonly personId: number;
+  readonly name: string;
+  /** e.g. 'prophet', 'smith', 'trader', 'wanderer', 'elder'. */
+  readonly calling: string;
+  /** Years lived. */
+  readonly age: number;
+  readonly villageId: number;
+  /** Short lines of what they have done, newest last. */
+  readonly deeds: readonly string[];
+  /** True if they have met the player's body. */
+  readonly metYou: boolean;
 }
 
 /** The player walking the surface in a body. */

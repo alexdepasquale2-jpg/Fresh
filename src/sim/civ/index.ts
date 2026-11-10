@@ -4,10 +4,11 @@
 // surface: farmers to the moss, fishers to the shore, priests at dusk, lamp-bearers
 // at night, travellers between villages. Feuds, famines, festivals, migrations.
 import type { CivFactory, CivEvent, Village, GridView, Belief, SurfaceEnv, SurfaceEvent, Tool } from '@/contracts/sim';
-import { BELIEFS, ENGINE, FIELD, ROLE, SURFACE_TOOLS, PERSON_STRIDE } from '@/contracts/sim';
+import { BELIEFS, ENGINE, FIELD, ROLE, SURFACE_TOOLS, PERSON_STRIDE, YEAR_TICKS } from '@/contracts/sim';
 import type { BodyAction, Building, BuildingKind } from '@/contracts/sim';
 import type { SurfaceModifiers } from '@/contracts/sky';
-import { child, rng } from '@/core/hash';
+import { child, mix, rng, seedToU32 } from '@/core/hash';
+import type { Seed } from '@/contracts/seed';
 import type { Rng } from '@/core/hash';
 
 type V = {
@@ -25,6 +26,82 @@ const EVAL = 20;
 const MAX_PEOPLE = 240;
 const WATER = 3, MOSS = 4, SAND = 2, STONE = 1;
 const isDay = (day: number) => day > 230 && day < 770;
+
+// ---- The notable: one named person per world, followed through a whole life. ----
+// Naming scheme (shared with src/sim/chronicle, which keeps an identical copy of
+// notableName and of the detail packing, because units may not import each other):
+//   name   = notableName(planet.seed, ord, house)   ord: 1, 2, 3.. along the line of names;
+//                                                   house: the family, kept by a child, +1 otherwise
+//   detail = code + 64 * (calling + 16 * (age + 128 * (arg + 256 * (ord + 4096 * house))))
+// so every 'born' / 'deed' / 'passed' CivEvent carries all the chronicle needs to write
+// a proper named line: who (ord, house), what they are (calling), how old, what happened
+// (code: relation for 'born', deed for 'deed', cause for 'passed') and one small argument
+// (other village id, building kind, tech level or belief index).
+type N = { pid: number; ord: number; house: number; calling: number; bornT: number; home: number; deeds: string[]; metYou: boolean; lastDeedT: number; aged: number; done: number[]; works: number };
+type Line = { ord: number; house: number; nextAt: number; lastHome: number; lastCalling: number };
+const CALLINGS = ['wanderer', 'fisher', 'grower', 'prophet', 'smith', 'trader', 'lamp-keeper', 'miner', 'mason', 'bell-ringer'];
+const NA = ['Or', 'Wen', 'Tam', 'Fen', 'Is', 'Mar', 'Hal', 'Sel', 'Bry', 'Cor', 'Ed', 'Lin', 'Oss', 'Ru', 'Thess', 'Ane', 'Dov', 'Kes', 'Mir', 'Yar'];
+const NB = ['la', '', 'sin', 'na', 'ric', 'wen', 'low', 'a', 'en', 'ith', 'o', 'ra', 'el', 'is', '', 'an'];
+const FA = ['Ash', 'Salt', 'Reed', 'Mere', 'Stone', 'Wick', 'Low', 'Marsh', 'Ember', 'Gull', 'Thorn', 'Tarn'];
+const FB = ['low', 'mere', 'wick', 'by', 'ley', 'field', 'hallow', 'ward'];
+const notableName = (seed: Seed, ord: number, house: number): { short: string; full: string } => {
+  const h = seedToU32(mix(child(seed, 'notable-name'), ord));
+  const hf = seedToU32(mix(child(seed, 'notable-house'), house));
+  const a = NA[h % NA.length]!;
+  let b = NB[(h >>> 8) % NB.length]!;
+  if (!b && a.length <= 2) b = 'a';
+  const first = a + b;
+  const fa = FA[hf % FA.length]!;
+  let fb = FB[(hf >>> 8) % FB.length]!;
+  if (fa.toLowerCase() === fb) fb = 'ward';
+  if (hf % 5 < 2) return { short: first, full: `${first} ${fa}${fb}` };
+  if ((h >>> 20) % 5 === 0) { const t = `${(h >>> 24) & 1 ? 'Brother' : 'Sister'} ${first}`; return { short: t, full: t }; }
+  return { short: first, full: first };
+};
+const BUILT = ['house', 'fire', 'field', 'dock', 'mine', 'workshop', 'market', 'storehouse', 'shrine', 'bell tower', 'launch field'];
+const ERA_DEED = ['', 'Struck the first kept fire', 'Drew the first iron from the stone', 'Lit the first street lamp', 'Hung the first bell', 'Pointed the first tube at your light'];
+const WORK: string[][] = [
+  ['Walked the whole shore and back', 'Slept a season under the open sky'],
+  ['Mended every net before the thaw', 'Brought in the biggest catch anyone remembered'],
+  ['Saved the seed through a wet spring', 'Cut a new field out of the moss'],
+  ['Fasted until the sky answered', 'Taught the children the old prayers'],
+  ['Forged a blade that would not dull', 'Kept the forge lit a whole winter'],
+  ['Came home with more than was sent', 'Settled a debt older than the market'],
+  ['Kept the lamps lit through a moonless month', 'Walked the night watch alone for a year'],
+  ['Opened a new seam in the hill', 'Led the others out when the roof groaned'],
+  ['Set a wall that would outlast its builders', 'Raised a roof in a single day'],
+  ['Rang the village through a night of fog', 'Cast a truer bell'],
+];
+/** Short card lines for CivView.notable.deeds, by deed code. */
+const deedLine = (code: number, arg: number): string => {
+  switch (code) {
+    case 1: return 'Shared out the last of the grain';
+    case 2: return 'Pulled the children out of the fire';
+    case 3: return 'Kept one fire alive through the killing cold';
+    case 4: return 'Carried the last of the grain through the flood';
+    case 5: return 'Walked out to where the stone fell';
+    case 6: return 'Dug the neighbours out when the ground split';
+    case 7: return 'Stood between the spears';
+    case 8: return `Laid the first stone of the ${BUILT[arg] ?? 'new work'}`;
+    case 9: return ERA_DEED[arg] || 'Saw a new age come in';
+    case 10: return 'Led the dancing at the festival';
+    case 11: return `Was first to pray to the ${['', 'sun', 'moon', 'sea', 'falling stones', 'fire', 'storm'][arg] || 'sky'}`;
+    case 12: return 'Watched a lamp rise and not come down';
+    case 13: return 'Walked the young out to new ground';
+    case 14: return 'Made the long road to market and back';
+    case 15: return 'Looked up and knew before the rest';
+    case 16: return 'Woke first on the morning of full stores';
+    case 17: return 'Learned the songs of both peoples';
+    case 18: return 'Was given the seat nearest the fire';
+    case 20: return 'Was first to kneel to you';
+    case 21: return 'Was first to raise a hand against you';
+    case 22: return 'Stood and watched you longer than anyone';
+    case 23: return 'Sat closest when you spoke';
+    case 24: return 'Ate from your hand';
+    case 25: return 'Lived through the day death fell';
+    default: return WORK[arg >> 1]?.[arg & 1] ?? 'Did the work';
+  }
+};
 
 export const factory: CivFactory = () => {
   let vs: V[] = [];
@@ -45,6 +122,12 @@ export const factory: CivFactory = () => {
   let nextPid = 1;
   let launches = 0;
   let lastLaunchT = -99999;
+  let pseed: Seed = { hi: 1, lo: 1 };
+  let nseed: Seed = { hi: 1, lo: 1 };
+  let notable: N | null = null;
+  let line: Line = { ord: 0, house: 0, nextAt: 0, lastHome: -1, lastCalling: 0 };
+  let evSeen = 0;
+  let nTrade = 0;
 
   const at = (g: GridView, x: number, y: number) => (x < 0 || y < 0 || x >= g.width || y >= g.height ? -1 : g.cells[y * g.width + x]!);
   const solidish = (m: number) => m === STONE || m === SAND || m === ENGINE.ice.id || m === ENGINE.snow.id || m === ENGINE.ash.id || m === ENGINE.ore.id;
@@ -203,6 +286,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
           // Sold: coin for both sides, and a little goodwill.
           const there = vs.find((o) => o !== hv && Math.abs((o.bld?.find((b) => b.kind === 'market')?.x ?? o.x) - p.x) <= 2);
           hv.wealth = Math.min(999, (hv.wealth ?? 0) + 22);
+          if (there && notable && p.id === notable.pid) nTrade = there.id;
           if (there) { there.wealth = Math.min(999, (there.wealth ?? 0) + 5); there.mood = Math.min(100, there.mood + 1); if (r.chance(1, 12)) pendingEv.push({ kind: 'traded', tick, villageId: hv.id, x: hv.x, y: hv.y, detail: there.id }); }
           p.role = ROLE.carry; p.work = 0; p.tx = hv.x; continue;
         }
@@ -435,11 +519,155 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       const mine = people.filter((p) => p.home === v.id && p.role !== ROLE.travel);
       const want = Math.min(16, Math.ceil(v.souls / 3));
       for (let k = mine.length; k < want; k++) spawnPerson(v, k % 3 === 0 ? ROLE.fish : ROLE.farm);
-      for (let k = want; k < mine.length; k++) people.splice(people.indexOf(mine[k]!), 1);
+      for (let k = want; k < mine.length; k++) if (!notable || mine[k]!.id !== notable.pid) people.splice(people.indexOf(mine[k]!), 1);
     }
     people = people.filter((p) => p.role === ROLE.travel || vs.some((v) => v.id === p.home));
+    tendNotable(events, surface);
     const nl = Math.max(0, m.nightLight);
     glow = Math.floor(vs.reduce((n, v) => n + v.souls * (2 + v.tech) * (v.mood > 0 ? 2 : 1) * (enl(v) >= 100 ? 2 : 1), 0) * (100 + nl) / 6400) + worshippers * 2;
+  };
+
+  // Stateless dice for the notable: a pure function of (planet seed, tick, salt), so this
+  // never disturbs the villages' own rng stream and survives snapshot/restore.
+  const roll = (salt: number, n: number) => seedToU32(mix(mix(nseed, tick), salt)) % n;
+  const pack = (code: number, n: { calling: number; ord: number; house: number }, age: number, arg = 0) =>
+    code + 64 * (n.calling + 16 * (Math.max(0, Math.min(127, age)) + 128 * ((arg > 255 || arg < 0 ? 0 : arg) + 256 * (n.ord + 4096 * n.house))));
+  const callingFor = (p: P, v: V): number => {
+    const has = (k: BuildingKind) => !!v.bld?.some((b) => b.kind === k);
+    const c: number[] = [];
+    const byRole: Record<number, number> = { [ROLE.fish]: 1, [ROLE.farm]: 2, [ROLE.pray]: 3, [ROLE.craft]: 4, [ROLE.trade]: 5, [ROLE.lamp]: 6, [ROLE.mine]: 7, [ROLE.build]: 8 };
+    const mine = byRole[p.role];
+    if (mine !== undefined) c.push(mine, mine, mine);
+    if (v.belief !== 'none' && has('shrine')) c.push(3);
+    if (has('workshop')) c.push(4);
+    if (has('market')) c.push(5);
+    if (v.tech >= 3) c.push(6, 6);
+    if (has('mine')) c.push(7);
+    if (has('tower')) c.push(9, 9);
+    if (has('dock')) c.push(1);
+    if (has('farm')) c.push(2);
+    if (!c.length) c.push(0);
+    return c[roll(13, c.length)]!;
+  };
+  const tendNotable = (events: CivEvent[], surface: readonly SurfaceEvent[]) => {
+    const from = evSeen;
+    evSeen = events.length;
+    if (!notable) {
+      // Choose someone: first soon after the first village stands, later a child or an
+      // apprentice of the one before, a year or two after the death.
+      if (!vs.length || tick < line.nextAt) return;
+      const kin = line.ord > 0 ? vs.find((o) => o.id === line.lastHome) : undefined;
+      const v = kin ?? [...vs].sort((a, b) => b.souls - a.souls || a.id - b.id)[0]!;
+      if (v.age < 8) return;
+      const cand = people.filter((p) => p.home === v.id && p.role !== ROLE.travel && p.role !== ROLE.attack && p.role !== ROLE.flee);
+      if (!cand.length) return;
+      const p = cand[roll(11, cand.length)]!;
+      p.id ??= nextPid++;
+      const rel = line.ord === 0 ? 0 : !kin ? 3 : roll(12, 2) ? 1 : 2;
+      line.ord++;
+      if (rel !== 1) line.house++;
+      const age0 = 14 + roll(14, 6);
+      const n: N = { pid: p.id, ord: line.ord, house: line.house, calling: rel === 2 ? line.lastCalling : callingFor(p, v), bornT: tick - age0 * YEAR_TICKS, home: v.id, deeds: [], metYou: false, lastDeedT: tick - 1600, aged: age0, done: [], works: 0 };
+      notable = n;
+      events.push({ kind: 'born', tick, villageId: v.id, x: p.x, y: p.y, detail: pack(rel, n, age0), belief: v.belief });
+      evSeen = events.length;
+      return;
+    }
+    const n = notable;
+    const age = Math.floor((tick - n.bornT) / YEAR_TICKS);
+    const p = people.find((q) => q.id === n.pid);
+    const fresh = events.slice(from);
+    const pass = (cause: number, x: number, y: number, belief: Belief) => {
+      events.push({ kind: 'passed', tick, villageId: n.home, x, y, detail: pack(cause, n, age), belief });
+      line.lastHome = n.home;
+      line.lastCalling = n.calling;
+      line.nextAt = tick + YEAR_TICKS + roll(91, YEAR_TICKS);
+      notable = null;
+      evSeen = events.length;
+    };
+    const home = p ? vs.find((v) => v.id === p.home) : undefined;
+    if (!p || !home) {
+      // Gone with their village, or taken by something that removes people outright.
+      const mineEv = (k: CivEvent['kind']) => fresh.find((e) => e.kind === k && e.villageId === n.home);
+      const gone = mineEv('flooded') ?? mineEv('die');
+      const cause = mineEv('flooded') ? 1 : mineEv('die') ? 2 : mineEv('smitten') ? 7 : fresh.some((e) => e.kind === 'struck') ? 9 : !vs.some((v) => v.id === n.home) ? 2 : 10;
+      const hv = vs.find((v) => v.id === n.home);
+      pass(cause, p?.x ?? gone?.x ?? hv?.x ?? 0, p?.y ?? gone?.y ?? hv?.y ?? 0, hv?.belief ?? 'none');
+      return;
+    }
+    n.home = home.id;
+    const die = (cause: number) => {
+      people.splice(people.indexOf(p), 1);
+      if (home.souls > 1) home.souls--;
+      pass(cause, p.x, p.y, home.belief);
+    };
+    const deed = (code: number, arg = 0) => {
+      n.deeds.push(`At ${age}: ${deedLine(code, arg)}.`);
+      if (n.deeds.length > 6) n.deeds = n.deeds.slice(-6);
+      n.lastDeedT = tick;
+      events.push({ kind: 'deed', tick, villageId: home.id, x: p.x, y: p.y, detail: pack(code, n, age, arg), belief: home.belief });
+      evSeen = events.length;
+    };
+    // Years.
+    if (age > n.aged) {
+      n.aged = age;
+      if (age >= 46 && roll(77, 100) < (age - 44) * 4) { die(0); return; }
+    }
+    // Meeting the player's body: the first to kneel, to raise a hand, or just to stare.
+    if (avatar && !n.metYou) {
+      const d = Math.abs(p.x - avatar.x);
+      const c = p.role === ROLE.kneel && d <= 4 ? 20 : p.role === ROLE.attack && d <= 3 ? 21 : p.role === ROLE.watch && d <= 14 ? 22 : p.role === ROLE.listen && d <= 30 ? 23 : 0;
+      if (c) { n.metYou = true; deed(c); return; }
+    }
+    // What really happened to them and their village since last time.
+    const best = { pri: -1, code: 0, arg: 0, die: 0, cause: 0 };
+    // Each kind of deed is told once in a life; a second famine can still kill, but is not a second line.
+    const risk = { die: 0, cause: 0, code: 0 };
+    const offer = (pri: number, code: number, arg = 0, dieIn = 0, cause = 0) => {
+      if (dieIn && (!risk.die || dieIn < risk.die)) { risk.die = dieIn; risk.cause = cause; risk.code = code; }
+      if (!n.done.includes(code) && pri > best.pri) { best.pri = pri; best.code = code; best.arg = arg; best.die = dieIn; best.cause = cause; }
+    };
+    for (const e of fresh) {
+      const mine = e.villageId === n.home;
+      switch (e.kind) {
+        case 'famine': if (mine) offer(8, 1, 0, 8, 5); break;
+        case 'burn': if (mine) offer(9, 2, 0, 5, 3); break;
+        case 'frozen': if (mine) offer(8, 3, 0, 8, 8); break;
+        case 'migrate': if (mine && e.detail === e.villageId) offer(9, 4, 0, 6, 1); break;
+        case 'feud': if (mine || e.detail === n.home) offer(7, 7, mine ? e.detail ?? 0 : e.villageId, 6, 6); break;
+        case 'smitten': if (mine) offer(9, 25); break;
+        case 'built': if (mine && (p.role === ROLE.build || n.calling === 8 || n.calling === 4 || roll(31, 2) === 0)) offer(4, 8, e.detail ?? 0); break;
+        case 'tech': if (mine) offer(6, 9, e.detail ?? 0); break;
+        case 'festival': if (mine) offer(3, 10); break;
+        case 'convert': if (mine) offer(5, 11, BELIEFS.indexOf(e.belief ?? 'none')); break;
+        case 'launch': offer(6, 12, mine ? 0 : e.villageId); break;
+        case 'split': if (mine) offer(3, 13); break;
+        case 'enlightened': if (mine) offer(6, 15); break;
+        case 'blessed': if (mine) offer(4, 16); break;
+        case 'merged': if (mine) offer(5, 17); break;
+        case 'gift': if (mine && avatar && Math.abs(p.x - avatar.x) < 45) offer(7, 24); break;
+        default: break;
+      }
+    }
+    for (const s of surface) {
+      const d = Math.abs(s.x - p.x);
+      if (s.kind === 'impact' && d < 30) offer(10, 5, 0, d < 10 ? 4 : 0, 4);
+      if (s.kind === 'quake' && d < 30) offer(8, 6, 0, 8, 11);
+    }
+    if (nTrade) { offer(5, 14, nTrade); nTrade = 0; }
+    if (risk.die && roll(40 + risk.code, risk.die) === 0) { die(risk.cause); return; }
+    const quiet = tick - n.lastDeedT;
+    if (best.pri >= 0 && quiet >= (best.die || best.code === 25 || best.code === 24 ? 800 : best.pri >= 6 ? 1600 : 3200)) {
+      if (best.code === 24) n.metYou = true;
+      n.done.push(best.code);
+      deed(best.code, best.arg);
+    } else if (age >= 50 && !n.done.includes(18) && quiet >= 1600) {
+      n.done.push(18);
+      deed(18);
+    } else if (quiet >= 6 * YEAR_TICKS && n.works < 2) {
+      // A quiet life still leaves a mark: the work of their calling (two tellings at most).
+      deed(30, n.calling * 2 + ((n.ord + n.works++) & 1));
+    }
   };
 
   const prosperityOf = (v: V) => Math.round(Math.min(30, (v.food / 600) * 30) + Math.min(40, ((v.wealth ?? 0) / 300) * 40) + ((Math.max(-100, Math.min(100, v.mood)) + 100) / 200) * 30);
@@ -461,6 +689,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       prosperity: vs.length ? Math.round(vs.reduce((n, v) => n + prosperityOf(v), 0) / vs.length) : 0,
       launches,
       launchAge: tick - lastLaunchT,
+      notable: notable ? { personId: notable.pid % 30000, name: notableName(pseed, notable.ord, notable.house).full, calling: CALLINGS[notable.calling] ?? 'wanderer', age: Math.floor((tick - notable.bornT) / YEAR_TICKS), villageId: notable.home, deeds: notable.deeds.slice(), metYou: notable.metYou } : null,
       avatar: avatar ? { x: avatar.x, y: avatar.y, hp: avatar.hp, attackers, worshippers, action: avatar.action, actionAge: tick - avatar.actionT } : null,
     };
   };
@@ -468,6 +697,12 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
   return {
     init: (p, surface) => {
       r = rng(child(p.seed, 'civ'));
+      pseed = p.seed;
+      nseed = child(p.seed, 'notable');
+      notable = null;
+      line = { ord: 0, house: 0, nextAt: 0, lastHome: -1, lastCalling: 0 };
+      nTrade = 0;
+      nextPid = 1;
       vs = [];
       people = [];
       pending = surface.villageSites.map((s) => ({ x: s.x, belief: 'none' as Belief, tech: 0 }));
@@ -482,6 +717,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
     },
     step: (ticks, g, m, env, surface) => {
       const events: CivEvent[] = [];
+      evSeen = 0;
       for (const e of surface) if (surfQ.length < 64) surfQ.push(e);
       for (const e of pendingEv) events.push(e);
       pendingEv = [];
@@ -600,10 +836,14 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       avatar = null;
       for (const p of people) if (p.role === ROLE.attack || p.role === ROLE.kneel || p.role === ROLE.watch || p.role === ROLE.listen || p.role === ROLE.flee) { p.role = ROLE.idle; p.wait = 0; }
     },
-    snapshot: () => new TextEncoder().encode(JSON.stringify({ vs, people, pending, tick, nextId, glow, era })),
+    snapshot: () => new TextEncoder().encode(JSON.stringify({ vs, people, pending, tick, nextId, glow, era, nextPid, notable, line })),
     restore: (s) => {
       const o = JSON.parse(new TextDecoder().decode(s)) as { vs: V[]; people: P[]; pending: typeof pending; tick: number; nextId: number; glow: number; era: number };
       ({ vs, people, pending, tick, nextId, glow, era } = o);
+      const x = o as { nextPid?: number; notable?: N | null; line?: Line };
+      nextPid = x.nextPid ?? people.reduce((m, p) => Math.max(m, p.id ?? 0), 0) + 1;
+      notable = x.notable ?? null;
+      line = x.line ?? { ord: 0, house: 0, nextAt: 0, lastHome: -1, lastCalling: 0 };
     },
   };
 };

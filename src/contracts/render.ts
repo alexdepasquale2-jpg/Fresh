@@ -81,6 +81,8 @@ export interface PlanetRenderView {
     /** First person: stand at column x, depth z (0 is the slice itself), looking along yaw (0 = +x) and pitch. */
     fp?: { x: number; z: number; yaw: number; pitch: number; bob?: number } | null;
   };
+  /** 0.5..1 resolution multiplier for the expensive first-person pass (from Perf.resolutionScale()). */
+  readonly quality?: number;
   /** CSS px rect to draw the surface into. */
   readonly rect: { x: number; y: number; w: number; h: number };
 }
