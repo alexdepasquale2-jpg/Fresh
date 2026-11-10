@@ -28,5 +28,13 @@
 .away-acts .k-btn { min-height: var(--btn-primary); }
 .away-acts .k-btn--primary { flex: 2; background: var(--bg); color: var(--ink-bright); border-color: var(--bg); }
 .away-acts .k-btn:not(.k-btn--primary) { flex: 1; background: transparent; color: var(--panel); border-color: var(--line); }
+.away-lines em { font: italic 14px/1.3 var(--font-voice); color: var(--line-dim); }
+.away-named { display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--ink-off); }
+.away-named > * { margin: 0; }
+.away-who { font: 400 16px/1.3 var(--font-voice); color: var(--line-dim); }
+.away-who b { font-weight: 400; font-size: 20px; color: var(--bg); }
+.away-named ul { list-style: none; padding: 0 0 0 10px; border-left: 2px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+.away-named li { font: 400 16px/1.3 var(--font-voice); color: var(--bg); }
+.away-omen { font: italic 14px/1.4 var(--font-voice); color: var(--line-dim); padding-top: 8px; border-top: 1px solid var(--ink-off); }
 @keyframes away-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .away, .away-note { animation: none; } }

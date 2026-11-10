@@ -107,34 +107,67 @@ const KINDS: readonly (readonly [string, RegExp])[] = [
 ];
 const kindOf = (text: string): string => KINDS.find(([, re]) => re.test(text))?.[0] ?? 'small';
 
-interface Line { id: number; text: string; reason?: string; year: number; kind: string }
+interface Line { id: number; text: string; reason?: string; year: number; kind: string; more?: string }
 
-/** Up to 8 lines, as varied as the dream allows, in the order they happened. */
+/** One sentence for the n other things of a kind that the report does not print. */
+const MORE: Readonly<Record<string, (n: number) => string>> = {
+  launch: (n) => `${n === 1 ? 'One more lamp' : `${cap(words(n))} more lamps`} went up after it.`,
+  death: (n) => `${n === 1 ? 'One more fire' : `${cap(words(n))} more fires`} went out the same way.`,
+  era: (n) => `Before that they learned ${n === 1 ? 'one other thing' : `${words(n)} other things`}.`,
+  faith: (n) => `Their faith turned ${n === 1 ? 'once more' : `${words(n)} more times`}.`,
+  knowing: (n) => `${n === 1 ? 'One more village' : `${cap(words(n))} more villages`} came to know it too.`,
+  found: (n) => `${n === 1 ? 'One more home was' : `${cap(words(n))} more homes were`} made after it.`,
+  ruin: (n) => `${n === 1 ? 'One more ruin' : `${cap(words(n))} more ruins`} followed.`,
+  sky: (n) => `The sky struck ${n === 1 ? 'once more' : `${words(n)} more times`}.`,
+  strife: (n) => `They came to blows ${n === 1 ? 'once more' : `${words(n)} more times`}.`,
+  road: (n) => `${n === 1 ? 'One more band' : `${cap(words(n))} more bands`} took the road.`,
+  small: (n) => `${n === 1 ? 'One smaller thing was' : `${cap(words(n))} smaller things were`} written down besides.`,
+};
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/**
+ * As varied as the dream allows, in the order things happened. When the dream holds
+ * more than one kind of thing, each kind gets one line and one sentence counting the
+ * rest. A dream of a single kind may tell three of it.
+ */
 const choose = (all: readonly Line[], max = 8): Line[] => {
   const seen = new Set<string>();
   const byKind = new Map<string, Line[]>();
   for (const l of all) {
-    if (seen.has(l.text)) continue;
-    seen.add(l.text);
+    // The very same sentence twice is one line; it still counts toward the rest.
     const list = byKind.get(l.kind) ?? [];
-    list.push(l);
+    if (!seen.has(l.text)) list.push({ ...l });
+    else list.push({ ...l, text: '' });
+    seen.add(l.text);
     byKind.set(l.kind, list);
   }
   const picked: Line[] = [];
-  // Round robin over the kinds: the first and the last of each tell the most.
-  for (let round = 0; picked.length < max; round++) {
-    let any = false;
-    for (const [kind] of KINDS) {
-      const list = byKind.get(kind);
-      if (!list?.length) continue;
-      if (kind === 'small' && round === 0 && byKind.size > 5) continue;
-      any = true;
-      picked.push(round % 2 === 0 ? list.shift()! : list.pop()!);
-      if (picked.length >= max) break;
-    }
-    if (!any && round > 0) break;
+  const perKind = byKind.size > 1 ? 1 : 3;
+  for (const [kind] of KINDS) {
+    const list = byKind.get(kind);
+    if (!list?.length || picked.length >= max) continue;
+    // Small talk is left out when the dream has weightier things to tell.
+    if (kind === 'small' && byKind.size > 4) continue;
+    const told = list.filter((l) => l.text);
+    // The age they reached last tells the most; of everything else, the first.
+    const take = kind === 'era' ? told.slice(-perKind) : told.slice(0, perKind);
+    const rest = list.length - take.length;
+    const last = take[take.length - 1];
+    if (last && rest > 0) last.more = (MORE[kind] ?? MORE.small!)(rest);
+    picked.push(...take);
   }
   return picked.sort((a, b) => a.id - b.id);
+};
+
+/** The one the chronicle names, as last seen in the dream. */
+interface Named { name: string; calling: string; age: number; deeds: readonly string[]; metYou: boolean; alive: boolean }
+/** Read from the Almanac plugin if it is there; the report is whole without it. */
+const omenAt = (ms: number): { name: string; line: string } | null => {
+  try {
+    const a = (window as unknown as { __sallowAlmanac?: { omenOn(ms: number): { name: string; line: string } } }).__sallowAlmanac;
+    const o = a?.omenOn(ms);
+    return o && typeof o.name === 'string' ? o : null;
+  } catch { return null; }
 };
 
 const lightPoints = (shell: Shell): number => {
@@ -183,7 +216,7 @@ export const plugin: Plugin = (shell) => {
   // ---- The dream -----------------------------------------------------------------------
   interface Dream {
     world: Remembered; awayMs: number; target: number; startedMs: number; lastFrameMs: number; tick: number;
-    lines: Map<number, Line>; lightBefore: number; off: () => void; note: HTMLElement; bar: HTMLElement;
+    lines: Map<number, Line>; named: Map<string, Named>; leftMs: number; lightBefore: number; off: () => void; note: HTMLElement; bar: HTMLElement;
     restore: () => void;
   }
   let dream: Dream | null = null;
@@ -232,7 +265,7 @@ export const plugin: Plugin = (shell) => {
     const note = el('div', { class: 'away-note', role: 'status' }, el('span', {}, 'The box has been dreaming…'), el('b', {}, bar));
     shell.host.append(note);
     const d: Dream = {
-      world, awayMs, target, startedMs: now(), lastFrameMs: now(), tick: 0, lines: new Map(), lightBefore: (lightSnap = ctx.light.snapshot(), lightPoints(shell)),
+      world, awayMs, target, startedMs: now(), lastFrameMs: now(), tick: 0, lines: new Map(), named: new Map(), leftMs: now() - awayMs, lightBefore: (lightSnap = ctx.light.snapshot(), lightPoints(shell)),
       off: () => {}, note, bar, restore,
     };
     dream = d;
@@ -256,6 +289,9 @@ export const plugin: Plugin = (shell) => {
       if (known) { if (e.reason && !known.reason) known.reason = e.reason; continue; }
       d.lines.set(e.id, { id: e.id, text: e.event, reason: e.reason, year, kind: kindOf(e.event) });
     }
+    for (const p of d.named.values()) p.alive = false;
+    const nb = f.civ.notable;
+    if (nb) d.named.set(nb.name, { name: nb.name, calling: nb.calling, age: nb.age, deeds: nb.deeds, metYou: nb.metYou, alive: true });
     if (f.tick >= d.target || now() - d.startedMs > BUDGET_MS) { finish(d); return; }
     // One step may be in flight at a time. If the main loop got there first this one is
     // dropped, and the frame its step brings leads back here.
@@ -313,6 +349,28 @@ export const plugin: Plugin = (shell) => {
     const gift = gained > 0
       ? `Their lamps reached you across the dark. Your light grew by ${lightWords(gained)}.`
       : 'Their lamps reached you across the dark, but your light was already full.';
+    // The one they name: the last the dream saw, with what they did.
+    const people = [...d.named.values()];
+    const who = people[people.length - 1] ?? null;
+    const deeds = who ? [...new Set(who.deeds)].slice(-3) : [];
+    const named = who
+      ? el('div', { class: 'away-named', 'data-id': 'away-named' },
+        el('p', { class: 'away-kicker' }, who.alive ? 'The one they name' : 'The one they named'),
+        el('p', { class: 'away-who' }, el('b', {}, who.name), `, ${who.calling}, ${who.alive ? `${count(who.age, 'year')} old` : `gone at ${words(who.age)}`}.`),
+        deeds.length
+          ? el('ul', {}, ...deeds.map((x) => el('li', {}, x)))
+          : el('p', { class: 'away-then' }, 'Nothing they did was written down yet.'),
+        people.length > 1 ? el('p', { class: 'away-then' }, `${people.length === 2 ? 'One other was' : `${cap(words(people.length - 1))} others were`} named before them.`) : null)
+      : null;
+    // The omen that hung over the days away, if the Almanac is keeping them.
+    const left = omenAt(d.leftMs);
+    const back = omenAt(now());
+    const omen = left
+      ? el('p', { class: 'away-omen', 'data-id': 'away-omen' },
+        back && back.name !== left.name
+          ? `You left under ${left.name}. You come back under ${back.name}. ${back.line}`
+          : `The omen over the box while you were away was ${left.name}. ${left.line}`)
+      : null;
     const then = `When you last looked there ${w.souls === 1 ? 'was' : 'were'} ${count(w.souls, 'soul')} in ${count(w.villages, 'village')}.`;
     report = el('section', { class: 'away', role: 'dialog', 'aria-label': 'While you were gone' },
       el('div', { class: 'away-page' },
@@ -323,14 +381,16 @@ export const plugin: Plugin = (shell) => {
         el('p', { class: 'away-honest' },
           `The box cannot hold a world still. It dreamed ${w.planet} again from its first morning, under the sky you left it, for ${howManyYears(d.tick)} of its own. These are not the same souls you watched. This is what your sky made of them.`),
         el('ol', { class: 'away-lines' }, ...(lines.length
-          ? lines.map((l) => el('li', {}, el('span', {}, `Year ${words(l.year)}`), el('p', {}, l.text), why(l.reason)))
+          ? lines.map((l) => el('li', { 'data-kind': l.kind }, el('span', {}, `Year ${words(l.year)}`), el('p', {}, l.text), why(l.reason), l.more ? el('em', {}, l.more) : null))
           : [el('li', {}, el('p', {}, 'Nothing was written down. The ground kept its own counsel.'))])),
+        named,
         el('p', { class: 'away-kicker' }, 'As it stands now'),
         el('div', { class: 'away-figs' },
           fig(civ.souls, 'souls'), fig(civ.villages.length, 'villages'), fig(ERAS[civ.era] ?? 'huts', 'era'),
           fig(civ.prosperity, 'prosperity'), fig(civ.launches, 'in orbit')),
         el('p', { class: 'away-then' }, civ.villages.length === 0 ? `No lamp burns there now. ${then}` : then),
         el('p', { class: 'away-gift' }, gift),
+        omen,
       ),
       el('div', { class: 'away-acts' },
         button('Go to them', goToThem, { primary: true, id: 'away-go' }),
