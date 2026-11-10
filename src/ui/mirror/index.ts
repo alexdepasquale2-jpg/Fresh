@@ -86,7 +86,7 @@ const mirror: ScreenFactory = () => {
       const up = () => { c.selection.star = null; c.selection.system = null; c.go('dive'); };
       const finish = () => {
         actions.replaceChildren(
-          button('Climb back up', up, { primary: true, id: 'mirror-up' }),
+          button('Rise to the top of the fall', up, { primary: true, id: 'mirror-up' }),
           button('Return to your own box', () => c.go('box'), { id: 'mirror-box' }),
         );
       };
@@ -157,7 +157,7 @@ const mirror: ScreenFactory = () => {
         wait -= Math.min(dt, 250);
         if (wait <= 0) advance?.();
       }
-      ctx.renderers.room.draw({ kid: { x: ctx.gl.width() / 2, y: 400 }, target, pulse: ctx.pulse().phase(), lightPips: ctx.light.view().pips }, dt);
+      ctx.renderers.room.draw({ scene: 1, kid: { x: ctx.gl.width() / 2, y: 400 }, target, pulse: ctx.pulse().phase(), lightPips: ctx.light.view().pips }, dt);
     },
     unmount: () => {
       if (ctx) ctx.gl.canvas.style.transform = prevTransform;

@@ -314,8 +314,10 @@ export const plugin: Plugin = (shell) => {
     const chipOn = chipShown(scr, cue);
     show('chip', chip, chipOn);
     if (chipOn) {
-      const cx = scr === 'dive' ? b.left + b.width / 2 - 22 : b.right - 52;
-      put('chip-t', chip, 'transform', `translate(${Math.round(cx)}px,${Math.round(b.top + 60)}px)`);
+      // Off-script screens keep their cards clear: Mote waits beside the way back.
+      const aside = PAUSED.has(scr);
+      const cx = aside ? b.left + 100 : scr === 'dive' ? b.left + b.width / 2 - 22 : b.right - 52;
+      put('chip-t', chip, 'transform', `translate(${Math.round(cx)}px,${Math.round(b.top + (aside ? 16 : 60))}px)`);
     }
     show('card', card, !!cue);
     if (!cue) { show('ring', ring, false); show('drift', drift, false); show('arrow', arrow, false); slot = null; return; }

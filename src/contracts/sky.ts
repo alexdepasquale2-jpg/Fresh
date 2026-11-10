@@ -9,7 +9,7 @@ export const SKY_PIECE_KINDS: readonly SkyPieceKind[] = ['comet', 'moon', 'belt'
 
 /**
  * The sky of one planet: the pieces placed on its orbit.
- * Invariants: at most 4 pieces; order is placement order; planetKey is the
+ * Invariants: at most 8 pieces; order is placement order; planetKey is the
  * planet seed as hex (core/hash seedToHex).
  */
 /** Cosmic events thrown at a planet from the solar system; they land when it is next watched. */
@@ -17,7 +17,7 @@ export const CosmicEventSchema = z.enum(['flare', 'shower', 'eclipse', 'pansperm
 export type CosmicEvent = z.infer<typeof CosmicEventSchema>;
 export const SkyStateSchema = z.object({
   planetKey: z.string().regex(/^[0-9a-f]{16}$/),
-  pieces: z.array(SkyPieceKindSchema).max(4),
+  pieces: z.array(SkyPieceKindSchema).max(8),
   /** Orbit nudged by the player: negative is closer to the star (hotter), positive further (colder). -3..3. */
   drift: z.number().int().min(-3).max(3).optional(),
   /** Things its people have put into orbit: lanterns, then stations. 0..12. */
@@ -46,6 +46,42 @@ export interface SkyRules {
 }
 export type SkyRulesFactory = () => SkyRules;
 
+/** How many pieces one sky can hold. */
+export const SKY_MAX_PIECES = 8;
+
+/** One thing that moves across a planet's sky. */
+export interface SkyBody {
+  /** moon: a placed moon. world / inner: a sibling planet further out / closer to the star. comet: a placed comet. */
+  readonly kind: 'moon' | 'world' | 'inner' | 'comet';
+  /** Apparent size, 1 is ordinary. */
+  readonly size: number;
+  /** Whole turns against the sun per year (may be negative). */
+  readonly turns: number;
+  /** 0..1 where on its path it starts. */
+  readonly phase: number;
+  /** -1..1 how far off the sun's path it rides. For 'inner': the furthest it strays from the sun, in turns. */
+  readonly tilt: number;
+  readonly rgb: readonly [number, number, number];
+  readonly ringed: boolean;
+  readonly name: string;
+}
+/**
+ * What a planet's sky holds, generated from its solar system: the star, the other
+ * worlds and what is on their orbits, and every piece placed on this one.
+ * Invariant: a pure function of (system, orbit index, every sky in the system).
+ */
+export interface Heavens {
+  readonly star: { readonly rgb: readonly [number, number, number]; readonly size: number; readonly strobe: boolean; readonly kind: string };
+  /** At most 8, most striking first. */
+  readonly bodies: readonly SkyBody[];
+  readonly rings: { readonly strength: number; readonly tilt: number };
+  readonly belt: { readonly strength: number; readonly tilt: number };
+  /** Far background: palette index of the glow, a seed offset, and strength 0..1. */
+  readonly nebula: { readonly tint: number; readonly offset: number; readonly strength: number };
+  /** One sentence per thing in the sky, for the planet screen. */
+  readonly says: readonly string[];
+}
+
 export type PlaceResult = { ok: true; sky: SkyState } | { ok: false; reason: 'none-left' | 'sky-full' | 'bad-orbit' };
 
 /** The player's sky pieces and every planet's sky. Mutable game state. */
@@ -63,6 +99,8 @@ export interface SkyGame {
   /** Take (and clear) the events waiting for a planet. */
   takeQueued(planetKey: string): CosmicEvent[];
   skyOf(planet: PlanetSpec): SkyState;
+  /** The generated sky over the planet on an orbit. */
+  heavens(system: SystemSpec, orbitIndex: number): Heavens;
   snapshot(): { inventory: Record<SkyPieceKind, number>; skies: SkyState[] };
   restore(s: { inventory: Record<SkyPieceKind, number>; skies: SkyState[] }): void;
 }

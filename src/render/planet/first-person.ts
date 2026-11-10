@@ -7,6 +7,7 @@ import type { GlCore, PlanetRenderView } from '@/contracts/render';
 import { ENGINE, ROLE } from '@/contracts/sim';
 import { FULLSCREEN_VS } from '@/render/gl';
 import { FX_ONE } from '@/core/fixed';
+import { HEAVENS_GLSL, HEAVENS_UNIFORMS, uploadHeavens } from './heavens';
 
 // Shared by shader and camera so the eye always stands on what is drawn.
 const sat = (v: number) => Math.max(0, Math.min(1, v));
@@ -22,6 +23,7 @@ uniform vec2 u_res; uniform vec3 u_ro; uniform vec2 u_look; uniform vec2 u_grid;
 uniform sampler2D u_cols, u_pal; uniform highp usampler2D u_mat;
 uniform float u_day, u_season, u_time, u_pulse, u_nl, u_dim, u_dust, u_wind, u_hum, u_rain, u_flash, u_moons, u_suns, u_rings, u_snow, u_orb, u_impacts, u_aurora;
 uniform vec4 u_vill[12]; uniform int u_nvill;
+${HEAVENS_GLSL}
 vec3 pal(int i){ return texelFetch(u_pal, ivec2(i & 15, 0), 0).rgb; }
 float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -57,31 +59,65 @@ vec3 sky(vec3 rd, float daylight, float dusk, bool hq){
   float up = clamp(rd.y, -0.2, 1.0);
   vec3 day = mix(mix(pal(9), pal(13), dusk * 0.6), mix(pal(12), pal(9), 0.25), smoothstep(0.0, 0.6, up));
   vec3 night = mix(pal(2), pal(0) * 0.6, smoothstep(0.0, 0.7, up));
+  day = mix(day, day * (0.55 + u_star.rgb * 0.75), 0.35);   // the star colours its own daylight
   vec3 c = mix(night, day, daylight) + pal(14) * dusk * 0.35 * smoothstep(0.45, 0.0, up);
   c = mix(c, pal(14) * 0.6 + pal(7) * 0.2, u_dust * 0.55);
   // stars
   vec2 sp = rd.xz / (abs(rd.y) + 0.35) * 28.0;
   float st = h21(floor(sp));
   c += pal(9) * step(0.985, st) * smoothstep(0.35, 0.05, length(fract(sp) - 0.5)) * 2.0 * (1.0 - daylight) * (1.0 - u_dust) * step(0.0, rd.y) * (0.5 + 0.5 * sin(u_time * 3.0 + st * 300.0));
-  // suns
+  // The far dark of this system: a glow seeded by its star.
+  if (hq && rd.y > 0.0) { vec2 nq = rd.xz / (rd.y + 0.4) * 1.6 + u_hv.y; float nb = fbm(nq);
+    c += mix(pal(int(u_hv.x)), pal(11), fbm(nq.yx * 2.3 + 7.0)) * pow(smoothstep(0.35, 0.9, nb), 2.0) * u_hv.z * 0.4 * (1.0 - daylight) * (1.0 - u_dust); }
+  vec3 L = sunDir(0.0);
+  // suns: the first is this system's star, its colour and size; lesser suns follow it
+  vec3 starCol = mix(pal(9), u_star.rgb, 0.65) * (u_hv.w > 0.5 ? 0.7 + 0.5 * sin(u_time * 9.0) : 1.0);
   for (int s = 0; s < 3; s++) {
     if (float(s) >= 1.0 + u_suns) break;
     float d = dot(rd, sunDir(float(s)));
-    c += (s == 0 ? pal(9) : pal(13)) * (smoothstep(0.9985, 0.9993, d) * 2.0 + pow(max(d, 0.0), 40.0) * 0.5 + pow(max(d, 0.0), 6.0) * 0.12 * daylight);
+    float sz = s == 0 ? u_star.w : 0.7;
+    float cr = 1.0 - 0.0011 * sz * sz;
+    c += (s == 0 ? starCol : pal(13)) * (smoothstep(cr - 0.0004, cr + 0.0003, d) * 2.0 + pow(max(d, 0.0), 40.0 / sz) * 0.5 + pow(max(d, 0.0), 6.0) * 0.12 * daylight);
   }
-  // moons
-  for (int m = 0; m < 2; m++) {
-    if (float(m) >= u_moons) break;
-    float a = (u_day + 0.25 + float(m) * 0.31) * 6.2831853;
-    vec3 md = normalize(vec3(cos(a), sin(a), -0.3 + float(m) * 0.5));
+  // every body in this sky: each moon its own, the other worlds of the star, comets
+  for (int m = 0; m < 8; m++) {
+    if (m >= u_nb) break;
+    vec4 A = u_bA[m], B = u_bB[m];
+    float k = mod(B.w, 10.0);
+    float a, z;
+    if (k > 1.5 && k < 2.5) { a = (u_day - 0.25 + A.w * sin((u_season * A.y + A.z) * 6.2831853)) * 6.2831853; z = 0.35; }
+    else { a = (u_day + A.z + u_season * A.y) * 6.2831853; z = A.w; }
+    vec3 md = normalize(vec3(cos(a), sin(a), z));
     float d = dot(rd, md);
-    float disc = smoothstep(0.9988 - float(m) * 0.0004, 0.9992, d);
-    c = mix(c, mix(pal(3), pal(9), smoothstep(-0.02, 0.03, rd.x - md.x + sin(u_season * 6.28) * 0.02)), disc);
-    c += pal(9) * pow(max(d, 0.0), 60.0) * 0.15;
+    if (d < 0.9) continue;
+    vec3 dv = rd - md;
+    if (k < 0.5) {
+      float r = 0.032 * A.x, cr = 1.0 - r * r * 0.5;
+      float disc = smoothstep(cr - r * r * 0.1, cr, d);
+      vec3 face = B.rgb * (0.82 + 0.18 * noise(dv.xy / r * 2.5 + A.z * 9.0)) * (0.9 + 0.1 * smoothstep(cr, 1.0, d));
+      c = mix(c, mix(face * 0.1 + c * 0.55, face, smoothstep(-0.5, 0.5, dot(dv, L) / r)), disc);
+      c += B.rgb * pow(max(d, 0.0), 60.0) * 0.12 * A.x * (1.0 - daylight * 0.7);
+    } else if (k < 2.5) {
+      float r = 0.0075 * A.x, cr = 1.0 - r * r * 0.5;
+      float vis = 1.0 - daylight * 0.85;
+      c += B.rgb * (smoothstep(cr - r * r * 0.35, cr, d) * 1.8 + pow(max(d, 0.0), 2600.0 / A.x) * 0.5) * vis;
+      if (B.w > 9.5) { vec3 rdir = normalize(vec3(-sin(a), cos(a), 0.35)); float al = dot(dv, rdir); float ac = length(dv - al * rdir);
+        c += B.rgb * smoothstep(r * 0.45, 0.0, ac) * smoothstep(r * 2.8, r * 2.2, abs(al)) * 0.8 * vis; }
+    } else {
+      float w = smoothstep(0.1, 0.6, sin((u_season + A.z) * 6.2831853));
+      float r = 0.006 * A.x, cr = 1.0 - r * r * 0.5;
+      vec3 tdir = normalize(md - L); float al = dot(dv, tdir); float ac = length(dv - al * tdir);
+      float tail = smoothstep(0.0, 0.01, al) * smoothstep(0.32 * A.x, 0.0, al) * smoothstep(0.004 + al * 0.13, 0.0, ac);
+      c += B.rgb * (smoothstep(cr - r * r * 0.4, cr, d) * 2.0 + tail * 0.7) * w * (1.0 - daylight * 0.8);
+    }
   }
-  // rings: a bright arc across the whole sky
-  if (u_rings > 0.5) { float band = abs(rd.z * 0.9 + rd.y * 0.45 - 0.25); c += mix(pal(8), pal(9), 0.5) * (smoothstep(0.03, 0.0, band) * 0.5 + smoothstep(0.07, 0.04, band) * 0.15) * step(0.0, rd.y) * (0.5 + 0.5 * daylight + u_nl); }
-  vec3 L = sunDir(0.0);
+  // rings: a bright arc across the whole sky, tilted as this world is tilted
+  if (u_arc.x > 0.01) { float band = abs(rd.z * 0.9 + rd.y * (0.45 + u_arc.y) - 0.25);
+    c += mix(pal(8), pal(9), 0.5) * (smoothstep(0.03, 0.0, band) * 0.5 + smoothstep(0.07, 0.04, band) * 0.15 + smoothstep(0.012, 0.0, abs(band - 0.1)) * 0.25 * step(0.9, u_arc.x)) * step(0.0, rd.y) * (0.5 + 0.5 * daylight + u_nl) * (0.5 + 0.7 * u_arc.x); }
+  // belt: a river of stones, some catching the light
+  if (u_arc.z > 0.01 && rd.y > 0.0) { float band = abs(rd.z * 0.7 - rd.y * (0.5 + u_arc.w) + 0.12);
+    float glint = step(0.9 - u_arc.z * 0.12, h21(floor(rd.xz / (rd.y + 0.3) * 70.0)));
+    c += mix(pal(7), pal(9), glint * 0.6) * smoothstep(0.07, 0.0, band) * (0.08 + 0.9 * glint) * u_arc.z * (1.0 - daylight * 0.6); }
   float sd = max(dot(rd, L), 0.0);
   // Atmosphere: forward-scattered glow round the sun, and a warm band along the horizon at dusk.
   c += mix(pal(13), pal(9), 0.5) * (pow(sd, 8.0) * 0.25 + pow(sd, 3.0) * 0.08) * (daylight * 0.6 + dusk);
@@ -302,7 +338,7 @@ export const createFirstPerson = (core: GlCore) => {
   const prog = core.program(FULLSCREEN_VS, FS);
   const blit = core.program(FULLSCREEN_VS, BLIT_FS);
   const U = (p: WebGLProgram, names: string[]) => Object.fromEntries(names.map((n) => [n, gl.getUniformLocation(p, n)])) as Record<string, WebGLUniformLocation | null>;
-  const loc = U(prog, ['u_res', 'u_ro', 'u_look', 'u_grid', 'u_cols', 'u_pal', 'u_mat', 'u_day', 'u_season', 'u_time', 'u_pulse', 'u_nl', 'u_dim', 'u_dust', 'u_wind', 'u_hum', 'u_rain', 'u_flash', 'u_moons', 'u_suns', 'u_rings', 'u_snow', 'u_orb', 'u_impacts', 'u_aurora', 'u_vill', 'u_nvill']);
+  const loc = U(prog, ['u_res', 'u_ro', 'u_look', 'u_grid', 'u_cols', 'u_pal', 'u_mat', 'u_day', 'u_season', 'u_time', 'u_pulse', 'u_nl', 'u_dim', 'u_dust', 'u_wind', 'u_hum', 'u_rain', 'u_flash', 'u_moons', 'u_suns', 'u_rings', 'u_snow', 'u_orb', 'u_impacts', 'u_aurora', 'u_vill', 'u_nvill', ...HEAVENS_UNIFORMS]);
   const bloc = U(blit, ['u_res', 'u_rect', 'u_tex', 'u_px']);
   // Own quad so we can draw into a smaller target.
   const vao = gl.createVertexArray();
@@ -424,7 +460,7 @@ export const createFirstPerson = (core: GlCore) => {
       gl.uniform1f(loc.u_flash!, f.flash);
       gl.uniform1f(loc.u_moons!, count('moon'));
       gl.uniform1f(loc.u_suns!, count('sun'));
-      gl.uniform1f(loc.u_rings!, count('rings') ? 1 : 0);
+      uploadHeavens(gl, loc, v);
       gl.uniform1f(loc.u_snow!, v.env.snowing ? 1 : 0);
       gl.uniform1f(loc.u_orb!, Math.min(8, v.sky.built ?? 0));
       gl.uniform1f(loc.u_impacts!, Math.max(0, md.impacts) / 100);

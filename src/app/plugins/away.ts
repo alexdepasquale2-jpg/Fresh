@@ -27,6 +27,8 @@ const BUDGET_MS = 20_000;
 const STALL_MS = 8_000;
 /** The gift on top of what the dream itself earned is never more than this (1000 = one pip). */
 const GIFT_CAP = 1500;
+/** All the Light a dream may earn by itself (1000 = one pip). */
+const DREAM_CAP = 2000;
 
 interface Remembered {
   v: 1;
@@ -188,7 +190,7 @@ export const plugin: Plugin = (shell) => {
   let report: HTMLElement | null = null;
   /** True while the open sim is the one this plugin opened (dream or report showing). */
   let simIsOurs = false;
-  let unpatch: (() => void) | null = null;
+  let lightSnap: { pips: number; partial: number } | null = null;
 
   /** Stop dreaming. With keepSim the world stays open and the selection stays on it. */
   const endDream = (keepSim: boolean) => {
@@ -230,7 +232,7 @@ export const plugin: Plugin = (shell) => {
     const note = el('div', { class: 'away-note', role: 'status' }, el('span', {}, 'The box has been dreaming…'), el('b', {}, bar));
     shell.host.append(note);
     const d: Dream = {
-      world, awayMs, target, startedMs: now(), lastFrameMs: now(), tick: 0, lines: new Map(), lightBefore: lightPoints(shell),
+      world, awayMs, target, startedMs: now(), lastFrameMs: now(), tick: 0, lines: new Map(), lightBefore: (lightSnap = ctx.light.snapshot(), lightPoints(shell)),
       off: () => {}, note, bar, restore,
     };
     dream = d;
@@ -266,6 +268,12 @@ export const plugin: Plugin = (shell) => {
     endDream(true);
     // The dream fed the light as any watched world does. Add a little for the hours the box
     // could not hold: five points a minute away, never more than the dream earned, capped.
+    // The dream may not pour out more than DREAM_CAP, however long it ran.
+    if (lightPoints(shell) - d.lightBefore > DREAM_CAP && lightSnap) {
+      ctx.light.restore(lightSnap);
+      ctx.light.addGlow(DREAM_CAP);
+    }
+    lightSnap = null;
     const earned = Math.max(0, lightPoints(shell) - d.lightBefore);
     const gift = Math.max(0, Math.min(GIFT_CAP, Math.floor(d.awayMs / 60000) * 5, earned));
     if (gift > 0) {
@@ -297,20 +305,8 @@ export const plugin: Plugin = (shell) => {
     };
     const goToThem = () => {
       dismiss();
-      // The planet screen opens its world afresh when it mounts. Let that one call pass
-      // without starting over, so they arrive in the world they have just read about.
-      const sim = ctx.sim;
-      const u = ctx.selection.universe, p = ctx.selection.system?.planets[ctx.selection.planetIndex];
-      if (simIsOurs && u && p && sim.latest()) {
-        const open = sim.open;
-        const timer = window.setTimeout(() => unpatch?.(), 5000);
-        unpatch = () => { sim.open = open; unpatch = null; clearTimeout(timer); };
-        sim.open = (u2, p2) => {
-          unpatch?.();
-          if (u2.serialNumber === u.serialNumber && p2.seed.hi === p.seed.hi && p2.seed.lo === p.seed.lo && sim.latest()) return;
-          open(u2, p2);
-        };
-      }
+      // The planet screen keeps a world that is already open, so they arrive in the one
+      // they have just read about.
       simIsOurs = false;
       ctx.go('planet');
     };
@@ -348,7 +344,6 @@ export const plugin: Plugin = (shell) => {
   shell.onNavigate((from, to) => {
     try {
       if (from === 'planet') flush();
-      unpatch?.();
       if (!booted) {
         booted = true;
         if (to === 'bedroom' && shell.resumed) {

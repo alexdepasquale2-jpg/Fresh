@@ -13,6 +13,7 @@ import { createStructures } from './structures';
 import type { Structures } from './structures';
 import type { People } from './people';
 import { FX_ONE } from '@/core/fixed';
+import { HEAVENS_GLSL, HEAVENS_UNIFORMS, uploadHeavens } from './heavens';
 
 const O = { person: 1, wall: 2, roof: 3, window: 4, smoke: 5, rain: 6, snow: 7, lamp: 8, bonfire: 9, tower: 10, launch: 11, priest: 12, travel: 13, avatar: 14, attack: 15 } as const;
 const KIND = { empty: 0, solid: 1, powder: 2, liquid: 3, gas: 4, fire: 5, life: 6 } as const;
@@ -24,7 +25,8 @@ uniform vec2 u_res; uniform vec4 u_rect; uniform vec2 u_grid; uniform vec3 u_vie
 uniform usampler2D u_cells, u_over, u_mat, u_top;
 uniform sampler2D u_temp, u_hum, u_pal;
 uniform float u_day, u_season, u_time, u_pulse, u_nl, u_dim, u_warm, u_dust, u_wind, u_rain, u_flash;
-uniform float u_moons, u_suns, u_rings, u_comet, u_belt, u_orb;
+uniform float u_moons, u_suns, u_orb;
+${HEAVENS_GLSL}
 uniform vec4 u_vill[12]; uniform int u_nvill;
 vec3 pal(int i){ return texelFetch(u_pal, ivec2(i & 15, 0), 0).rgb; }
 float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
@@ -61,34 +63,49 @@ void main(){
   float st = h21(floor(gp * 0.7));
   float pin = mix(1.0, smoothstep(0.3, 0.05, length(fract(gp * 0.7) - 0.5)) * 2.0, det); // stars stay points up close
   if (st > 0.985) sky += pin * pal(9) * (1.0 - daylight) * (1.0 - hum) * (0.4 + 0.6 * sin(u_time * 3.0 + st * 400.0)) * (1.0 - u_dust);
+  // the far dark of this system
+  { float nb = fbm(gp * 0.035 + u_hv.y); sky += mix(pal(int(u_hv.x)), pal(11), fbm(gp.yx * 0.06 + 7.0)) * pow(smoothstep(0.4, 0.9, nb), 2.0) * u_hv.z * 0.3 * (1.0 - daylight) * (1.0 - hum) * (1.0 - u_dust); }
   // belt: a dusty band of glints
-  if (u_belt > 0.5) { float by = abs(gp.y - (18.0 + sin(gp.x * 0.03) * 4.0)); sky += pal(7) * smoothstep(3.0, 0.0, by) * (0.12 + 0.5 * step(0.93, h21(floor(gp)))) * (0.4 + 0.6 * (1.0 - daylight)); }
+  if (u_arc.z > 0.01) { float by = abs(gp.y - (18.0 + sin(gp.x * 0.03) * 4.0 + (gp.x - u_grid.x * 0.5) * u_arc.w * 0.08)); sky += pal(7) * smoothstep(2.0 + u_arc.z * 2.0, 0.0, by) * (0.12 + 0.5 * step(0.95 - u_arc.z * 0.06, h21(floor(gp)))) * (0.4 + 0.6 * (1.0 - daylight)); }
   // rings: a wide arc
-  if (u_rings > 0.5) { float ry = 34.0 + pow((gp.x - u_grid.x * 0.5) / u_grid.x, 2.0) * 120.0; float rd = abs(gp.y - ry);
-    sky = mix(sky, mix(pal(8), pal(9), 0.5) * (0.5 + 0.5 * daylight + u_nl * 0.4), smoothstep(2.6, 0.6, rd) * 0.5 + smoothstep(5.0, 3.6, rd) * smoothstep(3.4, 3.8, rd) * 0.25); }
-  // suns
+  if (u_arc.x > 0.01) { float ry = 34.0 + pow((gp.x - u_grid.x * 0.5) / u_grid.x, 2.0) * 120.0 + (gp.x - u_grid.x * 0.5) * u_arc.y * 0.12; float rd = abs(gp.y - ry);
+    sky = mix(sky, mix(pal(8), pal(9), 0.5) * (0.5 + 0.5 * daylight + u_nl * 0.4), (smoothstep(2.6, 0.6, rd) * 0.5 + smoothstep(5.0, 3.6, rd) * smoothstep(3.4, 3.8, rd) * 0.25 + smoothstep(1.0, 0.2, abs(rd - 7.0)) * 0.3 * step(0.9, u_arc.x)) * (0.6 + 0.5 * u_arc.x)); }
+  // suns: the first is this system's star
+  vec2 sun0 = vec2((u_day - 0.25) * 2.0 * u_grid.x, (0.62 - sin(3.14159 * clamp((u_day - 0.25) * 2.0, 0.0, 1.0)) * 0.5) * u_grid.y);
+  vec3 starCol = mix(pal(9), u_star.rgb, 0.65) * (u_hv.w > 0.5 ? 0.7 + 0.5 * sin(u_time * 9.0) : 1.0);
   for (int s = 0; s < 3; s++) {
     if (float(s) >= 1.0 + u_suns) break;
     float ph = u_day - 0.25 + float(s) * 0.07;
     vec2 sp = vec2(ph * 2.0 * u_grid.x, (0.62 - sin(3.14159 * clamp(ph * 2.0, 0.0, 1.0)) * 0.5) * u_grid.y);
     float d = length(gp - sp);
-    vec3 sc = s == 0 ? pal(9) : pal(13);
-    sky += sc * (smoothstep(5.5 - float(s), 4.0 - float(s), d) * 1.2 + exp(-d * 0.12) * 0.25) * step(0.0, ph) * step(ph, 0.5);
+    float sr = s == 0 ? u_star.w : 0.8;
+    sky += (s == 0 ? starCol : pal(13)) * (smoothstep(5.5 * sr, 4.0 * sr, d) * 1.2 + exp(-d * 0.12 / sr) * 0.25) * step(0.0, ph) * step(ph, 0.5);
   }
-  // moons
-  for (int m = 0; m < 2; m++) {
-    if (float(m) >= u_moons) break;
-    float ph = fract(u_day + 0.25 + float(m) * 0.31 + u_time * 0.001 * float(m + 1));
-    vec2 mp = vec2(ph * 2.0 * u_grid.x, (0.6 - sin(3.14159 * clamp(ph * 2.0, 0.0, 1.0)) * 0.45) * u_grid.y);
-    float md = disc(gp, mp, 4.0 - float(m));
-    float shade = smoothstep(-1.0, 2.0, (gp - mp).x + sin(u_season * 6.28) * 3.0);
-    sky = mix(sky, mix(pal(3), pal(9), shade), md * step(ph, 0.5));
+  // every body in this sky
+  for (int m = 0; m < 8; m++) {
+    if (m >= u_nb) break;
+    vec4 A = u_bA[m], B = u_bB[m];
+    float k = mod(B.w, 10.0);
+    bool inner = k > 1.5 && k < 2.5;
+    float ph = inner ? fract(u_day - 0.25 + A.w * sin((u_season * A.y + A.z) * 6.2831853)) : fract(u_day + A.z + u_season * A.y);
+    vec2 mp = vec2(ph * 2.0 * u_grid.x, (0.6 - sin(3.14159 * clamp(ph * 2.0, 0.0, 1.0)) * 0.45 + (inner ? 0.02 : A.w * 0.12)) * u_grid.y);
+    float up = step(ph, 0.5);
+    vec2 rel = gp - mp;
+    if (k < 0.5) {
+      float md = disc(gp, mp, 3.2 * A.x);
+      float shade = smoothstep(-1.4 * A.x, 1.4 * A.x, rel.x * sign(sun0.x - mp.x + 0.01));
+      vec3 face = B.rgb * (0.85 + 0.15 * noise(rel * 0.9 + A.z * 9.0));
+      sky = mix(sky, mix(face * 0.12 + sky * 0.5, face, shade), md * up);
+    } else if (k < 2.5) {
+      float vis = up * (1.0 - daylight * 0.85);
+      sky += B.rgb * (disc(gp, mp, 1.1 * A.x) * 1.5 + exp(-length(rel) * 1.3 / A.x) * 0.45) * vis;
+      if (B.w > 9.5) sky += B.rgb * smoothstep(0.7, 0.15, abs(rel.y - rel.x * 0.3)) * step(abs(rel.x), 3.0 * A.x) * 0.7 * vis;
+    } else {
+      float w = smoothstep(0.1, 0.6, sin((u_season + A.z) * 6.2831853)) * up;
+      vec2 td = normalize(mp - sun0 + vec2(0.01, -0.01)); float along = dot(rel, td); float across = abs(dot(rel, vec2(-td.y, td.x)));
+      sky += B.rgb * (disc(gp, mp, 1.8 * A.x) + smoothstep(0.0, 1.0, along) * smoothstep(36.0 * A.x, 0.0, along) * smoothstep(1.4 + along * 0.08, 0.0, across) * 0.6) * w * (1.0 - daylight * 0.7);
+    }
   }
-  // comet with tail
-  if (u_comet > 0.5) { float cx = fract(u_time * 0.004) * 1.4 - 0.2; vec2 cp = vec2(cx * u_grid.x, 26.0 + cx * 18.0);
-    vec2 rel = gp - cp; float along = dot(rel, normalize(vec2(-1.0, -0.4)));
-    float across = abs(dot(rel, normalize(vec2(0.4, -1.0))));
-    sky += pal(10) * (disc(gp, cp, 2.2) + smoothstep(0.0, 1.0, along) * smoothstep(40.0, 0.0, along) * smoothstep(1.5 + along * 0.08, 0.0, across) * 0.6); }
   // what they launched: small lights crossing the sky in a line
   for (int j = 0; j < 8; j++) { if (float(j) >= u_orb) break; float ox = fract(u_time * 0.012 + float(j) * 0.13); vec2 op = vec2(ox * u_grid.x, 22.0 + sin(ox * 3.14159) * -12.0 + float(j));
     sky += pal(10) * smoothstep(1.3, 0.2, length(gp - op)) * (0.8 + 0.4 * sin(u_pulse * 6.2831 + float(j))); }
@@ -240,7 +257,7 @@ export const factory: PlanetRendererFactory = () => {
   const build = () => {
     const gl = core!.gl;
     prog = core!.program(FULLSCREEN_VS, FS);
-    for (const k of ['u_res', 'u_rect', 'u_grid', 'u_view', 'u_cells', 'u_over', 'u_mat', 'u_top', 'u_temp', 'u_hum', 'u_pal', 'u_day', 'u_season', 'u_time', 'u_pulse', 'u_nl', 'u_dim', 'u_warm', 'u_dust', 'u_wind', 'u_rain', 'u_flash', 'u_moons', 'u_suns', 'u_rings', 'u_comet', 'u_belt', 'u_orb', 'u_vill', 'u_nvill']) loc[k] = gl.getUniformLocation(prog, k);
+    for (const k of ['u_res', 'u_rect', 'u_grid', 'u_view', 'u_cells', 'u_over', 'u_mat', 'u_top', 'u_temp', 'u_hum', 'u_pal', 'u_day', 'u_season', 'u_time', 'u_pulse', 'u_nl', 'u_dim', 'u_warm', 'u_dust', 'u_wind', 'u_rain', 'u_flash', 'u_moons', 'u_suns', 'u_orb', 'u_vill', 'u_nvill', ...HEAVENS_UNIFORMS]) loc[k] = gl.getUniformLocation(prog, k);
     W = H = 0;
     matKey = '';
     fp = null;
@@ -392,9 +409,7 @@ export const factory: PlanetRendererFactory = () => {
       gl.uniform1f(loc.u_flash!, flash);
       gl.uniform1f(loc.u_moons!, count('moon'));
       gl.uniform1f(loc.u_suns!, count('sun'));
-      gl.uniform1f(loc.u_rings!, count('rings') ? 1 : 0);
-      gl.uniform1f(loc.u_comet!, count('comet') ? 1 : 0);
-      gl.uniform1f(loc.u_belt!, count('belt') ? 1 : 0);
+      uploadHeavens(gl, loc, v);
       gl.uniform1f(loc.u_orb!, Math.min(8, v.sky.built ?? 0));
       gl.uniform4fv(loc.u_vill!, vill);
       gl.uniform1i(loc.u_nvill!, nv);

@@ -34,6 +34,8 @@ export interface SimFrame {
 export interface SimClient {
   open(universe: UniverseSpec, planet: PlanetSpec): void;
   close(): void;
+  /** True while this very world is open and has produced a frame. */
+  isOpen(universe: UniverseSpec, planet: PlanetSpec): boolean;
   latest(): SimFrame | null;
   /** Run ticks with the current sky. Async; latest() updates when done. */
   step(ticks: number): void;

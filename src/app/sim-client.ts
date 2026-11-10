@@ -9,6 +9,7 @@ export const createSimClient = (deps: { skyRules: SkyRules; sky: SkyGame; clock:
   let worker: Worker | null = null;
   let latest: SimFrame | null = null;
   let planet: PlanetSpec | null = null;
+  let openSerial: unknown = null;
   let busy = false;
   const send = (m: ToWorker) => worker?.postMessage(m);
   return {
@@ -28,6 +29,7 @@ export const createSimClient = (deps: { skyRules: SkyRules; sky: SkyGame; clock:
         deps.onFrame(latest!);
       };
       planet = p;
+      openSerial = universe.serialNumber;
       latest = null;
       busy = false;
       send({ type: 'open', universe, planet: p });
@@ -38,6 +40,7 @@ export const createSimClient = (deps: { skyRules: SkyRules; sky: SkyGame; clock:
       latest = null;
     },
     latest: () => latest,
+    isOpen: (u, p) => !!planet && !!latest && openSerial === u.serialNumber && planet.seed.hi === p.seed.hi && planet.seed.lo === p.seed.lo,
     tool: (tool, x, y, r) => { if (planet) worker?.postMessage({ type: 'tool', tool, x, y, r } satisfies ToWorker); },
     incarnate: (x) => { if (planet) worker?.postMessage({ type: 'incarnate', x } satisfies ToWorker); },
     walk: (x) => { if (planet) worker?.postMessage({ type: 'walk', x } satisfies ToWorker); },
