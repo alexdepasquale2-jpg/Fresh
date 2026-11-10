@@ -1,0 +1,95 @@
+// The other kids. Some have boxes, one lost his, two are only out when the weather or the hour suits.
+// Lines with `when: { quest: [id, stage] }` and choices are where the story quests take their decisions.
+import { NPCS } from '../npcs';
+
+NPCS.push(
+  { id: 'corin', name: 'Corin Vale', kid: true, about: 'Had a box and lost it. The only kid on the estate who is never tired.', look: { hair: 5, top: 2, legs: 1, skin: 8 },
+    at: { dawn: [121, 79], day: [111, 60], dusk: [73, 78] }, roam: 0, lines: [
+      { when: { quest: ['w3', 0], phase: 'dusk' }, weight: 9, text: 'Nobody on the bridge. Good. Could I hold yours? One night. Not open it. Only hold it, so my hands remember the weight.', choices: [
+        { text: 'One night. Be careful with it.', say: 'I will not open it. I promise on the tin. I will sit on the stairs with it and that is all.', set: ['corin-lent'] },
+        { text: 'No. It is not mine to lend.', say: 'No. That is right. That is what I should have said, when I was asked.', set: ['corin-kept'] },
+      ] },
+      { when: { quest: ['w3', 0] }, weight: 8, text: 'Not here. The footbridge, at dusk. I will ask you there.' },
+      { when: { quest: ['w6', 1] }, weight: 9, text: 'You have it. I can hear it from here. It is heavier than the tin was. Is it mine?', choices: [
+        { text: 'It is yours. Take it.', say: 'It knows me. Oh. They have built a lamp on the hill. All this time they kept a lamp lit. Here. You should have something of theirs.', set: ['w6-gave'], give: { take: [['lunch-box', 1]], glow: 1500, sky: [['rings', 1]] } },
+        { text: 'It came to my hands. I am keeping it.', say: 'Yes. I thought you might. It will be all right with you. So will I, I think. Go on, before I ask twice.', set: ['w6-kept'], give: { take: [['lunch-box', 1]], universe: 'corin-box' } },
+      ] },
+      { when: { quest: ['w3', 'done'], flag: 'corin-lent' }, once: 'corin-note', weight: 6, text: 'I held it till it got light. It hummed at me, and I hummed back, and it did not mind. I wrote this on the stairs.', give: { items: [['corin-note', 1]] } },
+      { when: { quest: ['w3', 'done'], flag: 'corin-kept' }, once: 'corin-saved', weight: 6, text: 'You said no, and I slept. First time since. This is what I was saving to buy another one. You cannot buy one. Have it.', give: { coins: 5 } },
+      { when: { flag: 'w6-gave' }, weight: 3, text: 'I am tired. Properly tired. It is the best thing. They are on their third lamp now.' },
+      { when: { flag: 'w6-kept' }, weight: 3, text: 'How is it? No. Do not tell me its name. Tell me if they still keep a lamp lit.' },
+      { text: 'I had one. It went. Not taken. It went, the way a cat goes.', once: 'corin-hello', weight: 2 },
+      { text: 'Everyone else yawns in maths. I do not. Miss Avery looks at me as if I had been ill.' },
+      { when: { phase: 'dawn' }, text: 'I come to the halt at dawn because that is when they would come back, if they came back the way they came.' },
+      { when: { fact: ['count', '>=', 3] }, text: 'You hold {count}. I can tell by how you stand. Like a shelf.' },
+      { when: { fact: ['deepest', '>=', 20] }, text: 'You have been {deepest} folds down. I only ever got to nine. I thought there would be time.' },
+      { when: { quest: ['w1', 'done'] }, text: 'Do not open the tin when you are on your own. It is empty. That is not the same as nothing being in it.' },
+    ] },
+  { id: 'hob', name: 'Hob Pettifer', kid: true, about: 'Keeps the rules of every game in the yard, including the ones nobody drew.', look: { hair: 12, top: 6, legs: 2 },
+    at: { day: [128, 64], dusk: [113, 59] }, lines: [
+      { text: 'Rule one of the yard: if a game is already drawn, you finish it. I did not make the rule. It was on the sign before the sign.' },
+      { when: { quest: ['chalk', 'done'] }, text: 'I hopped all twelve. On twelve I was facing the quarry and I had not turned round.', weight: 1 },
+      { when: { quest: ['duel', 'done'] }, text: 'The game is "no game". Everybody is very good at it. Bram keeps losing somehow.', weight: 2 },
+      { when: { fact: ['wins', '>=', 1] }, text: '{wins} wins. I keep the ladder in my head. You are on it. Near the middle, if a ladder has one.' },
+      { when: { phase: 'dusk' }, text: 'Mr Odd sweeps the chalk off at dusk. Watch his face when he does the hopscotch. He counts.' },
+      { text: 'Do you play to win or to see what theirs does?', choices: [
+        { text: 'To win.', say: 'Honest. The yard likes honest. It does not like winners much, but honest it likes.', set: ['hob-win'] },
+        { text: 'To see.', say: 'Then you will lose a lot and know a lot. I will put you down as "sees".', set: ['hob-see'] },
+      ] },
+      { when: { flag: 'hob-see' }, text: 'I have you down as "sees". Tilly is the only other one. She is top of that list, mind.' },
+      { when: { flag: 'hob-win' }, text: 'I have you down as "wins". It is a long list. It is not the one people remember.' },
+    ] },
+  { id: 'mara', name: 'Mara Finch', kid: true, about: 'Counts the trains that do not come.', look: { hair: 0, top: 13, legs: 2 },
+    at: { day: [126, 79], dusk: [127, 79] }, roam: 0, lines: [
+      { text: 'None today. That makes none.' },
+      { when: { phase: 'dusk' }, text: 'One is due. It is always due. That is different from late.' },
+      { when: { fact: ['deepest', '>=', 10] }, text: 'You have been {deepest} folds down. Did you hear it there too? A long way off, shunting?' },
+      { when: { quest: ['siding', 'done'] }, text: 'I count at the siding end now. Nothing by day. I am not allowed out at night. So I count the oil on the rail. One drop a night.', weight: 1 },
+      { when: { quest: ['engine', 'done'] }, text: 'One. I wrote it in pen. Tell your engine-people to keep to the timetable. Somebody is relying on it.', weight: 2 },
+      { text: 'Do you wait for it?', choices: [
+        { text: 'Yes.', say: 'Good. I kept you a place. It is that slab. Do not stand on the next one, it is taken.', set: ['mara-waits'] },
+        { text: 'No.', say: 'It notices who does not. I am only telling you.', set: ['mara-no'] },
+      ] },
+      { when: { flag: 'mara-waits' }, text: 'You said you wait too. Your slab has been warm all day. I did not sit on it.' },
+      { when: { flag: 'mara-no' }, text: 'You said you do not wait. Fine. Somebody has to be the one it surprises.' },
+    ] },
+  { id: 'tam', name: 'Tam Pike', kid: true, about: 'Built a crystal set. It gets one station and the station is the mast.', look: { hair: 1, top: 13, legs: 3, hat: 2 },
+    at: { dusk: [31, 26], night: [31, 26] }, roam: 0, lines: [
+      { text: 'Shh. Earpiece. It is doing the bit where it nearly says a word.' },
+      { when: { phase: 'night' }, text: 'At night it sends. You can hear the gap after each one, where it listens. Nothing. Then the next.' },
+      { when: { weather: 'wind' }, text: 'In wind the hum bends. That is how I know it is a thing and not a noise.' },
+      { when: { quest: ['hum', 'done'] }, text: 'Do not open the jar indoors. Mine got out and now the airing cupboard has a station.', weight: 1 },
+      { when: { quest: ['rare', 'done'] }, text: 'I can hear {best} from here, now I know the note. Keep it away from the mast. It leans.', weight: 2 },
+      { when: { fact: ['count', '>=', 1], quest: ['m3', 'done'] }, text: 'SENT 1, RECEIVED 0. You read the book. I have only heard it. It is the same sentence.' },
+      { when: { fact: ['light', '<', 3] }, text: 'Your light is flickering in time with it. Go and sit down somewhere. I mean it.', weight: 1 },
+    ] },
+  { id: 'rook', name: 'Rook', kid: true, about: 'Only ever seen in rain, in a yellow coat a size too big. Nobody knows which house.', look: { hair: 0, top: 7, legs: 13, hat: 7 },
+    at: { dawn: [66, 96], day: [66, 96], dusk: [66, 96] }, when: { weather: 'rain' }, lines: [
+      { text: 'You came out in it. Nobody comes out in it. That is why I do.' },
+      { text: 'Count the rings a drop makes in a puddle. If it makes none, step round.' },
+      { when: { quest: ['puddles', 'done'] }, text: 'I stood by the bandstand one all yesterday. It did not rain in it. Everywhere else, yes.', weight: 1 },
+      { when: { fact: ['count', '>=', 1] }, text: 'Does it rain in yours? In {first}? Make it rain once. They look up. It is the only time they all look up.' },
+      { when: { phase: 'dusk' }, text: 'Rain at dusk is the best. The lamps come on in the puddles a second before they come on in the air.' },
+      { text: 'Where do you think I live?', choices: [
+        { text: 'On the Row somewhere.', say: 'Everyone says that. Nobody says which number. Think about that when it is dry.', set: ['rook-row'] },
+        { text: 'I do not think you do.', say: 'Ha. No. That is nearer. I am out when it rains, that is all. You can be a thing like that.', set: ['rook-none'] },
+      ] },
+      { when: { flag: 'rook-none' }, text: 'You said I do not live anywhere. I have been thinking it over. I like it. Do not tell Mrs Pell.' },
+    ] },
+  { id: 'lune', name: 'Lune Abbot', kid: true, about: 'No. 14. Walks in her sleep, toward whatever is brightest.', look: { hair: 9, top: 9, legs: 9, skin: 8 },
+    at: { night: [80, 70] }, roam: 0, when: { not: { quest: ['lune', 'active'] } }, lines: [
+      { when: { fact: ['light', '<', 5], quest: ['lune', 'none'] }, weight: 5, text: 'She turns her shut eyes toward Mote, and away again. Too dim. She walks by a brighter light than that. Rest somewhere and come back.' },
+      { when: { quest: ['lune', 'done'] }, text: 'Asleep again, out in the lane. "It is all right," she says, not to you. "The one with the light knows the way."' },
+      { when: { quest: ['lune', 'done'], fact: ['light', '>=', 7] }, text: 'She smiles in her sleep at Mote. "Brighter," she says. "They must be doing well down there."', weight: 1 },
+      { text: 'She stands in the lane with her eyes shut. Her lips are moving. She is counting something that is counting back.' },
+    ] },
+  { id: 'etta', name: 'Etta Brisk', kid: true, about: 'The Daughter on the butcher\'s sign. Does the round her father forgets.', look: { hair: 11, top: 12, legs: 0 },
+    at: { dusk: [132, 103], night: [132, 103] }, lines: [
+      { text: 'Dad whistles the middle of one tune. I know the start. I have never told him. He would stop.' },
+      { when: { phase: 'night' }, text: 'After dark the Parade is only me, Oona, and the cat. And the tall one that does not come in. I leave it a bone. It is gone by morning. So is the plate.' },
+      { when: { quest: ['usual', 'done'] }, text: 'Mr Harrow sent a note back with the paper. "ARRIVED: 1. WITH THANKS." It is on the wall in the shop.', weight: 1 },
+      { when: { flag: 'dog-friend' }, text: 'You fed Mrs Thursday. Dad has put by a sausage for her every morning for eleven years in case somebody did.' },
+      { when: { fact: ['count', '>=', 1] }, text: 'I have not got one. A box. I have a round. I think you get one or the other.' },
+      { when: { weather: 'rain' }, text: 'Wet night. Mind the kerb by Sull\'s. The gutter there runs toward the mere, and the mere is uphill of it.' },
+    ] },
+);
