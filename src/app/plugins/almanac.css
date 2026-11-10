@@ -1,0 +1,56 @@
+/* The Almanac page in the hub. Tokens only. The season sets one accent. */
+.alm { --alm-accent: var(--gold); display: flex; flex-direction: column; gap: var(--gap); padding-bottom: var(--pad); min-width: 0; }
+.alm--winter { --alm-accent: var(--glow); }
+.alm--spring { --alm-accent: var(--ink-bright); }
+.alm--summer { --alm-accent: var(--gold); }
+.alm--autumn { --alm-accent: var(--ink-muted); }
+.alm > * { flex: none; min-width: 0; }
+.alm-head { display: flex; flex-direction: column; gap: 4px; padding: 4px 2px 10px; border-bottom: 1px solid var(--alm-accent); }
+.alm-head .k-label { color: var(--alm-accent); }
+.alm h3 { margin: 0; font: 400 28px/1.1 var(--font-voice); color: var(--ink-bright); }
+.alm h4 { margin: 0; font: 400 22px/1.15 var(--font-voice); color: var(--ink-bright); }
+.alm-voice { margin: 0; font: italic 16px/1.4 var(--font-voice); color: var(--ink); text-wrap: pretty; overflow-wrap: anywhere; }
+.alm small { display: block; font: 400 14px/1.35 var(--font-voice); color: var(--ink-muted); overflow-wrap: anywhere; }
+.alm-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 12px; background: var(--panel); border: 1px solid var(--line-dim); }
+.alm-omen { border: 2px solid var(--alm-accent); }
+.alm-feast { border: 2px solid var(--glow); }
+.alm-feast .k-label { color: var(--glow); }
+.alm-does { margin: 0; padding: 8px 10px; font: 400 13px/1.4 var(--font-ui); color: var(--ink-bright); background: var(--raised); border-left: 2px solid var(--alm-accent); }
+.alm-row { display: flex; align-items: center; gap: var(--gap); }
+.alm-grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.alm .k-btn { flex: none; font-size: 13px; padding: 0 12px; }
+.alm-feast .k-btn { width: 100%; min-height: var(--btn-primary); padding: 6px 12px; line-height: 1.3; }
+.alm-pips { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.alm-pips i { height: 8px; background: var(--line-dim); }
+.alm-pips i.on { background: var(--alm-accent); }
+.alm-tasks, .alm-haps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.alm-task { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line-dim); }
+.alm-task:first-child { border-top: 0; padding-top: 2px; }
+.alm-task-what { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.alm-task-line { margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font: 400 14px/1.3 var(--font-ui); color: var(--ink-bright); }
+.alm-task-line b { flex: none; font: 600 11px var(--font-ui); letter-spacing: .06em; color: var(--gold); }
+.alm-task.claimed .alm-task-line { color: var(--ink-off); }
+.alm-task.claimed .alm-task-line b { color: var(--ink-off); }
+.alm-bar { height: 5px; background: var(--line-dim); }
+.alm-bar i { display: block; height: 100%; max-width: 100%; background: var(--alm-accent); transition: width .4s ease-out; }
+.alm-task.done .alm-bar i { background: var(--glow); }
+.alm-task.done:not(.claimed) .k-btn { border-color: var(--glow); color: var(--ink-bright); }
+.alm-hap { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-top: 1px solid var(--line-dim); }
+.alm-hap:first-child { border-top: 0; padding-top: 2px; }
+.alm-hap.open { padding: 12px 10px; border: 1px solid var(--glow); margin-bottom: 6px; }
+.alm-hap-title { margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font: 600 12px var(--font-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-bright); }
+.alm-hap-title b { flex: none; font-weight: 600; color: var(--ink-off); }
+.alm-hap:not(.open) .alm-voice { color: var(--ink-muted); font-size: 14px; }
+.alm-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.alm-choices .k-btn { flex: 1 1 auto; }
+.alm-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.alm-cell { min-width: 0; height: 52px; padding: 4px 2px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; border: 1px solid var(--line-dim); color: var(--ink-off); }
+.alm-cell b { font: 600 12px/1 var(--font-ui); }
+.alm-cell em { font: 400 11px/1 var(--font-ui); font-style: normal; height: 11px; color: var(--glow); }
+.alm-cell.played { background: var(--raised); border-color: var(--line); color: var(--ink-bright); }
+.alm-cell.today { border-color: var(--alm-accent); box-shadow: inset 0 0 0 1px var(--alm-accent); }
+.alm-marks { display: flex; gap: 3px; }
+.alm-marks i { width: 6px; height: 6px; border: 1px solid var(--line-dim); }
+.alm-cell.played .alm-marks i { border-color: var(--line); }
+.alm-marks i.on { background: var(--glow); border-color: var(--glow); }
+@media (prefers-reduced-motion: reduce) { .alm-bar i { transition: none; } }
