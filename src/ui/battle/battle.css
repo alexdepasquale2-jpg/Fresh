@@ -103,3 +103,25 @@
 .k-label.stats { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .02em; }
 .pet-card .f-info .k-title.small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .screen[data-screen='battle'] .summary { min-height: 0; flex: 0 1 auto; overflow-y: auto; scrollbar-width: none; }
+
+/* Every control a full 44px target, and a screen that still fits 390x844 at all three text sizes. */
+/* Your bench is a two-column grid: swaps on the first row, FUSE and GO INSIDE after them. Always whole rows of 44px. */
+.screen[data-screen='battle'] > .row.bench { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; align-items: stretch; }
+.screen[data-screen='battle'] > .row.bench > .k-tag.swap { display: flex; align-items: center; justify-content: center; min-height: var(--touch); min-width: var(--touch); padding: 2px 6px; white-space: normal; text-align: center; line-height: 1.15; letter-spacing: .04em; overflow: hidden; overflow-wrap: break-word; }
+.k-tag.swap.relic { min-height: var(--touch); min-width: var(--touch); }
+.modes .mode, .rival-acts .k-btn, .catch .k-btn { min-height: var(--touch); }
+/* A skill's name may take two lines; it is never cut to "ALIGNME…". */
+.screen[data-screen='battle'] .skills .skill { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; overflow: hidden; }
+.screen[data-screen='battle'] .skills .skill b { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word; text-align: center; line-height: 1.05; letter-spacing: .02em; }
+:root.sallow-text-l .screen[data-screen='battle'] .skills .skill b { font-size: .9em; letter-spacing: 0; }
+/* The header says who and which turn on two lines if it must. */
+.screen[data-screen='battle'] > header { padding-right: calc(var(--touch) - var(--pad) + var(--gap)); }
+.screen[data-screen='outside'] > header { padding-right: calc(var(--touch) - var(--pad) + var(--gap)); }
+.screen[data-screen='battle'] > header .who { flex: 1 1 auto; white-space: normal; text-overflow: clip; line-height: 1.25; max-height: var(--touch); letter-spacing: .08em; overflow-wrap: break-word; }
+/* A creature's name is shown whole: its tags drop to the next line when the name needs the room. */
+.pet-card .f-info .row.nowrap { flex-wrap: wrap; row-gap: 3px; }
+.pet-card .f-info .row.nowrap > .k-title.small { flex: 1 1 auto; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word; }
+/* When the screen is full (large text, a boss's extra chip) the log gives way first, then the hint; the buttons never do. */
+.screen[data-screen='battle'] .battle-log { flex: 0 1 56px; min-height: 30px; }
+.screen[data-screen='battle'] .tool-hint { flex: 0 1 auto; overflow: hidden; }
+.screen[data-screen='battle'] > .k-label { flex: none; }

@@ -31,3 +31,5 @@
 @keyframes mr-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes mr-lit { 50% { box-shadow: 0 0 3px var(--glow); } }
 @media (prefers-reduced-motion: reduce) { .mr-box, .mr-box i.lit, .mr-panel, .mr-says .k-narration, .mr-says .mr-peak, .mr-says .mr-piece, .mr-actions .k-btn { animation: none; } }
+.mr-hint { margin: 0; text-align: center; color: var(--ink-off); }
+.mr-head .k-label { min-width: 0; }

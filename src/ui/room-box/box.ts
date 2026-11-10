@@ -6,7 +6,7 @@ import { RARITIES } from '@/contracts/universe';
 import type { Thing, MergePreview } from '@/contracts/merge';
 import { SKY_PIECE_KINDS } from '@/contracts/sky';
 import { el, button, narration, label, boxSlot, glyphChar, backChip, tag, stat, skyPieceTile, burst, flash, lightPips } from '@/ui/kit';
-import { names, sync, saveMeta, touch, ago, EMPTY_STATS, loadCollection, saveCollection } from './store';
+import { names, sync, saveMeta, touch, ago, EMPTY_STATS, loadCollection, saveCollection, lastStar, noteStar } from './store';
 import { charOf, tierOf, RARITY_MARK, modChips, modList, bondParts, bondScore, bondWord, emblem } from './character';
 import type { Char } from './character';
 import { SETS, TEMPERS, claim, lawSets, noteHeld, recipesOf, rewardText } from './collection';
@@ -53,6 +53,7 @@ export const box: ScreenFactory = () => {
       ctx = c;
       host = root;
       root.classList.add('rb-box');
+      noteStar(c);
       const meta = sync(c, true).meta;
       const col = loadCollection();
       let mode: Mode = 'view';
@@ -282,10 +283,14 @@ export const box: ScreenFactory = () => {
               c.selection.system = null;
               c.go('dive');
             }, { primary: true, id: 'enter' }),
-            button(`Worlds ${entry.stats.worldsTended}`, () => {
-              // Explore any universe straight away: open its home solar system.
+            button(entry.stats.worldsTended > 0 ? `Worlds ${entry.stats.worldsTended}` : 'Worlds', () => {
+              // Straight to the star last tended in this universe; its home system if there has been none.
               touch(spec.serialNumber);
-              if (c.selection.universe?.serial !== spec.serial) { c.selection.star = null; c.selection.system = null; c.selection.planetIndex = 0; }
+              if (c.selection.universe?.serial !== spec.serial || !c.selection.star) {
+                c.selection.star = lastStar.of(spec);
+                c.selection.system = null;
+                c.selection.planetIndex = 0;
+              }
               c.selection.universe = spec;
               c.go('system');
             }, { id: 'worlds' }),
@@ -362,6 +367,8 @@ export const box: ScreenFactory = () => {
                 el('b', {}, `${Math.round(ch.permille / 10)}%`),
                 el('span', { class: ch.happened ? 'rb-odd-r yes' : 'rb-odd-r' }, ch.happened ? '✓ came up' : '· did not'),
               ])),
+              kid && res?.kind === 'universe' && kid.tier > 0 && tierOf(res.spec.rarity) >= kid.tier && !pv.chances.some((ch) => ch.happened && /^Rarity/.test(ch.label))
+                ? el('span', { class: 'k-label', 'data-id': 'merge-born' }, `It is ${kid.rarity} by its own seed. A merge can lift a rarity, never lower it.`) : null,
               label(both ? 'Merging is seeded: the same two always make the same third. Unlike parents mutate more and lift rarity.' : 'Merging is seeded: the same two always make the same third.')) : null,
             kid && kid.traits.length ? el('div', { class: 'rb-block', 'data-id': 'merge-traits' },
               label('IT WILL CARRY'),

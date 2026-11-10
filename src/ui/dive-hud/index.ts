@@ -2,7 +2,7 @@
 import type { ScreenFactory, AppContext } from '@/contracts/app';
 import type { ScreenId } from '@/contracts/platform';
 import type { DiveEvent, DiveSummary, DiveView } from '@/contracts/game';
-import type { FoldNode, FoldThingKind } from '@/contracts/fold';
+import type { FoldNode, FoldThingKind, StarRef } from '@/contracts/fold';
 import type { DiveRenderView } from '@/contracts/render';
 import { SKY_PIECE_KINDS } from '@/contracts/sky';
 import { foldFrame, childAt, childScreen } from '@/core/fold-layout';
@@ -43,6 +43,18 @@ const saveTaken = (all: Record<string, number[]>) => {
   try { localStorage.setItem(TAKEN_KEY, JSON.stringify(all)); } catch { /* storage full or blocked */ }
 };
 
+// The star last stopped at in each universe, so the Box can open that system again (read by ui/room-box).
+const LAST_STAR_KEY = 'sallow.last-star.v1';
+const rememberStar = (serialNumber: number, star: StarRef) => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LAST_STAR_KEY) ?? '{}') as unknown;
+    const all = raw && typeof raw === 'object' ? (raw as Record<string, StarRef>) : {};
+    all[String(serialNumber)] = star;
+    localStorage.setItem(LAST_STAR_KEY, JSON.stringify(all));
+  } catch { /* storage full or blocked */ }
+};
+const sameStar = (a: StarRef, b: StarRef) => a.seed.hi === b.seed.hi && a.seed.lo === b.seed.lo && a.address.depth === b.address.depth;
+
 const CATCH_MS = 1200; // one closing of the ring
 const CATCH_ROUNDS = 3;
 /** Ring scale over time: 2.2 closing to 0.2; 1 is the catch. */
@@ -63,8 +75,8 @@ const dive: ScreenFactory = () => {
   let leaving = false;
   let tickMs = 0;
   let lastDepth = 0;
-  let frames = 0;
-  let offX = 0, offY = 0;
+  let offX = 0, offY = 0, fieldW = 0, fieldH = 0;
+  const tagW = [0, 0, 0, 0, 0, 0, 0];
   let bannerUntil = 0;
   let exitTo: ScreenId | null = null;
   let exitToken = 0;
@@ -205,7 +217,8 @@ const dive: ScreenFactory = () => {
     if (s && shown) showSummary(u, s);
     // Real time, not frame time: a slow device must not be left waiting on the summary.
     const token = ++exitToken;
-    setTimeout(() => { if (token === exitToken) leave(); }, shown ? 8000 : quickMs);
+    // The reckoning stays long enough to be read; its button leaves at once.
+    setTimeout(() => { if (token === exitToken) leave(); }, shown ? 24000 : quickMs);
   };
 
   return {
@@ -214,7 +227,6 @@ const dive: ScreenFactory = () => {
       ctx = c;
       leaving = false;
       lastDepth = 0;
-      frames = 0;
       message = null;
       catching = null;
       exitTo = null;
@@ -229,7 +241,17 @@ const dive: ScreenFactory = () => {
       takenId = String(u.serialNumber);
       taken = new Set(takenAll[takenId] ?? []);
       c.dive.bindTaken?.(taken);
+      // Back from the system of the star this dive stopped at: the fall goes on from that fold.
+      // Anything else (Enter in the Box, rising from the floor, another universe) starts at the top.
+      const at = c.selection.star;
+      const dv = c.dive.view();
+      const resume = !!at && dv.phase === 'stopped' && !dv.bottom && dv.universe?.serialNumber === u.serialNumber && dv.children.some((ch) => !!ch.star && sameStar(ch.star, at));
+      if (!resume && dv.phase !== 'surfaced') c.dive.surface();
       c.dive.start(u, best);
+      const resumed = resume && c.dive.view().depth === dv.depth && c.dive.view().phase === 'hovering';
+      root.setAttribute('data-resumed', resumed ? String(dv.depth) : '');
+      if (resumed) say(dv.depth > 0 ? `Fold ${dv.depth} again, beside the star. Hold to fall on.` : 'Beside the star again. Hold to fall on.', 3200);
+      lastDepth = c.dive.view().depth;
       const hold = holdButton();
       hold.addEventListener('contextmenu', (e) => e.preventDefault());
       const down = (e: PointerEvent) => {
@@ -298,7 +320,7 @@ const dive: ScreenFactory = () => {
       ui.rel.setAttribute('data-id', 'reliquaries');
       ui.fold.setAttribute('data-id', 'fold-count');
       root.append(
-        el('header', { class: 'row' }, backChip('SURFACE', () => { if (!leaving) c.dive.surface(); }), c.battle?.outcome === 'ongoing' ? backChip('BATTLE', () => (c.dive.surface(), c.go('battle'))) : null, ui.pips.el),
+        el('header', { class: c.battle?.outcome === 'ongoing' ? 'row dive-head tight' : 'row dive-head' }, backChip('SURFACE', () => { if (!leaving) c.dive.surface(); }), c.battle?.outcome === 'ongoing' ? backChip('BATTLE', () => (c.dive.surface(), c.go('battle'))) : null, ui.pips.el),
         el('div', { class: 'row' }, ui.fold, ui.rel),
         wrap,
         el('div', { class: 'row nowrap dive-status' }, stratum, streak),
@@ -359,11 +381,14 @@ const dive: ScreenFactory = () => {
       if (bannerUntil && t > bannerUntil) { bannerUntil = 0; u.banner.classList.remove('on'); }
 
       // What each ring holds, written on it.
-      frames++;
-      if (frames % 20 === 1) {
+      // Measured every frame: the canvas and the field move on resize, rotation, text size and screen transitions,
+      // and a tag drawn from a stale offset sits on the wrong ring.
+      {
         const cr = c.gl.canvas.getBoundingClientRect(), fr = u.field.getBoundingClientRect();
         offX = cr.left - fr.left;
         offY = cr.top - fr.top;
+        fieldW = fr.width;
+        fieldH = fr.height;
       }
       const f = foldFrame(c.gl.width(), c.gl.height(), v.progress, v.aim);
       let ahead = '';
@@ -377,11 +402,17 @@ const dive: ScreenFactory = () => {
           tg.textContent = text;
           tg.hidden = text === '';
           tg.classList.toggle('bad', text.charAt(0) === '!');
+          tagW[i] = text === '' ? 0 : tg.offsetWidth;
         }
         if (text !== '') {
           const s = childScreen(f, i);
-          tg.style.transform = `translate(${Math.round(s.x + offX)}px, ${Math.round(s.y + offY + s.r * 0.56)}px) translate(-50%, 0)`;
-          tg.style.opacity = f.zoom > 1.9 && i !== v.aim ? '0' : '1';
+          // On the lower part of its ring, and never off the field: a ring half out of view keeps its tag in view.
+          const x = s.x + offX, y = s.y + offY, half = tagW[i]! / 2 + 2;
+          const seen = x + s.r > 8 && x - s.r < fieldW - 8 && y + s.r > 8 && y - s.r < fieldH - 8;
+          const tx = Math.round(Math.max(half, Math.min(fieldW - half, x)));
+          const ty = Math.round(Math.max(Math.max(2, y - s.r), Math.min(Math.min(fieldH - 18, y + s.r - 16), y + s.r * 0.56)));
+          tg.style.transform = `translate(${tx}px, ${ty}px) translate(-50%, 0)`;
+          tg.style.opacity = !seen || (f.zoom > 1.9 && i !== v.aim) ? '0' : '1';
           const hz = th ? HAZARD_NAME[th.kind] : undefined;
           if (hz) ahead += (ahead ? ', ' : '') + (i === 0 ? `${hz} dead ahead` : hz);
         }
@@ -422,10 +453,13 @@ const dive: ScreenFactory = () => {
         message = null;
         u.say.textContent = v.narration;
         c.box.recordDepth(c.box.selected(), v.depth);
+        // Once per landing: this branch cannot run again until another dive reaches the floor.
+        c.box.recordFloor?.(c.box.selected());
         finish(c, u, v, 'mirror', 1500);
       } else if (v.phase === 'stopped' && v.star) {
         c.audio.sfx('land');
         c.selection.star = v.star;
+        if (v.universe) rememberStar(v.universe.serialNumber, v.star);
         c.selection.system = null;
         c.selection.planetIndex = 0;
         c.box.recordDepth(c.box.selected(), v.depth);
