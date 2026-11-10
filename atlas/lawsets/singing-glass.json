@@ -1,0 +1,238 @@
+{
+  "id": "singing-glass",
+  "name": "Singing glass",
+  "tags": [
+    "GLASS SINGS",
+    "COLD BREAKS"
+  ],
+  "pulseMilliHz": 1700,
+  "hue": 180,
+  "materials": [
+    {
+      "id": 0,
+      "name": "empty",
+      "kind": "empty",
+      "color": 0,
+      "density": 0
+    },
+    {
+      "id": 1,
+      "name": "stone",
+      "kind": "solid",
+      "color": 4,
+      "density": 250
+    },
+    {
+      "id": 2,
+      "name": "sand",
+      "kind": "powder",
+      "color": 6,
+      "density": 150
+    },
+    {
+      "id": 3,
+      "name": "water",
+      "kind": "liquid",
+      "color": 11,
+      "density": 100
+    },
+    {
+      "id": 4,
+      "name": "moss",
+      "kind": "life",
+      "color": 15,
+      "density": 200
+    },
+    {
+      "id": 5,
+      "name": "steam",
+      "kind": "gas",
+      "color": 9,
+      "density": 5
+    },
+    {
+      "id": 6,
+      "name": "glass",
+      "kind": "solid",
+      "color": 10,
+      "density": 230
+    },
+    {
+      "id": 7,
+      "name": "shard",
+      "kind": "powder",
+      "color": 9,
+      "density": 160
+    },
+    {
+      "id": 8,
+      "name": "song",
+      "kind": "gas",
+      "color": 8,
+      "density": 3,
+      "drift": 40
+    }
+  ],
+  "reactions": [
+    {
+      "a": "water",
+      "b": "empty",
+      "becomesA": "steam",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        400
+      ],
+      "needs": {
+        "key": "warmth",
+        "min": 30
+      }
+    },
+    {
+      "a": "steam",
+      "b": "empty",
+      "becomesA": "water",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        200
+      ]
+    },
+    {
+      "a": "sand",
+      "b": "water",
+      "becomesA": "glass",
+      "becomesB": "water",
+      "chance": [
+        1,
+        25
+      ],
+      "light": "day",
+      "temp": {
+        "min": 138
+      }
+    },
+    {
+      "a": "sand",
+      "b": "fire",
+      "becomesA": "glass",
+      "becomesB": "fire",
+      "chance": [
+        1,
+        2
+      ]
+    },
+    {
+      "a": "sand",
+      "b": "*",
+      "becomesA": "glass",
+      "becomesB": "*",
+      "chance": [
+        1,
+        10
+      ],
+      "temp": {
+        "min": 200
+      }
+    },
+    {
+      "a": "glass",
+      "b": "empty",
+      "becomesA": "glass",
+      "becomesB": "song",
+      "chance": [
+        1,
+        8
+      ],
+      "temp": {
+        "max": 124
+      }
+    },
+    {
+      "a": "song",
+      "b": "glass",
+      "becomesA": "song",
+      "becomesB": "shard",
+      "chance": [
+        1,
+        3
+      ],
+      "temp": {
+        "max": 120
+      }
+    },
+    {
+      "a": "glass",
+      "b": "empty",
+      "becomesA": "shard",
+      "becomesB": "song",
+      "chance": [
+        1,
+        12
+      ],
+      "temp": {
+        "max": 112
+      }
+    },
+    {
+      "a": "song",
+      "b": "empty",
+      "becomesA": "empty",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        50
+      ]
+    },
+    {
+      "a": "shard",
+      "b": "water",
+      "becomesA": "sand",
+      "becomesB": "water",
+      "chance": [
+        1,
+        20
+      ]
+    },
+    {
+      "a": "shard",
+      "b": "sand",
+      "becomesA": "sand",
+      "becomesB": "sand",
+      "chance": [
+        1,
+        400
+      ]
+    },
+    {
+      "a": "moss",
+      "b": "shard",
+      "becomesA": "moss",
+      "becomesB": "moss",
+      "chance": [
+        1,
+        20
+      ],
+      "needs": {
+        "key": "nightLight",
+        "min": 20
+      }
+    },
+    {
+      "a": "glass",
+      "b": "water",
+      "becomesA": "glass",
+      "becomesB": "steam",
+      "chance": [
+        1,
+        60
+      ],
+      "needs": {
+        "key": "warmth",
+        "min": 20
+      },
+      "light": "day",
+      "vapour": 2
+    }
+  ]
+}

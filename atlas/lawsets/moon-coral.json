@@ -1,0 +1,229 @@
+{
+  "id": "moon-coral",
+  "name": "Moon coral",
+  "tags": [
+    "REEFS RISE",
+    "MOON FED"
+  ],
+  "pulseMilliHz": 2200,
+  "hue": 330,
+  "materials": [
+    {
+      "id": 0,
+      "name": "empty",
+      "kind": "empty",
+      "color": 0,
+      "density": 0
+    },
+    {
+      "id": 1,
+      "name": "stone",
+      "kind": "solid",
+      "color": 4,
+      "density": 250
+    },
+    {
+      "id": 2,
+      "name": "sand",
+      "kind": "powder",
+      "color": 6,
+      "density": 150
+    },
+    {
+      "id": 3,
+      "name": "water",
+      "kind": "liquid",
+      "color": 11,
+      "density": 100
+    },
+    {
+      "id": 4,
+      "name": "moss",
+      "kind": "life",
+      "color": 15,
+      "density": 200
+    },
+    {
+      "id": 5,
+      "name": "steam",
+      "kind": "gas",
+      "color": 9,
+      "density": 5
+    },
+    {
+      "id": 6,
+      "name": "coral",
+      "kind": "life",
+      "color": 14,
+      "density": 210
+    },
+    {
+      "id": 7,
+      "name": "lime",
+      "kind": "powder",
+      "color": 8,
+      "density": 165
+    }
+  ],
+  "reactions": [
+    {
+      "a": "water",
+      "b": "empty",
+      "becomesA": "steam",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        400
+      ],
+      "needs": {
+        "key": "warmth",
+        "min": 30
+      }
+    },
+    {
+      "a": "steam",
+      "b": "empty",
+      "becomesA": "water",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        200
+      ]
+    },
+    {
+      "a": "sand",
+      "b": "water",
+      "becomesA": "sand",
+      "becomesB": "coral",
+      "chance": [
+        1,
+        30
+      ],
+      "dir": "up",
+      "light": "lit",
+      "temp": {
+        "min": 120,
+        "max": 146
+      }
+    },
+    {
+      "a": "coral",
+      "b": "water",
+      "becomesA": "coral",
+      "becomesB": "coral",
+      "chance": [
+        1,
+        4
+      ],
+      "dir": "up",
+      "light": "lit",
+      "temp": {
+        "min": 120,
+        "max": 146
+      }
+    },
+    {
+      "a": "coral",
+      "b": "water",
+      "becomesA": "coral",
+      "becomesB": "coral",
+      "chance": [
+        1,
+        2
+      ],
+      "needs": {
+        "key": "tide",
+        "min": 15
+      },
+      "dir": "up",
+      "temp": {
+        "min": 116,
+        "max": 150
+      }
+    },
+    {
+      "a": "coral",
+      "b": "water",
+      "becomesA": "coral",
+      "becomesB": "coral",
+      "chance": [
+        1,
+        60
+      ],
+      "dir": "side",
+      "temp": {
+        "min": 120,
+        "max": 146
+      }
+    },
+    {
+      "a": "coral",
+      "b": "empty",
+      "becomesA": "lime",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        2
+      ]
+    },
+    {
+      "a": "coral",
+      "b": "water",
+      "becomesA": "water",
+      "becomesB": "water",
+      "chance": [
+        1,
+        6
+      ],
+      "temp": {
+        "min": 152
+      }
+    },
+    {
+      "a": "coral",
+      "b": "water",
+      "becomesA": "water",
+      "becomesB": "water",
+      "chance": [
+        1,
+        6
+      ],
+      "temp": {
+        "max": 114
+      }
+    },
+    {
+      "a": "lime",
+      "b": "water",
+      "becomesA": "water",
+      "becomesB": "water",
+      "chance": [
+        1,
+        30
+      ]
+    },
+    {
+      "a": "moss",
+      "b": "lime",
+      "becomesA": "moss",
+      "becomesB": "moss",
+      "chance": [
+        1,
+        20
+      ]
+    },
+    {
+      "a": "lime",
+      "b": "lime",
+      "becomesA": "water",
+      "becomesB": "lime",
+      "chance": [
+        1,
+        300
+      ],
+      "humid": {
+        "min": 50
+      }
+    }
+  ]
+}

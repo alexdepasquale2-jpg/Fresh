@@ -13,7 +13,13 @@ import { GRID_W as W, GRID_H as H, CHUNK, FIELD, ENGINE, DAY_TICKS, YEAR_TICKS }
 import { fxSin, FX_ONE } from '@/core/fixed';
 
 const K = { empty: 0, solid: 1, powder: 2, liquid: 3, gas: 4, fire: 5, life: 6 } as const;
-interface Rx { b: number; ta: number; tb: number; num: number; den: number; key: ModifierKey | null; min: number; max: number }
+interface Rx {
+  b: number; ta: number; tb: number; num: number; den: number; key: ModifierKey | null; min: number; max: number;
+  /** Optional gates (law-set primitives). g is false for a plain reaction, which then runs exactly as it always did. */
+  g: boolean; dir: number; y0: number; y1: number; light: number; t0: number; t1: number; w0: number; w1: number; h0: number; h1: number; heat: number; wet: number;
+}
+const LIGHT = { day: 1, night: 2, lit: 3, dark: 4 } as const;
+const DIR = { up: 1, down: 2, side: 3 } as const;
 
 const FW = Math.ceil(W / FIELD);
 const FH = Math.ceil(H / FIELD);
@@ -32,6 +38,14 @@ export const factory: SurfaceSimFactory = () => {
   let next = new Uint8Array(CX * CY);
   const kind = new Uint8Array(256);
   const dens = new Uint8Array(256);
+  // Law-set material behaviours: movement kind (a powder may flow by night), inverted gravity, wind drift, thickness.
+  const mv = new Uint8Array(256);
+  const up = new Uint8Array(256);
+  const drift = new Uint8Array(256);
+  const visc = new Uint8Array(256);
+  const flow = new Uint8Array(256);
+  const flowIds: number[] = [];
+  const lightOk = new Uint8Array(5);
   const temp = new Uint8Array(FW * FH);
   const heat = new Int16Array(FW * FH); // per-tick heat sources (fire) accumulated in the pass
   const hum = new Uint8Array(FW);
@@ -113,6 +127,23 @@ export const factory: SurfaceSimFactory = () => {
     for (const r of list) {
       if (r.b >= 0 && r.b !== cells[j]) continue;
       if (r.key && mods) { const v = mods[r.key]; if (v < r.min || v > r.max) continue; }
+      if (r.g) {
+        if (r.dir !== 0 && r.dir !== (d === 3 ? 1 : d === 2 ? 2 : 3)) continue;
+        if (y < r.y0 || y > r.y1) continue;
+        if (r.light !== 0 && lightOk[r.light] === 0) continue;
+        const T = temp[((y / FIELD) | 0) * FW + ((x / FIELD) | 0)]!;
+        if (T < r.t0 || T > r.t1) continue;
+        const wp = wind < 0 ? -wind : wind;
+        if (wp < r.w0 || wp > r.w1) continue;
+        const hc = hum[(x / FIELD) | 0]!;
+        if (hc < r.h0 || hc > r.h1) continue;
+        if (ri(r.den) >= r.num) continue;
+        if (r.heat !== 0) { const hk = ((y / FIELD) | 0) * FW + ((x / FIELD) | 0); heat[hk] = heat[hk]! + r.heat; }
+        if (r.wet !== 0) { const cx = (x / FIELD) | 0; const h = hc + r.wet; hum[cx] = h < 0 ? 0 : h > 255 ? 255 : h; }
+        set(i, r.ta);
+        if (r.tb >= 0) set(j, r.tb);
+        return;
+      }
       if (ri(r.den) >= r.num) continue;
       set(i, r.ta);
       set(j, r.tb);
@@ -326,6 +357,13 @@ export const factory: SurfaceSimFactory = () => {
     const windDir = wind > 0 ? 1 : -1;
     const windPow = Math.abs(wind);
     const ltr = (tick & 1) === 0;
+    // Light for gated reactions: a dimmed sun is no day; a bright night sky is not dark.
+    const sunEff = Math.trunc((daylight * (100 - Math.max(0, Math.min(100, m.dimming)))) / 100);
+    lightOk[1] = sunEff > 250 ? 1 : 0;
+    lightOk[2] = daylight === 0 ? 1 : 0;
+    lightOk[4] = sunEff < 80 && m.nightLight < 20 ? 1 : 0;
+    lightOk[3] = lightOk[4] ? 0 : 1;
+    for (let f = 0; f < flowIds.length; f++) { const id = flowIds[f]!; mv[id] = (flow[id] === 2) === (daylight === 0) ? K.liquid : K.powder; }
     for (let y = H - 1; y >= 0; y--) {
       const cy = (y / CHUNK) | 0;
       for (let k = 0; k < W; k++) {
@@ -334,9 +372,18 @@ export const factory: SurfaceSimFactory = () => {
         const i = y * W + x;
         const c = cells[i]!;
         if (c === 0 || stamp[i] === now) continue;
-        const kd = kind[c]!;
-        if (kd === K.powder) {
-          if (!tryMove(i, x, y, 0, 1, false)) {
+        const kd = mv[c]!;
+        if (up[c] !== 0 && (kd === K.powder || kd === K.liquid)) {
+          // Inverted gravity: it falls into the sky and pools under roofs.
+          if (!tryMove(i, x, y, 0, -1, true)) {
+            const s = ri(2) ? 1 : -1;
+            if (!tryMove(i, x, y, s, -1, true) && kd === K.liquid) { if (!tryMove(i, x, y, s, 0, true)) tryMove(i, x, y, -s, 0, true); }
+          }
+        } else if (kd === K.powder) {
+          if (drift[c] !== 0 && windPow > 10 && ri(4000) < drift[c]! * windPow) {
+            // Wind-borne grains skip along the ground or sail when loose.
+            if (!tryMove(i, x, y, windDir, 0, false)) tryMove(i, x, y, windDir, -1, true);
+          } else if (!tryMove(i, x, y, 0, 1, false)) {
             const s = ri(2) ? 1 : -1;
             if (!tryMove(i, x, y, s, 1, false) && !tryMove(i, x, y, -s, 1, false)) {
               // Wind lifts loose surface powder.
@@ -349,7 +396,8 @@ export const factory: SurfaceSimFactory = () => {
           if (!tryMove(i, x, y, 0, 1, false)) {
             let s = ri(2) ? 1 : -1;
             if (m.tide > 0 && ri(100) < m.tide) s = tideDir;
-            if (!tryMove(i, x, y, s, 1, false)) {
+            if (visc[c] !== 0 && (i + tick) % visc[c]! !== 0) { /* thick: it waits */ }
+            else if (!tryMove(i, x, y, s, 1, false)) {
               const below = y < H - 1 ? cells[i + W]! : 0;
               if (tryMove(i, x, y, s, 0, false) || tryMove(i, x, y, -s, 0, false)) {
                 // Erosion: running water picks up the sand it runs over.
@@ -361,6 +409,7 @@ export const factory: SurfaceSimFactory = () => {
             }
           }
         } else if (kd === K.gas || kd === K.fire) {
+          if (drift[c] !== 0 && windPow > 10 && ri(2000) < drift[c]! * windPow) tryMove(i, x, y, windDir, 0, true);
           const s = ri(3) - 1 + (windPow > 40 && ri(3) === 0 ? windDir : 0);
           if (!tryMove(i, x, y, Math.max(-1, Math.min(1, s)), -1, true)) tryMove(i, x, y, ri(2) ? 1 : -1, 0, true);
         }
@@ -394,7 +443,14 @@ export const factory: SurfaceSimFactory = () => {
     init: (planet, universe, surface) => {
       kind.fill(0); dens.fill(0);
       const byName = new Map<string, number>();
-      for (const mt of universe.materialTable) { kind[mt.id] = K[mt.kind]; dens[mt.id] = mt.density; byName.set(mt.name, mt.id); }
+      up.fill(0); drift.fill(0); visc.fill(0); flow.fill(0); flowIds.length = 0;
+      for (const mt of universe.materialTable) {
+        kind[mt.id] = K[mt.kind]; dens[mt.id] = mt.density; byName.set(mt.name, mt.id);
+        if (mt.rises) up[mt.id] = 1;
+        if (mt.drift) drift[mt.id] = mt.drift;
+        if (mt.viscosity) visc[mt.id] = mt.viscosity;
+        if (mt.flows && mt.kind === 'powder') { flow[mt.id] = mt.flows === 'night' ? 2 : 1; flowIds.push(mt.id); }
+      }
       kind[ICE] = K.solid; dens[ICE] = 90;
       kind[SNOW] = K.powder; dens[SNOW] = 60;
       kind[ORE] = K.solid; dens[ORE] = 255;
@@ -406,6 +462,8 @@ export const factory: SurfaceSimFactory = () => {
       STEAM = byName.get('steam') ?? 5;
       STONE = byName.get('stone') ?? 1;
       byName.set('ice', ICE).set('snow', SNOW).set('ore', ORE).set('fire', FIRE).set('ash', ASH);
+      mv.set(kind);
+      const pct = (p: number) => Math.trunc((p * (H - 1)) / 100);
       rx = [];
       for (const r of universe.reactionTable) {
         const a = byName.get(r.a);
@@ -413,9 +471,17 @@ export const factory: SurfaceSimFactory = () => {
         (rx[a] ??= []).push({
           b: r.b === '*' ? -1 : byName.get(r.b) ?? -2,
           ta: byName.get(r.becomesA) ?? a,
-          tb: byName.get(r.becomesB) ?? 0,
+          tb: r.becomesB === '*' ? -1 : byName.get(r.becomesB) ?? 0, // "*" leaves the neighbour as it is
           num: r.chance[0], den: r.chance[1],
           key: r.needs?.key ?? null, min: r.needs?.min ?? -1000, max: r.needs?.max ?? 1000,
+          g: r.becomesB === '*' || !!(r.temp || r.light || r.depth || r.dir || r.wind || r.humid || r.heat || r.vapour),
+          dir: r.dir ? DIR[r.dir] : 0,
+          y0: pct(r.depth?.min ?? 0), y1: pct(r.depth?.max ?? 100),
+          light: r.light ? LIGHT[r.light] : 0,
+          t0: r.temp?.min ?? 0, t1: r.temp?.max ?? 255,
+          w0: r.wind?.min ?? 0, w1: r.wind?.max ?? 100,
+          h0: r.humid?.min ?? 0, h1: r.humid?.max ?? 255,
+          heat: r.heat ?? 0, wet: r.vapour ?? 0,
         });
       }
       cells.set(surface.cells);

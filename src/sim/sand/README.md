@@ -19,3 +19,15 @@
 7. No allocation inside step().
 
 Plus: `npm run check` passes, and `demo.ts` shows the unit alone in `/dev` with a fixed seed.
+
+## Law-set primitives (wave 2)
+
+All optional in `src/contracts/atlas.ts`. A law set that uses none of them simulates bit-for-bit as before: a gated reaction draws no extra random numbers until every gate has passed, and the material flags are only read for materials that set them.
+
+Reaction gates: `temp {min,max}` (coarse temperature under the cell), `light` (`day` sun above 25% after dimming, `night` sun down, `dark` sun below 8% and nightLight under 20, `lit` otherwise), `depth {min,max}` (percent of grid height from the top), `dir` (`up`, `down`, `side`: where b sits), `wind {min,max}` (absolute wind), `humid {min,max}` (cloud over the column). Reaction effects: `heat` (added to the temperature field) and `vapour` (added to the cloud above).
+
+Material behaviours: `rises` (a powder or liquid with inverted gravity), `flows: night|day` (a powder that moves as a liquid in that half of the day), `drift` (carried sideways by wind), `viscosity` (a liquid that spreads one tick in n).
+
+No new state: snapshots are unchanged. Nothing is scanned outside active chunks.
+
+A reaction whose `becomesB` is `"*"` leaves the neighbour as it is. Use it with `b: "*"`: a plain `becomesB: "empty"` there would erase whatever the cell happened to touch.

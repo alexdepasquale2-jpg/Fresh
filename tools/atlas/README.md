@@ -18,3 +18,9 @@
 6. Nothing in tools/ is imported by the app bundle (checked by a test on the build graph or imports).
 
 Plus: `npm run check` passes, and `demo.ts` shows the unit alone in `/dev` with a fixed seed.
+
+## State (wave 2)
+
+- `npm run atlas -- validate [dir]`: zod schema plus lint (unique ids, reserved engine ids, id 0 empty, a solid, a powder and a liquid, known material names, sane ranges, id matches file name, distinct pulse).
+- `npm run atlas -- stability [dir] [ticks] [id prefix] [--phases]`: runs each law set through the real sand kernel on a fixed test world under three skies in turn (plain; warm, moonlit, tidal, with falling rock; cold, dim, dusty, hard seasons). Fails a law set that is dead (under 12 cells changed in the last 2,000 ticks), burning (fire over 3%), overgrown or hollowed (matter up or down 30%), eaten (stone down 40%) or overrun (one law material over 30% of the grid). Prints live share, material mix and a grid hash per law set.
+- `survey.ts` holds the runner and registers it through `useSurvey` in `index.ts`; that hook is also the plug-in point for an external search harness. `index.ts` itself imports no kernel, so the app bundle that wires the factory stays lean.

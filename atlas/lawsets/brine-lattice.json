@@ -1,0 +1,221 @@
+{
+  "id": "brine-lattice",
+  "name": "Brine lattice",
+  "tags": [
+    "SALT BRIDGES",
+    "WARM SEAS"
+  ],
+  "pulseMilliHz": 500,
+  "hue": 195,
+  "materials": [
+    {
+      "id": 0,
+      "name": "empty",
+      "kind": "empty",
+      "color": 0,
+      "density": 0
+    },
+    {
+      "id": 1,
+      "name": "stone",
+      "kind": "solid",
+      "color": 4,
+      "density": 250
+    },
+    {
+      "id": 2,
+      "name": "sand",
+      "kind": "powder",
+      "color": 6,
+      "density": 150
+    },
+    {
+      "id": 3,
+      "name": "water",
+      "kind": "liquid",
+      "color": 11,
+      "density": 100
+    },
+    {
+      "id": 4,
+      "name": "moss",
+      "kind": "life",
+      "color": 15,
+      "density": 200
+    },
+    {
+      "id": 5,
+      "name": "steam",
+      "kind": "gas",
+      "color": 9,
+      "density": 5
+    },
+    {
+      "id": 6,
+      "name": "crust",
+      "kind": "solid",
+      "color": 8,
+      "density": 220
+    },
+    {
+      "id": 7,
+      "name": "salt",
+      "kind": "powder",
+      "color": 9,
+      "density": 170
+    }
+  ],
+  "reactions": [
+    {
+      "a": "water",
+      "b": "empty",
+      "becomesA": "steam",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        400
+      ],
+      "needs": {
+        "key": "warmth",
+        "min": 30
+      }
+    },
+    {
+      "a": "steam",
+      "b": "empty",
+      "becomesA": "water",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        200
+      ]
+    },
+    {
+      "a": "water",
+      "b": "empty",
+      "becomesA": "crust",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        150
+      ],
+      "dir": "up",
+      "temp": {
+        "min": 136
+      },
+      "light": "day"
+    },
+    {
+      "a": "crust",
+      "b": "water",
+      "becomesA": "crust",
+      "becomesB": "crust",
+      "chance": [
+        1,
+        4
+      ],
+      "dir": "side",
+      "temp": {
+        "min": 128
+      }
+    },
+    {
+      "a": "crust",
+      "b": "water",
+      "becomesA": "salt",
+      "becomesB": "water",
+      "chance": [
+        1,
+        3
+      ],
+      "dir": "up"
+    },
+    {
+      "a": "crust",
+      "b": "*",
+      "becomesA": "salt",
+      "becomesB": "*",
+      "chance": [
+        1,
+        10
+      ],
+      "temp": {
+        "max": 118
+      }
+    },
+    {
+      "a": "crust",
+      "b": "water",
+      "becomesA": "salt",
+      "becomesB": "water",
+      "chance": [
+        1,
+        5
+      ],
+      "needs": {
+        "key": "tide",
+        "min": 20
+      },
+      "dir": "side"
+    },
+    {
+      "a": "crust",
+      "b": "crust",
+      "becomesA": "salt",
+      "becomesB": "crust",
+      "chance": [
+        1,
+        30
+      ],
+      "dir": "down"
+    },
+    {
+      "a": "salt",
+      "b": "water",
+      "becomesA": "water",
+      "becomesB": "water",
+      "chance": [
+        1,
+        20
+      ]
+    },
+    {
+      "a": "salt",
+      "b": "moss",
+      "becomesA": "salt",
+      "becomesB": "sand",
+      "chance": [
+        1,
+        6
+      ]
+    },
+    {
+      "a": "salt",
+      "b": "stone",
+      "becomesA": "crust",
+      "becomesB": "stone",
+      "chance": [
+        1,
+        30
+      ],
+      "dir": "down",
+      "temp": {
+        "min": 140
+      }
+    },
+    {
+      "a": "salt",
+      "b": "sand",
+      "becomesA": "crust",
+      "becomesB": "sand",
+      "chance": [
+        1,
+        60
+      ],
+      "dir": "down",
+      "temp": {
+        "min": 146
+      }
+    }
+  ]
+}
