@@ -7,6 +7,9 @@
 import type { PlanetRendererFactory, GlCore } from '@/contracts/render';
 import { ENGINE, FIELD, ROLE } from '@/contracts/sim';
 import { FULLSCREEN_VS } from '@/render/gl';
+import { createFirstPerson } from './first-person';
+import { createPeople } from './people';
+import type { People } from './people';
 import { FX_ONE } from '@/core/fixed';
 
 const O = { person: 1, wall: 2, roof: 3, window: 4, smoke: 5, rain: 6, snow: 7, lamp: 8, bonfire: 9, tower: 10, launch: 11, priest: 12, travel: 13, avatar: 14, attack: 15 } as const;
@@ -15,7 +18,7 @@ const KIND = { empty: 0, solid: 1, powder: 2, liquid: 3, gas: 4, fire: 5, life: 
 const FS = `#version 300 es
 precision highp float; precision highp usampler2D;
 in vec2 v_uv; out vec4 o;
-uniform vec2 u_res; uniform vec4 u_rect; uniform vec2 u_grid;
+uniform vec2 u_res; uniform vec4 u_rect; uniform vec2 u_grid; uniform vec3 u_view;
 uniform usampler2D u_cells, u_over, u_mat, u_top;
 uniform sampler2D u_temp, u_hum, u_pal;
 uniform float u_day, u_season, u_time, u_pulse, u_nl, u_dim, u_warm, u_dust, u_wind, u_rain, u_flash;
@@ -31,12 +34,16 @@ void main(){
   vec2 fc = vec2(v_uv.x * u_res.x, (1.0 - v_uv.y) * u_res.y);
   vec2 q = (fc - u_rect.xy) / u_rect.zw;
   if (q.x < 0.0 || q.y < 0.0 || q.x >= 1.0 || q.y >= 1.0) discard;
-  vec2 gp = q * u_grid; ivec2 g = ivec2(floor(gp)); vec2 gc = vec2(g) + 0.5;
+  vec2 gp = clamp(u_view.xy + (q - 0.5) * u_grid / u_view.z, vec2(0.0), u_grid - 0.001);
+  ivec2 g = ivec2(floor(gp)); vec2 gc = vec2(g) + 0.5;
+  vec2 wq = gp / u_grid;           // position in the world, 0..1
+  vec2 f = fract(gp);              // position inside the cell
+  float det = smoothstep(1.4, 2.6, u_view.z); // sub-cell detail fades in as you zoom
   float sunUp = -cos(u_day * 6.2831853);
   float daylight = smoothstep(-0.3, 0.35, sunUp);
   float dusk = exp(-pow(sunUp * 3.5, 2.0));
-  float hum = texture(u_hum, vec2(q.x, 0.5)).r;
-  float T = texture(u_temp, q).r;
+  float hum = texture(u_hum, vec2(wq.x, 0.5)).r;
+  float T = texture(u_temp, wq).r;
   float autumn = smoothstep(0.45, 0.6, u_season) * smoothstep(0.85, 0.7, u_season);
   float winter = smoothstep(0.62, 0.75, u_season) * smoothstep(0.98, 0.85, u_season);
   float amb = mix(0.24 + u_nl * 0.4 + u_moons * 0.08, 1.0, daylight) * (1.0 - u_dim * 0.45) * (1.0 - hum * 0.22);
@@ -44,13 +51,14 @@ void main(){
   // ---------- sky ----------
   vec3 dayTop = mix(pal(12), pal(9), 0.25);
   vec3 horizon = mix(pal(9), pal(13), dusk * 0.65);
-  vec3 skyDay = mix(dayTop, horizon, smoothstep(0.0, 0.65, q.y));
-  vec3 skyNight = mix(pal(0) * 0.7, pal(2), q.y * 0.8);
-  vec3 sky = mix(skyNight, skyDay, daylight) + pal(14) * dusk * 0.3 * smoothstep(0.15, 0.6, q.y);
+  vec3 skyDay = mix(dayTop, horizon, smoothstep(0.0, 0.65, wq.y));
+  vec3 skyNight = mix(pal(0) * 0.7, pal(2), wq.y * 0.8);
+  vec3 sky = mix(skyNight, skyDay, daylight) + pal(14) * dusk * 0.3 * smoothstep(0.15, 0.6, wq.y);
   sky = mix(sky, pal(14) * 0.6 + pal(7) * 0.2, u_dust * 0.55);
   // stars
   float st = h21(floor(gp * 0.7));
-  if (st > 0.985) sky += pal(9) * (1.0 - daylight) * (1.0 - hum) * (0.4 + 0.6 * sin(u_time * 3.0 + st * 400.0)) * (1.0 - u_dust);
+  float pin = mix(1.0, smoothstep(0.3, 0.05, length(fract(gp * 0.7) - 0.5)) * 2.0, det); // stars stay points up close
+  if (st > 0.985) sky += pin * pal(9) * (1.0 - daylight) * (1.0 - hum) * (0.4 + 0.6 * sin(u_time * 3.0 + st * 400.0)) * (1.0 - u_dust);
   // belt: a dusty band of glints
   if (u_belt > 0.5) { float by = abs(gp.y - (18.0 + sin(gp.x * 0.03) * 4.0)); sky += pal(7) * smoothstep(3.0, 0.0, by) * (0.12 + 0.5 * step(0.93, h21(floor(gp)))) * (0.4 + 0.6 * (1.0 - daylight)); }
   // rings: a wide arc
@@ -81,13 +89,34 @@ void main(){
     sky += pal(10) * (disc(gp, cp, 2.2) + smoothstep(0.0, 1.0, along) * smoothstep(40.0, 0.0, along) * smoothstep(1.5 + along * 0.08, 0.0, across) * 0.6); }
   // clouds driven by humidity, pushed by the wind
   float cn = fbm(vec2(gp.x * 0.045 - u_time * u_wind * 0.02, gp.y * 0.11 + u_time * 0.01));
-  float cloud = smoothstep(0.42, 0.75, cn + hum * 1.3 - 0.3) * smoothstep(0.6, 0.05, q.y);
+  float cloud = smoothstep(0.42, 0.75, cn + hum * 1.3 - 0.3) * smoothstep(0.6, 0.05, wq.y);
   vec3 cloudCol = mix(pal(2), pal(9), daylight * 0.85) * (1.0 - hum * 0.45) + pal(14) * dusk * 0.25;
   sky = mix(sky, cloudCol, cloud * 0.9);
   sky += pal(9) * u_flash * (0.6 + cloud);
 
   // ---------- surface ----------
   uint m = texelFetch(u_cells, g, 0).r;
+  bool blade = false;
+  if (det > 0.0) {
+    // Higher resolution from the same cells: round the corners where two neighbours agree
+    // (so slopes and droplets are smooth, not stair-stepped)...
+    ivec2 sgn = ivec2(f.x < 0.5 ? -1 : 1, f.y < 0.5 ? -1 : 1);
+    ivec2 gmax = ivec2(u_grid) - 1;
+    uint mh = texelFetch(u_cells, clamp(g + ivec2(sgn.x, 0), ivec2(0), gmax), 0).r;
+    uint mv = texelFetch(u_cells, clamp(g + ivec2(0, sgn.y), ivec2(0), gmax), 0).r;
+    vec2 c = abs(f - 0.5);
+    if (c.x + c.y > 1.0 - 0.38 * det && mh == mv && mh != m && (m == 0u || mh == 0u)) m = mh;
+    // ...and grow blades of moss up into the air above it.
+    if (m == 0u) {
+      uint mb = texelFetch(u_cells, clamp(g + ivec2(0, 1), ivec2(0), gmax), 0).r;
+      if (mb != 0u && texelFetch(u_mat, ivec2(int(mb), 0), 0).g == 6u) {
+        float bx = floor(gp.x * 5.0);
+        float hgt = (0.2 + 0.6 * h21(vec2(bx, float(g.y)))) * det;
+        float sway = sin(u_time * 1.5 + bx) * 0.08 * (1.0 - f.y);
+        if (1.0 - f.y < hgt && fract(gp.x * 5.0 + sway) < 0.55) { m = mb; blade = true; }
+      }
+    }
+  }
   vec3 col = sky;
   float emissive = 0.0;
   float topY = float(texelFetch(u_top, ivec2(g.x, 0), 0).r);
@@ -101,17 +130,19 @@ void main(){
     float depth = float(g.y) - float(texelFetch(u_top, ivec2(g.x, 0), 0).r);
     vec3 base = pal(slot);
     float n = h21(vec2(g));
-    if (kind == 1u) base *= 0.82 + 0.18 * noise(vec2(g) * vec2(0.18, 0.9)) + 0.12 * n;       // strata
-    else if (kind == 2u) base *= 0.85 + 0.3 * n;                                                // grains
+    float fine = h21(floor(gp * 4.0)) - 0.5; // 4x4 grains per cell, visible when zoomed
+    if (kind == 1u) { base *= 0.82 + 0.18 * noise(vec2(g) * vec2(0.18, 0.9)) + 0.12 * n; base *= 1.0 + det * (fine * 0.16 - 0.3 * step(0.8, noise(gp * vec2(2.3, 3.1)) * noise(gp.yx * 1.7 + 9.0) * 2.2)); } // strata, cracks
+    else if (kind == 2u) base *= 0.85 + 0.3 * n + det * fine * 0.4;                              // grains
     else if (kind == 3u) {                                                                       // water
       base = mix(base, pal(12) * 0.6, clamp(depth / 45.0, 0.0, 0.85));
       base = mix(base, sky, 0.18 * smoothstep(3.0, 0.0, depth));
       base += pal(9) * 0.18 * smoothstep(1.5, 0.0, depth) * (0.5 + 0.5 * sin(gp.x * 0.9 + u_time * 2.5 + sin(gp.x * 0.13) * 3.0));
       base += pal(10) * 0.05 * step(0.8, noise(gp * 0.4 + u_time * 0.6)) * smoothstep(20.0, 2.0, depth);
+      base += pal(9) * det * 0.07 * sin(gp.y * 9.0 + sin(gp.x * 2.0 + u_time * 1.7) * 2.0) * smoothstep(12.0, 0.0, depth);
     }
     else if (kind == 4u) base = mix(base, pal(9), 0.3);
-    else if (kind == 5u) { base = mix(pal(13), pal(9), noise(gp * 0.6 + vec2(0.0, u_time * 5.0))); emissive = 1.0; }
-    else if (kind == 6u) { base *= 0.8 + 0.35 * n; base = mix(base, pal(14), autumn * 0.55); base = mix(base, pal(9) * 0.8, winter * 0.3 * step(depth, 1.5)); }
+    else if (kind == 5u) { base = mix(pal(13), pal(9), noise(gp * mix(0.6, 2.5, det) + vec2(0.0, u_time * 5.0))); emissive = 1.0; }
+    else if (kind == 6u) { base *= 0.8 + 0.35 * n + det * fine * 0.3; if (blade) base *= 1.15; base = mix(base, pal(14), autumn * 0.55); base = mix(base, pal(9) * 0.8, winter * 0.3 * step(depth, 1.5)); }
     if (m == ${ENGINE.ice.id}u) { base = mix(pal(9), pal(10), 0.4 + 0.2 * n) * (0.9 + 0.2 * step(0.97, h21(vec2(g) + floor(u_time * 2.0)))); }
     if (m == ${ENGINE.ore.id}u) { base = mix(pal(7), pal(9), step(0.85, n)); }
     float lit = kind == 3u ? 1.0 : clamp(1.0 - max(depth - 3.0, 0.0) / 70.0, 0.35, 1.0);
@@ -123,14 +154,21 @@ void main(){
   }
   // ---------- overlay ----------
   uint ov = texelFetch(u_over, g, 0).r;
+  if (det > 0.5 && (ov == 1u || ov == 8u || ov == 12u || ov == 13u || ov == 15u)) {
+    // People get a round head, a body and two legs when you are close.
+    uint ob = texelFetch(u_over, clamp(g + ivec2(0, 1), ivec2(0), ivec2(u_grid) - 1), 0).r;
+    bool head = ob == 1u || ob == 13u || ob == 15u;
+    bool keep = head ? length(f - vec2(0.5, 0.55)) < 0.36 : (abs(f.x - 0.5) < 0.28 && (f.y < 0.55 || abs(abs(f.x - 0.5) - 0.17) < 0.11));
+    if (!keep) ov = 0u;
+  }
   if (ov != 0u) {
     float night = 1.0 - daylight;
     if (ov == 1u || ov == 13u) col = mix(pal(8), pal(5), float(g.y & 1)) * (0.35 + 0.65 * amb);
     else if (ov == 12u) col = mix(pal(9), pal(10), 0.4) * (0.5 + 0.5 * amb);
     else if (ov == 8u) { col = pal(10) * 1.3; emissive = 1.0; }
-    else if (ov == 2u) col = pal(5) * 1.1 * amb;
-    else if (ov == 3u) col = pal(14) * 1.15 * amb;
-    else if (ov == 4u) { col = mix(pal(2) * amb, pal(13) * 1.3, smoothstep(0.2, 0.8, night)); }
+    else if (ov == 2u) col = pal(5) * 1.1 * amb * (1.0 - det * 0.3 * max(step(0.88, fract(gp.y * 2.0)), step(0.9, fract(gp.x * 1.5 + floor(gp.y * 2.0) * 0.5))));
+    else if (ov == 3u) col = pal(14) * 1.15 * amb * (1.0 - det * 0.3 * step(0.7, fract(gp.x * 3.0 + gp.y * 3.0)));
+    else if (ov == 4u) { col = mix(pal(2) * amb, pal(13) * 1.3, smoothstep(0.2, 0.8, night)); if (det > 0.5 && (max(abs(f.x - 0.5), abs(f.y - 0.5)) > 0.34 || abs(f.x - 0.5) < 0.05)) col = pal(5) * 0.9 * amb; }
     else if (ov == 5u) col = mix(col, pal(9) * (0.4 + 0.6 * amb), 0.4);
     else if (ov == 6u) col = mix(col, pal(9), 0.28 + 0.2 * amb);
     else if (ov == 7u) col = pal(9) * (0.6 + 0.4 * amb);
@@ -168,6 +206,9 @@ export const factory: PlanetRendererFactory = () => {
   let lastTick = -1;
   let time = 0;
   let flash = 0;
+  let fp: ReturnType<typeof createFirstPerson> | null = null;
+  let people: People | null = null;
+  const fract = (n: number) => n - Math.floor(n);
   let lastLightning = 9999;
 
   const makeTex = (w: number, h: number, internal: number, format: number, linear: boolean) => {
@@ -190,9 +231,11 @@ export const factory: PlanetRendererFactory = () => {
   const build = () => {
     const gl = core!.gl;
     prog = core!.program(FULLSCREEN_VS, FS);
-    for (const k of ['u_res', 'u_rect', 'u_grid', 'u_cells', 'u_over', 'u_mat', 'u_top', 'u_temp', 'u_hum', 'u_pal', 'u_day', 'u_season', 'u_time', 'u_pulse', 'u_nl', 'u_dim', 'u_warm', 'u_dust', 'u_wind', 'u_rain', 'u_flash', 'u_moons', 'u_suns', 'u_rings', 'u_comet', 'u_belt', 'u_vill', 'u_nvill']) loc[k] = gl.getUniformLocation(prog, k);
+    for (const k of ['u_res', 'u_rect', 'u_grid', 'u_view', 'u_cells', 'u_over', 'u_mat', 'u_top', 'u_temp', 'u_hum', 'u_pal', 'u_day', 'u_season', 'u_time', 'u_pulse', 'u_nl', 'u_dim', 'u_warm', 'u_dust', 'u_wind', 'u_rain', 'u_flash', 'u_moons', 'u_suns', 'u_rings', 'u_comet', 'u_belt', 'u_vill', 'u_nvill']) loc[k] = gl.getUniformLocation(prog, k);
     W = H = 0;
     matKey = '';
+    fp = null;
+    people = null;
   };
   const put = (x: number, y: number, code: number) => {
     if (x >= 0 && y >= 0 && x < W && y < H) over[y * W + x] = code;
@@ -255,6 +298,32 @@ export const factory: PlanetRendererFactory = () => {
       lastLightning = env.lightning;
       flash = Math.max(0, flash - dt / 250);
 
+      people ??= createPeople(core);
+      people.update(v.civ, dt);
+      const sunUp = -Math.cos((env.day / 1000) * Math.PI * 2);
+      const dayl = Math.max(0, Math.min(1, (sunUp + 0.3) / 0.65));
+      const ambP = (0.32 + Math.max(0, v.modifiers.nightLight) / 250 + (1 - 0.32) * dayl) * (1 - Math.max(0, v.modifiers.dimming) / 220);
+      if (v.view?.fp) {
+        fp ??= createFirstPerson(core);
+        const body = people.avatar();
+        const view3 = v.view.fp;
+        const cam = fp.draw({ view: v, W, H, top, matTex: tex.mat!, palTex: tex.pal!, time, flash, eyeX: body ? body.x : view3.x });
+        people.draw({
+          fp: { ro: cam.ro, yaw: cam.yaw, pitch: cam.pitch, depth: cam.depth,
+            // Those who come for you (or to you) step out of the slice toward where you stand.
+            place: (s) => {
+              const near = s.role === ROLE.attack || s.role === ROLE.kneel || s.role === ROLE.watch || s.role === ROLE.listen;
+              const z = near ? view3.z + (s.seed - 0.5) * 8 : s.z;
+              // Nobody stands inside your head: keep them at arm's length.
+              let x = s.x;
+              const dx = x - cam.ro[0];
+              if (near && Math.abs(dx) < 2.4) x = cam.ro[0] + (dx >= 0 ? 1 : -1) * (2.6 + fract(s.seed * 5.3) * 2.2);
+              return [x, cam.ground(x, z), z];
+            } },
+          view: { cx: 0, cy: 0, zoom: 1 }, rect: v.rect, W, H, time, amb: ambP, night: 1 - dayl, pal: tex.pal!,
+        });
+        return;
+      }
       // ---- overlay ----
       over.fill(0);
       const night = env.day < 230 || env.day > 770;
@@ -291,14 +360,6 @@ export const factory: PlanetRendererFactory = () => {
           nv++;
         }
       }
-      const pp = v.civ.people;
-      for (let i = 0; i < v.civ.peopleCount; i++) {
-        const x = pp[i * 4]!, y = pp[i * 4 + 1]!, role = pp[i * 4 + 2]!;
-        const code = role === ROLE.lamp ? O.lamp : role === ROLE.pray || role === ROLE.kneel ? O.priest : role === ROLE.travel ? O.travel : role === ROLE.attack ? O.attack : O.person;
-        put(x, y, role === ROLE.attack ? O.attack : O.person);
-        if (role === ROLE.kneel) { put(x, y - 1, O.priest); continue; }
-        put(x, y - 1, code === O.person ? O.person : code);
-      }
       if (env.rain > 0) {
         const drops = Math.min(160, env.rain);
         for (let k = 0; k < drops; k++) {
@@ -312,12 +373,6 @@ export const factory: PlanetRendererFactory = () => {
           put(xx, y, env.snowing ? O.snow : O.rain);
           if (!env.snowing) put(xx, y - 1, O.rain);
         }
-      }
-      const av = v.civ.avatar;
-      if (av) {
-        for (let j = 0; j < 4; j++) put(av.x, av.y - j, O.avatar);
-        put(av.x - 1, av.y - 2, O.avatar); put(av.x + 1, av.y - 2, O.avatar);
-        if (nv < 12) { vill.set([av.x, av.y - 2, 10, 1.2 * (av.hp / 100) + 0.3], nv * 4); nv++; }
       }
       upload(tex.over!, W, H, gl.RED_INTEGER, over);
 
@@ -335,6 +390,7 @@ export const factory: PlanetRendererFactory = () => {
       gl.uniform2f(loc.u_res!, core.width(), core.height());
       gl.uniform4f(loc.u_rect!, R.x, R.y, R.w, R.h);
       gl.uniform2f(loc.u_grid!, W, H);
+      gl.uniform3f(loc.u_view!, v.view?.cx ?? W / 2, v.view?.cy ?? H / 2, Math.max(1, v.view?.zoom ?? 1));
       const md = v.modifiers;
       const count = (k: string) => v.sky.pieces.filter((p) => p === k).length;
       gl.uniform1f(loc.u_day!, env.day / 1000);
@@ -356,6 +412,7 @@ export const factory: PlanetRendererFactory = () => {
       gl.uniform4fv(loc.u_vill!, vill);
       gl.uniform1i(loc.u_nvill!, nv);
       core.quad(prog);
+      people.draw({ fp: null, view: { cx: v.view?.cx ?? W / 2, cy: v.view?.cy ?? H / 2, zoom: Math.max(1, v.view?.zoom ?? 1) }, rect: v.rect, W, H, time, amb: ambP, night: 1 - dayl, pal: tex.pal! });
     },
     dispose: () => { core = null; },
   };

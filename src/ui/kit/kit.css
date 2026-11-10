@@ -24,3 +24,16 @@
 .k-label { font: 600 11px var(--font-ui); color: var(--ink-muted); letter-spacing: .12em; text-transform: uppercase; }
 .k-hold { width: 96px; height: 96px; border-radius: 50%; background: var(--panel); border: 3px solid var(--line); color: var(--ink); font: 600 16px var(--font-ui); letter-spacing: .1em; touch-action: none; cursor: pointer; }
 .k-hold[aria-pressed='true'] { border-color: var(--glow); color: var(--glow); background: var(--raised); }
+
+.spark { position: absolute; width: 4px; height: 4px; margin: -2px 0 0 -2px; background: var(--glow); pointer-events: none; z-index: 5; animation: spark .6s ease-out forwards; }
+.spark:nth-child(odd) { background: var(--gold); }
+@keyframes spark { to { transform: translate(var(--dx), var(--dy)) scale(.2); opacity: 0; } }
+.shake { animation: shake .3s linear; }
+.shake-hard { animation: shake-hard .45s linear; }
+@keyframes shake { 20% { transform: translate(-3px, 1px); } 40% { transform: translate(3px, -2px); } 60% { transform: translate(-2px, 2px); } 80% { transform: translate(2px, -1px); } }
+@keyframes shake-hard { 10% { transform: translate(-7px, 3px); } 30% { transform: translate(7px, -5px); } 50% { transform: translate(-6px, 5px); } 70% { transform: translate(5px, -3px); } 90% { transform: translate(-2px, 1px); } }
+.flash { position: absolute; inset: 0; background: var(--ink-bright); pointer-events: none; z-index: 6; animation: flash .4s ease-out forwards; }
+@keyframes flash { from { opacity: .7; } to { opacity: 0; } }
+.k-btn, .k-slot, .k-tag.tool, .k-tag.swap { transition: transform .08s; }
+.k-btn:active, .k-slot:active, .k-tag.tool:active, .k-tag.swap:active { transform: scale(.96); }
+@media (prefers-reduced-motion: reduce) { .shake, .shake-hard, .spark, .flash { animation: none; } .spark, .flash { display: none; } }

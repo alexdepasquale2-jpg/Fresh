@@ -25,6 +25,7 @@ export const boot = async (host: HTMLElement) => {
     current.mount(layer, app.ctx);
     app.ctx.bus.emit('navigate', { to });
     app.ctx.audio.setScene(to);
+    app.ctx.audio.sfx('nav');
     persist();
   };
   const persist = () => {
@@ -36,6 +37,8 @@ export const boot = async (host: HTMLElement) => {
   const { ctx } = app;
   ctx.input.attach(layer);
   window.addEventListener('pointerdown', () => void ctx.audio.unlock(), { once: true });
+  // Every button answers a touch.
+  window.addEventListener('click', (e) => { if ((e.target as HTMLElement | null)?.closest('button')) ctx.audio.sfx('tap'); });
 
   const saved = await ctx.save.load();
   if (saved) {
@@ -56,6 +59,7 @@ export const boot = async (host: HTMLElement) => {
         ctx.pulse().step(ticks, []);
         ctx.sim.step(ticks);
       }
+      ctx.audio.setPulse(ctx.pulse());
       ctx.audio.update(dt);
       current?.frame(dt);
     },

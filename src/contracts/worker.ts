@@ -1,7 +1,7 @@
 import type { PlanetSpec } from './system';
 import type { UniverseSpec } from './universe';
 import type { SurfaceModifiers, SkyState } from './sky';
-import type { CivView, ChronicleEntry, SurfaceEnv, Tool } from './sim';
+import type { CivView, ChronicleEntry, SurfaceEnv, Tool, BodyAction } from './sim';
 
 /** Messages main -> sim Worker. */
 export type ToWorker =
@@ -11,6 +11,7 @@ export type ToWorker =
   | { type: 'incarnate'; x: number }
   | { type: 'walk'; x: number }
   | { type: 'ascend' }
+  | { type: 'act'; action: BodyAction }
   | { type: 'close' };
 
 /** Messages sim Worker -> main. cells is a transferred copy of the grid. */

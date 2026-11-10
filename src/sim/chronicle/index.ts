@@ -24,6 +24,10 @@ const EVENT: Partial<Record<Kind, string[]>> = {
   tech: ['%v learned %t.', '%v came into the age of %t.'],
   launch: ['From %v a small light rose and did not come down.', '%v sent a lamp into the sky.'],
   light: ['%v sang toward the sky.'],
+  struck: ['The stranger struck back at %v, and they ran.', 'Those of %v who raised their hands against the stranger fell.'],
+  preached: ['The stranger spoke at %v, and some stayed to listen.', 'In %v they sat down around the stranger and heard it speak.'],
+  gift: ['The stranger gave %v bread from its own body.', '%v ate from the hands of the stranger.'],
+  merged: ['Two peoples became one and called themselves %v.', 'The walls came down between them. Now there is only %v.'],
   stranger: ['A stranger walked near %v. They kept their distance.', 'In %v they watched a shining stranger and did not know what to do.'],
   attack: ['A stranger came to %v and they met it with stones.', 'The people of %v drove at a shining stranger with spears.'],
   slain: ['%v killed the stranger who walked among them.', 'In %v they struck down the thing that came from the sky.'],
@@ -110,7 +114,7 @@ export const factory: ChronicleFactory = ({ names }) => {
         if ((e.kind === 'festival' || e.kind === 'convert' || e.kind === 'grow') && entries.slice(-40).some((x) => x.kind === e.kind && year - x.year < 2)) continue;
         const OMEN = ['Water poured from an empty sky near %v.', 'Sand fell like rain on %v.', 'A wall of stone rose near %v.', 'Green came up from dead ground by %v.', 'Fire fell from an open hand over %v.', 'The water froze at a touch near %v.', 'A star was thrown down at %v.', 'Clouds gathered from nothing over %v.', 'The ground heaved under %v.', 'Lightning was called down on %v.', 'The air burned around %v.', 'A cold came to %v from nowhere.', 'Part of the world was taken from %v.'];
         if (e.kind === 'omen') {
-          const t = e.detail === 100 ? 'A voice spoke to %v from above.' : OMEN[e.detail ?? 0] ?? 'They saw an omen over %v.';
+          const t = e.detail === 101 ? 'A light too bright to look at stood by %v.' : e.detail === 100 ? 'A voice spoke to %v from above.' : OMEN[e.detail ?? 0] ?? 'They saw an omen over %v.';
           entries.push({ id: nextId++, year, kind: e.kind, tick: e.tick, event: t.replace('%v', vname(e.villageId)), ...(e.belief ? { belief: e.belief } : {}) });
           continue;
         }
@@ -141,6 +145,10 @@ export const factory: ChronicleFactory = ({ names }) => {
             reason = prior ? `After ${CAUSE[prior.kind]}, it seemed the only answer.` : says[0] ? `They watched the sky. ${says[0]}` : 'No one remembers why.';
             break;
           case 'feud': reason = 'Each said the other prayed wrong.'; break;
+          case 'struck': reason = `${voice} it was never a thing to be fought.`; break;
+          case 'preached': reason = 'Its voice was like their own, but older.'; break;
+          case 'gift': reason = 'It grew fainter as they ate.'; break;
+          case 'merged': reason = 'A hand they could not see pressed them together.'; break;
           case 'attack': case 'slain': reason = `${voice} it was a demon wearing light.`; break;
           case 'stranger': reason = 'Some wanted to kneel. Some wanted to run.'; break;
           case 'worship': case 'enlightened': reason = 'They had been watching your light for a long time.'; break;

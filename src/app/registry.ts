@@ -33,6 +33,7 @@ import { factory as platformEdgeVoice } from '@/platform/edge-voice';
 import { factory as platformPerf } from '@/platform/perf';
 import { factory as gameBattle } from '@/game/battle';
 import { factory as uiBattle } from '@/ui/battle';
+import { factory as gameMerge } from '@/game/merge';
 
 export const registry: UnitFactories = {
   'gen/universe': genUniverse,
@@ -65,4 +66,5 @@ export const registry: UnitFactories = {
   'platform/perf': platformPerf,
   'game/battle': gameBattle,
   'ui/battle': uiBattle,
+  'game/merge': gameMerge,
 };

@@ -72,6 +72,8 @@ export interface Audio {
   /** Called every frame; schedules notes against the pulse. */
   update(dtMs: number): void;
   setMuted(muted: boolean): void;
+  /** One-shot sound effect by name (tool names, 'tap', 'fold', 'catch', 'strike', 'merge', ...). amount 0..1 scales it. Unknown names play a soft tick. */
+  sfx(name: string, amount?: number): void;
   dispose(): void;
 }
 export type AudioFactory = () => Audio;

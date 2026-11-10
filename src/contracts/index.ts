@@ -13,3 +13,4 @@ export * from './app';
 export * from './units';
 export * from "./worker";
 export * from './battle';
+export * from './merge';

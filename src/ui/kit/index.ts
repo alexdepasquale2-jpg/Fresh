@@ -72,3 +72,27 @@ export const holdButton = () => el('button', { class: 'k-hold', type: 'button', 
 /** Map 0..63 glyph indices to a small set of pixel-font characters. */
 export const GLYPHS = '◇◆○●□■△▲▽▼☉☽✶✷✸✹⊕⊗⊙⊚⋄∴∵∷≡≣⌘⌬⍟⎔◈◉◊◌◍◎◐◑◒◓◔◕◖◗◘◙◚◛◜◝◞◟◠◡◢◣◤◥◦◧◨◩◪◫◬◭◮◯'.split('');
 export const glyphChar = (i: number): string => GLYPHS[i % GLYPHS.length] ?? '◇';
+
+/** A burst of sparks at (x, y) inside host (which must be positioned). Purely decorative. */
+export const burst = (host: HTMLElement, x: number, y: number, count = 10, big = false) => {
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * Math.PI * 2 + (i % 2) * 0.4;
+    const d = (big ? 46 : 26) * (0.6 + ((i * 37) % 10) / 12);
+    const s = el('i', { class: 'spark', style: `left:${x}px;top:${y}px;--dx:${Math.cos(a) * d}px;--dy:${Math.sin(a) * d}px` });
+    host.append(s);
+    setTimeout(() => s.remove(), 650);
+  }
+};
+/** Shake an element briefly (impacts, hits). */
+export const shake = (target: HTMLElement, hard = false) => {
+  target.classList.remove('shake', 'shake-hard');
+  void target.offsetWidth;
+  target.classList.add(hard ? 'shake-hard' : 'shake');
+  setTimeout(() => target.classList.remove('shake', 'shake-hard'), 450);
+};
+/** A full flash over an element (lightning, merge, flare). */
+export const flash = (host: HTMLElement) => {
+  const f = el('i', { class: 'flash' });
+  host.append(f);
+  setTimeout(() => f.remove(), 400);
+};

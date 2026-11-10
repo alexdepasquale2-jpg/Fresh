@@ -68,3 +68,58 @@ Every touch is an omen to the inhabitants, and it moves their faith and their fe
 - **How Light works at the edges.** Assumed: drains per fold fallen, not per second; at zero the dive surfaces (`Light.drainFolds`). Income from planet glow.
 - **Where sky pieces come from.** Undecided. `SkyGame.grant` exists so either dives or glow can award them; the stub starts with Comet 2, Moon 2, Belt 1, Rings 1, Sun 0, Dust 0, matching the mock.
 - **Budgets.** 236x200 grid (twice the mock's 118x100), 20 ticks/s, 350 KB gzipped JS are starting numbers, not measured ones.
+
+## Sound
+
+`platform/audio` is a WebAudio synth with no audio files. It starts on the first touch, and the bedroom has a SOUND ON/OFF chip.
+- **Clock:** the universe pulse. Each pulse cycle is 8 steps, and each screen has its own pattern of which steps sound (music-box notes in the Box, thumps and arpeggios in the dive, kicks and hats in battle).
+- **Drone:** tuned from the pulse rate. Its filter opens and closes with the pulse phase.
+- **Pause:** pausing the planet clock stops the beat, because the pulse stops.
+
+## Zoom
+
+The planet surface zooms from 1x to 10x: pinch, mouse wheel, or the + and − buttons. In Watch mode, drag to pan. Tools work at any zoom, and strike tools fire on release so a pinch never triggers one.
+
+Above about 1.5x the renderer draws detail smaller than a sim cell: rounded slopes and droplets, 4x4 grain per cell, rock cracks, water ripples, swaying moss blades, people with heads and legs, brick walls and framed windows. The sim grid itself stays 236x200.
+
+## First person
+
+First person is only available through a body. Take one with the Body tool, then zoom in past 6x or press Eyes, and you see through it. If the body dies you are thrown back to the map. The same sim cells are drawn in 3D:
+- **Terrain:** each column's surface gives the height and material. The slice is extruded into depth as a valley that bends and rises away from it.
+- **Things on it:** houses (brick walls, gable roofs, windows lit at night), towers, bonfires and people stand where the sim has them. Water reflects the sky.
+- **Sky and light:** the sun, moons, rings, stars, clouds, rain and snow match the 2D view. The sun casts soft shadows, and village fires light the ground at night.
+- **Controls:** drag to look and hold WALK to move. Tap to use the selected tool where you look. The − button rises back to the map.
+
+It is ray-marched in one shader (`render/planet/first-person.ts`) into a reduced-resolution target, then scaled up.
+
+## Merging
+
+Any two things merge, and the result is always something new (`game/merge`, pure and seeded):
+- **Universe + universe:** a child universe that takes after one parent's laws. Both parents are spent, and their stats combine.
+- **Universe + sky piece:** the universe is reborn under that piece's sign (comet: cold fire, moon: salt tide, and so on).
+- **Sky piece + sky piece:** two of a third kind, from a 21-entry table.
+- **Village + village:** the Merge tool on a planet joins the two villages nearest your touch into one new people. If their faiths differed, the new people take a third faith.
+
+Merge universes and pieces from the MERGE chip in the Box.
+
+## Effects
+
+`audio.sfx(name)` plays a synthesised effect for every tool, cosmic act, dive fold, catch, landing, battle hit, heal, win, loss, merge, footstep and button. `ui/kit` adds spark bursts, screen shake and flashes.
+
+## The body and the people
+
+**Body actions** appear while you have a body:
+- **Strike:** fells the two nearest attackers. The rest flee, and the village fears you more.
+- **Preach:** those near sit and listen, and enlightenment grows.
+- **Gift:** food and joy for the nearest village, paid for with your own health.
+- **Shine:** the wise kneel and the rest flee.
+- **Rest:** mends you when no one is striking.
+
+**Villagers** have layered routines:
+- **Work:** they walk out, work a while, and carry the harvest home on their heads.
+- **Idle time:** they stop to talk with neighbours.
+- **Festivals:** they dance by the fire.
+- **Night:** they sleep through the deep night, while lamp-bearers patrol.
+- **Around a body:** they flee, listen, watch, kneel or attack.
+
+**Drawing:** people are animated sprites (`render/planet/people.ts`). Each one eases toward its sim cell by stable id, so walking is smooth. Each role has its own pose: swinging legs, a raised club, a load on the head, kneeling, dancing, fishing. The same sprites appear on the map and as depth-tested billboards in first person.

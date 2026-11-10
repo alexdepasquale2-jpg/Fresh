@@ -22,6 +22,8 @@ export const factory: BoxFactory = () => {
     },
     recordDepth: (i, d) => bump(i, (e) => ({ ...e, stats: { ...e.stats, deepestFold: Math.max(e.stats.deepestFold, d) } })),
     recordTended: (i) => bump(i, (e) => ({ ...e, stats: { ...e.stats, worldsTended: e.stats.worldsTended + 1 } })),
+    remove: (i) => { slots[i] = null; },
+    setStats: (i, stats) => bump(i, (e) => ({ ...e, stats: { ...stats } })),
     recordLife: (i, life) => bump(i, (e) => ({ ...e, stats: { ...e.stats, souls: life.souls, era: Math.max(e.stats.era ?? 0, life.era), belief: life.belief, enlightenment: Math.max(e.stats.enlightenment ?? 0, life.enlightenment) } })),
     recordGlow: (i, l) => bump(i, (e) => ({ ...e, stats: { ...e.stats, lightFromGlow: e.stats.lightFromGlow + l } })),
     snapshot: () => slots.map((s) => (s ? { ...s, stats: { ...s.stats } } : null)),

@@ -4,7 +4,7 @@ import type { ScreenFactory, AppContext } from '@/contracts/app';
 import type { Fighter, BattleAction } from '@/contracts/battle';
 import { SKY_PIECE_KINDS } from '@/contracts/sky';
 import type { FoldNode } from '@/contracts/fold';
-import { el, button, backChip, label, narration, tag, lightPips, glyphChar } from '@/ui/kit';
+import { el, button, backChip, label, narration, tag, lightPips, glyphChar, shake, burst, flash } from '@/ui/kit';
 
 const team = (c: AppContext): Fighter[] =>
   c.box.slots()
@@ -75,7 +75,18 @@ const battle: ScreenFactory = () => {
         const me = b.mine[b.myActive]!, them = b.theirs[b.theirActive]!;
         const spec = c.universes.fromSerial(me.serialNumber);
         if (!bg || bg.spec.serialNumber !== spec.serialNumber) { const addr = c.fold.root(spec); bg = { spec, addr, children: c.fold.childrenOf(addr) }; }
-        const act = (a: BattleAction, target?: number) => () => { c.battle = c.battles.act(c.battle!, a, target); after(); };
+        const act = (a: BattleAction, target?: number) => () => {
+          const before = c.battle!;
+          c.battle = c.battles.act(before, a, target);
+          const now = c.battle;
+          const crit = now.log.slice(-4).some((l) => l.text.includes('layers down'));
+          c.audio.sfx(now.outcome === 'won' ? 'win' : now.outcome === 'lost' ? 'lose' : a === 'shine' ? 'heal' : a === 'swap' ? 'place' : crit ? 'crit' : 'strike');
+          after();
+          const lost = (x: typeof now, side: 'mine' | 'theirs', i: number) => (before[side][i]?.hp ?? 0) - (x[side][i]?.hp ?? 0);
+          if (a !== 'shine' && a !== 'swap') { shake(root, crit); burst(root, root.clientWidth / 2, 130, crit ? 16 : 8, crit); }
+          if (lost(now, 'mine', before.myActive) > 0) setTimeout(() => shake(root), 180);
+          if (now.outcome === 'won') { flash(root); burst(root, root.clientWidth / 2, 300, 22, true); }
+        };
         const kids: (HTMLElement | null)[] = [
           el('header', { class: 'row' }, backChip('FLEE', () => { c.battle = c.battles.flee(c.battle!); c.battle = null; c.go('outside'); }), label(b.rival.name.toUpperCase())),
           card(them, c, true),

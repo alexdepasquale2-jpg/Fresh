@@ -42,6 +42,7 @@ export interface SimClient {
   incarnate(x: number): void;
   walk(x: number): void;
   ascend(): void;
+  act(action: import('./sim').BodyAction): void;
 }
 
 /** Where the player is in the chain. Set by screens as they navigate. */
@@ -83,6 +84,7 @@ export interface AppContext {
   };
   readonly selection: Selection;
   readonly battles: Battles;
+  readonly merger: import('./merge').Merger;
   /** The battle in progress, kept while you go into a universe to change it. */
   battle: BattleState | null;
   readonly rivalsBeaten: Set<number>;

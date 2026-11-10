@@ -92,6 +92,7 @@ export const createApp = (gl: GlCore, go: (to: ScreenId) => void, persist: () =>
     renderers,
     selection,
     battles: R['game/battle']({ seed: ROOT_SEED }),
+    merger: R['game/merge']({ universes }),
     battle: null,
     rivalsBeaten: new Set<number>(),
     go,

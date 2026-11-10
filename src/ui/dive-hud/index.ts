@@ -3,7 +3,7 @@ import type { ScreenFactory, AppContext } from '@/contracts/app';
 import { SKY_PIECE_KINDS } from '@/contracts/sky';
 import { foldFrame, childAt } from '@/core/fold-layout';
 import { seedToU32 } from '@/core/hash';
-import { el, backChip, lightPips, label, narration, holdButton } from '@/ui/kit';
+import { el, backChip, lightPips, label, narration, holdButton, burst } from '@/ui/kit';
 
 const CAPTURE: Record<string, string> = {
   'no-reliquary': 'No reliquaries left.',
@@ -61,7 +61,8 @@ const dive: ScreenFactory = () => {
         }
         const res = c.dive.throwAt(i);
         message = { text: res.ok ? `Caught ${c.universes.fromSerial(res.serialNumber).name}. It is in the box.` : CAPTURE[res.reason]!, until: t + 2500 };
-        if (res.ok) c.persist();
+        c.audio.sfx(res.ok ? 'catch' : 'deny');
+        if (res.ok) { c.persist(); burst(root, e.clientX - root.getBoundingClientRect().left, e.clientY - root.getBoundingClientRect().top, 14, true); }
       });
       const bar = el('i', { class: 'bar-fill' });
       const bestM = el('i', { class: 'bar-best' });
@@ -87,7 +88,7 @@ const dive: ScreenFactory = () => {
       const pips = ctx.light.view().pips;
       ui.pips.update(pips);
       ui.fold.textContent = `FOLD ${v.depth}`;
-      if (v.depth !== lastDepth) { lastDepth = v.depth; try { navigator.vibrate?.(8); } catch { /* not allowed */ } }
+      if (v.depth !== lastDepth) { lastDepth = v.depth; ctx.audio.sfx('fold', Math.min(1, v.depth / 40)); try { navigator.vibrate?.(8); } catch { /* not allowed */ } }
       ui.rel.textContent = `RELIQUARIES ${v.reliquaries}`;
       const scale = Math.max(40, v.best + 5);
       ui.bar.style.width = `${(v.depth / scale) * 100}%`;
@@ -97,6 +98,7 @@ const dive: ScreenFactory = () => {
         lastGrantDepth = v.depth;
         const kind = SKY_PIECE_KINDS[seedToU32(v.address.pathHash) % SKY_PIECE_KINDS.length]!;
         ctx.sky.grant(kind, 1);
+        ctx.audio.sfx('catch');
         message = { text: `Mote found a ${kind} in the fold.`, until: t + 2500 };
       }
       const say = message && message.until > t ? message.text : v.phase === 'falling' && v.children[v.aim]?.star ? 'Falling into a star…' : v.star && v.phase === 'falling' && v.progress < 500 ? 'A star nearby. Let go to stop, or tap it to fall in.' : v.narration;
@@ -104,6 +106,7 @@ const dive: ScreenFactory = () => {
       ctx.renderers.dive.draw({ dive: v, pulse: ctx.pulse().phase(), lightPips: pips }, dt);
       if (!leaving && v.phase === 'stopped' && v.star) {
         leaving = true;
+        ctx.audio.sfx('land');
         ctx.selection.star = v.star;
         ctx.selection.system = null;
         ctx.selection.planetIndex = 0;
