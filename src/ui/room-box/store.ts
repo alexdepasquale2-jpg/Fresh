@@ -135,3 +135,28 @@ export const ago = (ms: number | undefined): string => {
   return `${Math.floor(m / 1440)} days ago`;
 };
 export const EMPTY_STATS: UniverseStats = { worldsTended: 0, deepestFold: 0, lightFromGlow: 0 };
+
+/* ---------- The collection: recipes found, set rewards paid, what has ever been held. ---------- */
+export const COLLECT_KEY = 'sallow-box-recipes';
+export interface Collection {
+  /** Recipe ids found by merging. */
+  found: string[];
+  /** Set ids whose reward has been paid. */
+  paid: string[];
+  /** Law set ids ever held. */
+  laws: string[];
+  /** Rarity -> how many different universes of it have ever been held. */
+  seen: Record<string, number>;
+  /** Serials already counted in `seen` (the newest 400). */
+  serials: number[];
+  /** Universes made by merging. */
+  made: number;
+}
+const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+export const loadCollection = (): Collection => {
+  const r = read<Partial<Collection>>(COLLECT_KEY, {});
+  const seen: Record<string, number> = {};
+  if (r.seen && typeof r.seen === 'object') for (const [k, v] of Object.entries(r.seen)) if (typeof v === 'number' && v > 0) seen[k] = Math.floor(v);
+  return { found: strs(r.found), paid: strs(r.paid), laws: strs(r.laws), seen, serials: Array.isArray(r.serials) ? r.serials.filter((x): x is number => typeof x === 'number') : [], made: typeof r.made === 'number' && r.made > 0 ? Math.floor(r.made) : 0 };
+};
+export const saveCollection = (col: Collection) => write(COLLECT_KEY, { ...col, serials: col.serials.slice(-400) });
