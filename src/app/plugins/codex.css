@@ -1,0 +1,49 @@
+/* Codex, Deeds and Tally pages (inside the hub sheet, which scrolls). */
+.cx-page { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
+.cx-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.cx-tab { position: relative; min-height: var(--touch); min-width: 0; padding: 0 2px; background: var(--panel); border: 2px solid var(--line-dim); color: var(--ink-muted); font: 600 11px var(--font-ui); letter-spacing: .04em; text-transform: uppercase; cursor: pointer; touch-action: manipulation; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cx-tab[aria-selected='true'] { background: var(--raised); border-color: var(--glow); color: var(--ink-bright); }
+.cx-tab.has-new::after { content: ''; position: absolute; right: 4px; top: 4px; width: 6px; height: 6px; background: var(--glow); }
+.cx-head, .cx-sec { display: flex; align-items: baseline; justify-content: space-between; gap: var(--gap); }
+.cx-sec { margin-top: 6px; padding-bottom: 2px; border-bottom: 1px solid var(--line-dim); }
+.cx-count { color: var(--gold); font: 600 12px var(--font-ui); letter-spacing: .08em; white-space: nowrap; }
+.cx-list { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cx-card { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 84px; }
+.cx-slim { flex-direction: row; align-items: baseline; justify-content: space-between; gap: var(--gap); flex-wrap: wrap; contain-intrinsic-size: auto 40px; }
+.cx-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cx-grow { flex: 1; min-width: 0; }
+.cx-name { display: block; color: var(--ink-bright); font: 600 14px var(--font-ui); letter-spacing: .04em; overflow-wrap: anywhere; }
+.cx-sub { display: block; color: var(--ink-muted); font: 400 11px var(--font-ui); letter-spacing: .08em; text-transform: uppercase; }
+.cx-line { margin: 0; color: var(--ink); font: 400 12px/1.35 var(--font-ui); overflow-wrap: anywhere; }
+.cx-say { margin: 0; color: var(--ink); font: italic 15px/1.3 var(--font-voice); overflow-wrap: anywhere; }
+.cx-glyph { flex: none; width: var(--touch); height: var(--touch); display: grid; place-items: center; border: 2px solid var(--line); background: var(--raised); color: var(--glow); font: 600 20px var(--font-ui); }
+.cx-swatch { display: flex; height: 8px; border: 1px solid var(--line-dim); }
+.cx-swatch i { flex: 1; }
+.cx-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.cx-new { margin-left: 6px; padding: 0 4px; border: 1px solid var(--glow); color: var(--glow); font: 600 9px var(--font-ui); font-style: normal; letter-spacing: .1em; text-transform: uppercase; vertical-align: 2px; }
+.cx-unknown { border-style: dashed; border-color: var(--line-dim); background: transparent; }
+.cx-unknown .cx-name, .cx-unknown b { color: var(--ink-off); letter-spacing: .12em; }
+.cx-unknown .cx-say, .cx-unknown small { color: var(--ink-off); }
+.cx-person { margin-top: 2px; padding: 4px 0 0 8px; border-left: 2px solid var(--line); }
+.cx-person b { color: var(--gold); font: 600 12px var(--font-ui); letter-spacing: .04em; }
+.cx-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.cx-tile { display: flex; flex-direction: column; gap: 2px; padding: 8px; min-width: 0; background: var(--panel); border: 1px solid var(--line); }
+.cx-tile b { color: var(--ink-bright); font: 600 12px var(--font-ui); letter-spacing: .06em; text-transform: uppercase; overflow-wrap: anywhere; }
+.cx-tile small { color: var(--ink-muted); font: italic 13px/1.25 var(--font-voice); }
+.cx-dot { width: 100%; height: 6px; background: var(--line-dim); }
+.cx-bar { height: 8px; border: 1px solid var(--line); background: var(--bg); }
+.cx-bar i { display: block; height: 100%; background: var(--glow); }
+.cx-progress { display: flex; flex-direction: column; gap: 6px; padding: 10px; background: var(--panel); border: 2px solid var(--line); }
+.cx-pct { color: var(--glow); font: 600 28px/1 var(--font-ui); min-width: 3ch; }
+.cx-medal { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border: 2px solid var(--line); font: 600 16px var(--font-ui); }
+.cx-bronze .cx-medal { color: var(--ink-muted); border-color: var(--line); }
+.cx-silver .cx-medal { color: var(--ink-bright); border-color: var(--ink-muted); }
+.cx-gold .cx-medal { color: var(--bg); background: var(--gold); border-color: var(--gold); }
+.cx-deed { contain-intrinsic-size: auto 72px; }
+.cx-locked .cx-medal { color: var(--ink-off); background: transparent; border-color: var(--line-dim); }
+.cx-locked .cx-name { color: var(--ink-muted); }
+.cx-claim { align-self: stretch; min-height: var(--touch); border-color: var(--glow); color: var(--glow); }
+.cx-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.cx-stat { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; min-width: 0; background: var(--panel); border: 1px solid var(--line); }
+.cx-stat b { color: var(--ink-bright); font: 600 18px var(--font-ui); overflow-wrap: anywhere; }
+.cx-stat span { color: var(--ink-muted); font: 400 11px var(--font-ui); letter-spacing: .08em; text-transform: uppercase; }
