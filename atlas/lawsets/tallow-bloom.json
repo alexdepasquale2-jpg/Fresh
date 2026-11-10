@@ -1,0 +1,162 @@
+{
+  "id": "tallow-bloom",
+  "name": "Tallow bloom",
+  "tags": [
+    "TALLOW",
+    "BLOOM"
+  ],
+  "pulseMilliHz": 700,
+  "hue": 40,
+  "materials": [
+    {
+      "id": 0,
+      "name": "empty",
+      "kind": "empty",
+      "color": 0,
+      "density": 0
+    },
+    {
+      "id": 1,
+      "name": "stone",
+      "kind": "solid",
+      "color": 4,
+      "density": 250
+    },
+    {
+      "id": 2,
+      "name": "sand",
+      "kind": "powder",
+      "color": 6,
+      "density": 150
+    },
+    {
+      "id": 3,
+      "name": "water",
+      "kind": "liquid",
+      "color": 11,
+      "density": 100
+    },
+    {
+      "id": 4,
+      "name": "moss",
+      "kind": "life",
+      "color": 15,
+      "density": 200
+    },
+    {
+      "id": 5,
+      "name": "steam",
+      "kind": "gas",
+      "color": 9,
+      "density": 5
+    },
+    {
+      "id": 6,
+      "name": "tallow",
+      "kind": "liquid",
+      "color": 7,
+      "density": 130
+    },
+    {
+      "id": 7,
+      "name": "flame",
+      "kind": "fire",
+      "color": 13,
+      "density": 2
+    }
+  ],
+  "reactions": [
+    {
+      "a": "moss",
+      "b": "water",
+      "becomesA": "moss",
+      "becomesB": "moss",
+      "chance": [
+        1,
+        60
+      ]
+    },
+    {
+      "a": "water",
+      "b": "empty",
+      "becomesA": "steam",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        400
+      ],
+      "needs": {
+        "key": "warmth",
+        "min": 30
+      }
+    },
+    {
+      "a": "steam",
+      "b": "empty",
+      "becomesA": "water",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        200
+      ]
+    },
+    {
+      "a": "moss",
+      "b": "empty",
+      "becomesA": "moss",
+      "becomesB": "moss",
+      "chance": [
+        1,
+        300
+      ],
+      "needs": {
+        "key": "nightLight",
+        "min": 20
+      }
+    },
+    {
+      "a": "moss",
+      "b": "sand",
+      "becomesA": "tallow",
+      "becomesB": "sand",
+      "chance": [
+        1,
+        800
+      ]
+    },
+    {
+      "a": "tallow",
+      "b": "flame",
+      "becomesA": "flame",
+      "becomesB": "flame",
+      "chance": [
+        1,
+        4
+      ]
+    },
+    {
+      "a": "flame",
+      "b": "empty",
+      "becomesA": "empty",
+      "becomesB": "empty",
+      "chance": [
+        1,
+        25
+      ]
+    },
+    {
+      "a": "tallow",
+      "b": "empty",
+      "becomesA": "tallow",
+      "becomesB": "flame",
+      "chance": [
+        1,
+        3000
+      ],
+      "needs": {
+        "key": "impacts",
+        "min": 20
+      }
+    }
+  ]
+}

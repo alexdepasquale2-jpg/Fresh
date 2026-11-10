@@ -28,6 +28,7 @@ export const createSimClient = (deps: { skyRules: SkyRules; sky: SkyGame; clock:
       };
       planet = p;
       latest = null;
+      busy = false;
       send({ type: 'open', universe, planet: p });
     },
     close: () => {

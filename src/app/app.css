@@ -10,3 +10,22 @@
 .screen .surface-slot { height: 300px; }
 .screen h1 { margin: 0; }
 .screen p { margin: 0; }
+.screen .row.start { justify-content: flex-start; }
+.screen .row.nowrap { flex-wrap: nowrap; }
+.screen .row.nowrap > * { flex: 1; }
+.screen .col.right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.screen .floor { cursor: pointer; }
+.screen .hint { text-align: center; }
+.k-title.small { font-size: 18px; }
+.mote-card { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 2px dashed var(--line); }
+.mote-dot { width: 14px; height: 14px; background: var(--glow); box-shadow: 0 0 12px var(--glow); }
+.depth-bar { position: relative; height: 6px; border: 1px solid var(--line-dim); }
+.depth-bar .bar-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--glow); }
+.depth-bar .bar-best { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--gold); }
+.chronicle { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; flex: 1; overflow: hidden; }
+.chronicle li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.chronicle .k-narration { font-size: 14px; display: inline; }
+.chronicle small { width: 100%; font: italic 12px var(--font-voice); color: var(--ink-muted); }
+.screen .surface-slot { height: 240px; flex: none; }
+.screen .detail .k-narration { font-size: 14px; }
+.screen .tray > * { flex: 1; min-width: 0; }
