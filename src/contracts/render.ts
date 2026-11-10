@@ -80,6 +80,8 @@ export interface PlanetRenderView {
   readonly modifiers: import('./sky').SurfaceModifiers;
   /** The generated sky (star, sibling worlds, each moon). Without it the sky falls back to piece counts. */
   readonly heavens?: import('./sky').Heavens;
+  /** The planet being drawn (seed, biome, land form, gravity, tidal lock). Lets the renderer tell two worlds of one universe apart. */
+  readonly planet?: import('./system').PlanetSpec;
   readonly pulse: Fx;
   /** Camera: centre in grid cells and zoom (1 shows the whole world). Above ~1.5 the renderer draws sub-cell detail. */
   readonly view?: {

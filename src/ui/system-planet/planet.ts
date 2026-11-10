@@ -988,6 +988,7 @@ export const planet: ScreenFactory = () => {
         universe: ctx.selection.universe, grid: f.grid, civ: f.civ, env: f.env, sky,
         modifiers: ctx.skyRules.effects(sky, planetSpec), pulse: ctx.pulse().phase(),
         heavens: heavens ?? undefined,
+        planet: planetSpec,
         rect: { x: sr.left - cr.left, y: sr.top - cr.top, w: sr.width, h: sr.height },
         view,
         quality: ctx.perf.resolutionScale(),
