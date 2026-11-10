@@ -1,0 +1,33 @@
+{
+  "name": "sallow",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "e2e": "playwright test --trace off",
+    "atlas": "tsx tools/atlas/cli.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^22.20.5",
+    "eslint": "^9.39.5",
+    "globals": "^17.14.0",
+    "tsx": "^4.23.15",
+    "typescript": "5.7",
+    "typescript-eslint": "^8.72.2",
+    "vite": "^6.4.6",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^3.2.7"
+  },
+  "dependencies": {
+    "idb-keyval": "^6.3.0",
+    "zod": "^3.25.76"
+  }
+}

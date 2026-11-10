@@ -1,0 +1,33 @@
+/* SALLOW design tokens. The only colours and fonts units may use. See docs/DESIGN.md. */
+@font-face { font-family: 'Pixelify Sans'; font-weight: 400; font-display: swap; src: url('/fonts/pixelify-sans-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Pixelify Sans'; font-weight: 600; font-display: swap; src: url('/fonts/pixelify-sans-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'IM Fell English'; font-style: normal; font-display: swap; src: url('/fonts/im-fell-english-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'IM Fell English'; font-style: italic; font-display: swap; src: url('/fonts/im-fell-english-latin-400-italic.woff2') format('woff2'); }
+
+:root {
+  --bg: #17140c;
+  --panel: #231f12;
+  --raised: #2e2a18;
+  --line: #6f6535;
+  --line-dim: #3d3822;
+  --ink: #e9dd9a;
+  --ink-bright: #f6f0c8;
+  --ink-muted: #b3a868;
+  --ink-off: #8a7f4e;
+  --gold: #c9bb62;
+  --glow: #bfeedd;
+
+  --font-ui: 'Pixelify Sans', ui-monospace, monospace;
+  --font-voice: 'IM Fell English', Georgia, serif;
+
+  --touch: 44px;
+  --btn-primary: 56px;
+  --gap: 8px;
+  --pad: 16px;
+  --screen-w: 390px;
+  --screen-h: 844px;
+}
+
+* { box-sizing: border-box; border-radius: 0; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--font-ui); overscroll-behavior: none; }
+body { -webkit-tap-highlight-color: transparent; user-select: none; touch-action: none; }
