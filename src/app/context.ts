@@ -57,6 +57,11 @@ export const createApp = (gl: GlCore, go: (to: ScreenId) => void, persist: () =>
       light.addGlow(whole);
       box.recordGlow(box.selected(), whole);
     }
+    // What a universe's watched world has become is what it fights with.
+    const civ = f.civ;
+    const bestEnl = civ.villages.reduce((n, v) => Math.max(n, v.enlightenment), 0);
+    const faith = civ.villages[0]?.belief ?? 'none';
+    box.recordLife(box.selected(), { souls: civ.souls, era: civ.era, belief: faith, enlightenment: bestEnl });
     bus.emit('sim:frame', { tick: f.tick });
   };
   const renderers = { dive: R['render/dive'](), system: R['render/system'](), planet: R['render/planet'](), room: R['render/room']() };
@@ -86,6 +91,9 @@ export const createApp = (gl: GlCore, go: (to: ScreenId) => void, persist: () =>
     perf: R['platform/perf'](),
     renderers,
     selection,
+    battles: R['game/battle']({ seed: ROOT_SEED }),
+    battle: null,
+    rivalsBeaten: new Set<number>(),
     go,
     persist,
   };
@@ -93,7 +101,8 @@ export const createApp = (gl: GlCore, go: (to: ScreenId) => void, persist: () =>
   const rb = R['ui/room-box']();
   const dh = R['ui/dive-hud']();
   const sp = R['ui/system-planet']();
-  const screens: Record<ScreenId, () => Screen> = { bedroom: rb.bedroom, box: rb.box, dive: dh.dive, system: sp.system, planet: sp.planet };
+  const bt = R['ui/battle']();
+  const screens: Record<ScreenId, () => Screen> = { bedroom: rb.bedroom, box: rb.box, dive: dh.dive, system: sp.system, planet: sp.planet, outside: bt.outside, battle: bt.battle };
 
   let screen: ScreenId = 'bedroom';
   bus.on('navigate', ({ to }) => void (screen = to));
@@ -110,6 +119,7 @@ export const createApp = (gl: GlCore, go: (to: ScreenId) => void, persist: () =>
       sky: sky.snapshot(),
       clock: clock.snapshot(),
       savedAtMs: Date.now(),
+      rivalsBeaten: [...ctx.rivalsBeaten],
     }),
     restore: (s) => {
       box.restore(s.box);
@@ -117,6 +127,7 @@ export const createApp = (gl: GlCore, go: (to: ScreenId) => void, persist: () =>
       light.restore(s.light);
       sky.restore(s.sky);
       clock.restore(s.clock);
+      for (const id of s.rivalsBeaten ?? []) ctx.rivalsBeaten.add(id);
     },
   };
 };

@@ -13,6 +13,7 @@ import type { LightFactory, BoxFactory, DiveFactory } from './game';
 import type { ScreenFactory } from './app';
 import type { SaveStoreFactory, AudioFactory, InputFactory, EdgeVoiceFactory, PerfFactory } from './platform';
 import type { Atlas, LawSet } from './atlas';
+import type { BattlesFactory } from './battle';
 
 export interface TimebaseFactory {
   clock: ClockFactory;
@@ -58,6 +59,8 @@ export interface UnitFactories {
   'platform/input': InputFactory;
   'platform/edge-voice': EdgeVoiceFactory;
   'platform/perf': PerfFactory;
+  'game/battle': BattlesFactory;
+  'ui/battle': () => { outside: ScreenFactory; battle: ScreenFactory };
 }
 
 /**

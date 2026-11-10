@@ -9,7 +9,7 @@ import { ENGINE, FIELD, ROLE } from '@/contracts/sim';
 import { FULLSCREEN_VS } from '@/render/gl';
 import { FX_ONE } from '@/core/fixed';
 
-const O = { person: 1, wall: 2, roof: 3, window: 4, smoke: 5, rain: 6, snow: 7, lamp: 8, bonfire: 9, tower: 10, launch: 11, priest: 12, travel: 13 } as const;
+const O = { person: 1, wall: 2, roof: 3, window: 4, smoke: 5, rain: 6, snow: 7, lamp: 8, bonfire: 9, tower: 10, launch: 11, priest: 12, travel: 13, avatar: 14, attack: 15 } as const;
 const KIND = { empty: 0, solid: 1, powder: 2, liquid: 3, gas: 4, fire: 5, life: 6 } as const;
 
 const FS = `#version 300 es
@@ -137,6 +137,8 @@ void main(){
     else if (ov == 9u) { col = mix(pal(13), pal(9), noise(vec2(gp.x, u_time * 8.0))); emissive = 1.0; }
     else if (ov == 10u) col = pal(3) * 1.3 * amb;
     else if (ov == 11u) { col = pal(10) * 2.0; emissive = 1.0; }
+    else if (ov == 14u) { col = mix(pal(9), pal(10), 0.5 + 0.5 * sin(u_time * 6.0)) * 1.6; emissive = 1.0; }
+    else if (ov == 15u) col = mix(pal(13), pal(14), float(g.y & 1)) * (0.5 + 0.5 * amb);
   }
   // village light halos at night, breathing with the pulse
   float glow = 0.0;
@@ -286,8 +288,9 @@ export const factory: PlanetRendererFactory = () => {
       const pp = v.civ.people;
       for (let i = 0; i < v.civ.peopleCount; i++) {
         const x = pp[i * 4]!, y = pp[i * 4 + 1]!, role = pp[i * 4 + 2]!;
-        const code = role === ROLE.lamp ? O.lamp : role === ROLE.pray ? O.priest : role === ROLE.travel ? O.travel : O.person;
-        put(x, y, O.person);
+        const code = role === ROLE.lamp ? O.lamp : role === ROLE.pray || role === ROLE.kneel ? O.priest : role === ROLE.travel ? O.travel : role === ROLE.attack ? O.attack : O.person;
+        put(x, y, role === ROLE.attack ? O.attack : O.person);
+        if (role === ROLE.kneel) { put(x, y - 1, O.priest); continue; }
         put(x, y - 1, code === O.person ? O.person : code);
       }
       if (env.rain > 0) {
@@ -303,6 +306,12 @@ export const factory: PlanetRendererFactory = () => {
           put(xx, y, env.snowing ? O.snow : O.rain);
           if (!env.snowing) put(xx, y - 1, O.rain);
         }
+      }
+      const av = v.civ.avatar;
+      if (av) {
+        for (let j = 0; j < 4; j++) put(av.x, av.y - j, O.avatar);
+        put(av.x - 1, av.y - 2, O.avatar); put(av.x + 1, av.y - 2, O.avatar);
+        if (nv < 12) { vill.set([av.x, av.y - 2, 10, 1.2 * (av.hp / 100) + 0.3], nv * 4); nv++; }
       }
       upload(tex.over!, W, H, gl.RED_INTEGER, over);
 

@@ -3,8 +3,8 @@
 // them, and a tech era that climbs from huts to star-reaching. People walk the
 // surface: farmers to the moss, fishers to the shore, priests at dusk, lamp-bearers
 // at night, travellers between villages. Feuds, famines, festivals, migrations.
-import type { CivFactory, CivEvent, Village, GridView, Belief, SurfaceEnv, SurfaceEvent } from '@/contracts/sim';
-import { BELIEFS, ENGINE, FIELD, ROLE } from '@/contracts/sim';
+import type { CivFactory, CivEvent, Village, GridView, Belief, SurfaceEnv, SurfaceEvent, Tool } from '@/contracts/sim';
+import { BELIEFS, ENGINE, FIELD, ROLE, SURFACE_TOOLS } from '@/contracts/sim';
 import type { SurfaceModifiers } from '@/contracts/sky';
 import { child, rng } from '@/core/hash';
 import type { Rng } from '@/core/hash';
@@ -13,7 +13,10 @@ type V = {
   id: number; x: number; y: number; souls: number; name: string; tech: number; belief: Belief;
   food: number; mood: number; age: number; scores: number[]; progress: number; wet: number;
   starving: boolean; cold: boolean; lastBurn: number; lastLaunch: number; lastFest?: number; lastMove?: number;
+  enl?: number; lastOmen?: number; sawStranger?: number;
 };
+type A = { x: number; y: number; hp: number; tx: number; hitT: number };
+const DESTRUCTIVE = new Set<Tool>(['fire', 'meteor', 'lightning', 'quake', 'freeze', 'erase', 'cold', 'heat']);
 type P = { x: number; y: number; role: number; home: number; tx: number; wait: number };
 
 const EVAL = 20;
@@ -32,6 +35,10 @@ export const factory: CivFactory = () => {
   let r: Rng = rng({ hi: 1, lo: 1 });
   let ground = new Int16Array(0);
   let surfQ: SurfaceEvent[] = [];
+  let avatar: A | null = null;
+  let pendingEv: CivEvent[] = [];
+  let attackers = 0;
+  let worshippers = 0;
   const peopleBuf = new Int16Array(MAX_PEOPLE * 4);
 
   const at = (g: GridView, x: number, y: number) => (x < 0 || y < 0 || x >= g.width || y >= g.height ? -1 : g.cells[y * g.width + x]!);
@@ -95,11 +102,58 @@ export const factory: CivFactory = () => {
     p.wait = 20 + r.int(60);
   };
 
+  const enl = (v: V) => v.enl ?? 0;
+  // How a village's people meet the stranger: kneel, keep away, or attack.
+  const stance = (v: V | undefined) => (!v ? ROLE.idle : enl(v) >= 100 ? ROLE.kneel : enl(v) >= 50 ? ROLE.watch : ROLE.attack);
+
+  const moveAvatar = (g: GridView) => {
+    if (!avatar) return;
+    if (avatar.x !== avatar.tx && tick % 2 === 0) {
+      const nx = avatar.x + (avatar.tx > avatar.x ? 1 : -1);
+      const ny = ground[nx]! - 1;
+      if (Math.abs(ny - avatar.y) <= 5 && at(g, nx, ny + 1) !== WATER) { avatar.x = nx; avatar.y = ny; }
+      else avatar.tx = avatar.x;
+    }
+    if (ground.length && at(g, avatar.x, avatar.y) !== 0) avatar.y = ground[avatar.x]! - 1;
+    attackers = 0;
+    worshippers = 0;
+    for (const p of people) {
+      const d = Math.abs(p.x - avatar.x);
+      if (p.role === ROLE.attack && d <= 1) attackers++;
+      if (p.role === ROLE.kneel && d <= 3) worshippers++;
+    }
+    if (attackers === 0 && tick % 20 === 0) avatar.hp = Math.min(100, avatar.hp + 1);
+    if (attackers > 0 && tick - avatar.hitT >= 20) {
+      avatar.hitT = tick;
+      avatar.hp -= attackers;
+      if (avatar.hp <= 0) {
+        const v = vs.reduce<V | null>((b, o) => (!b || Math.abs(o.x - avatar!.x) < Math.abs(b.x - avatar!.x) ? o : b), null);
+        if (v) pendingEv.push({ kind: 'slain', tick, villageId: v.id, x: avatar.x, y: avatar.y, belief: v.belief });
+        avatar = null;
+        for (const p of people) if (p.role === ROLE.attack || p.role === ROLE.kneel || p.role === ROLE.watch) { p.role = ROLE.idle; p.wait = 0; }
+      }
+    }
+  };
+
   const movePeople = (g: GridView, day: number) => {
+    moveAvatar(g);
     for (let i = people.length - 1; i >= 0; i--) {
       const p = people[i]!;
+      if (avatar && p.role !== ROLE.travel && Math.abs(p.x - avatar.x) < 45) {
+        const s = stance(vs.find((v) => v.id === p.home));
+        if (s !== ROLE.idle) {
+          p.role = s;
+          const keep = s === ROLE.kneel ? 2 : s === ROLE.watch ? 12 : 0;
+          const side = p.x <= avatar.x ? -1 : 1;
+          p.tx = Math.max(0, Math.min(g.width - 1, avatar.x + side * keep));
+          p.wait = 0;
+        }
+      } else if (p.role === ROLE.attack || p.role === ROLE.kneel || p.role === ROLE.watch) {
+        p.role = ROLE.idle;
+      }
       if (p.wait > 0) { p.wait--; continue; }
       if (p.x === p.tx) {
+        if (p.role === ROLE.attack || p.role === ROLE.kneel || p.role === ROLE.watch) continue;
         if (p.role === ROLE.travel) {
           const dest = vs.find((v) => Math.abs(v.x - p.tx) <= 1);
           const home = vs.find((v) => v.id === p.home);
@@ -145,7 +199,7 @@ export const factory: CivFactory = () => {
       const x = Math.max(2, Math.min(g.width - 3, s.x));
       const y = ground[x]! - 1;
       if (y > 0 && at(g, x, y + 1) !== WATER && vs.length < 12) {
-        const v: V = { id: nextId++, x, y, souls: 10, name: `#${nextId - 1}`, tech: s.tech, belief: s.belief, food: 120, mood: 20, age: 0, scores: BELIEFS.map(() => 0), progress: 0, wet: 0, starving: false, cold: false, lastBurn: -9999, lastLaunch: -99999 };
+        const v: V = { id: nextId++, x, y, souls: 10, name: `#${nextId - 1}`, tech: s.tech, belief: s.belief, food: 120, mood: 20, age: 0, scores: BELIEFS.map(() => 0), progress: 0, wet: 0, starving: false, cold: false, lastBurn: -9999, lastLaunch: -99999, enl: 0 };
         if (s.belief !== 'none') v.scores[BELIEFS.indexOf(s.belief)] = 50;
         vs.push(v);
         ev(events, 'found', v, { belief: v.belief });
@@ -240,6 +294,15 @@ export const factory: CivFactory = () => {
         v.lastLaunch = tick;
         ev(events, 'launch', v);
       }
+      // Enlightenment: high eras, joy, faith, and what they have seen of you.
+      const before = enl(v);
+      v.enl = Math.max(0, Math.min(100, before + (v.tech >= 3 ? 1 : 0) + (v.tech >= 5 ? 1 : 0) + (v.mood > 50 && r.chance(1, 3) ? 1 : 0) + (v.belief === 'sky' && r.chance(1, 4) ? 1 : 0)));
+      if (before < 100 && v.enl >= 100) ev(events, 'enlightened', v, { belief: v.belief });
+      if (avatar && Math.abs(avatar.x - v.x) < 45) {
+        if ((v.sawStranger ?? -99999) < tick - 3200) { v.sawStranger = tick; ev(events, stance(v) === ROLE.kneel ? 'worship' : stance(v) === ROLE.attack ? 'attack' : 'stranger', v, { belief: v.belief }); }
+        if (stance(v) === ROLE.kneel) { v.mood = Math.min(100, v.mood + 2); }
+        else if (stance(v) === ROLE.watch) { v.enl = Math.min(100, v.enl + 1); }
+      }
       // Festivals.
       if (v.mood > 30 && night && v.food > 150 && tick - (v.lastFest ?? -99999) > 6400 && r.chance(1, 40)) {
         v.lastFest = tick; v.mood -= 30; v.food -= 60; ev(events, 'festival', v, { belief: v.belief }); }
@@ -280,7 +343,7 @@ export const factory: CivFactory = () => {
     }
     people = people.filter((p) => p.role === ROLE.travel || vs.some((v) => v.id === p.home));
     const nl = Math.max(0, m.nightLight);
-    glow = Math.floor(vs.reduce((n, v) => n + v.souls * (2 + v.tech) * (v.mood > 0 ? 2 : 1), 0) * (100 + nl) / 6400);
+    glow = Math.floor(vs.reduce((n, v) => n + v.souls * (2 + v.tech) * (v.mood > 0 ? 2 : 1) * (enl(v) >= 100 ? 2 : 1), 0) * (100 + nl) / 6400) + worshippers * 2;
   };
 
   const view = () => {
@@ -290,12 +353,13 @@ export const factory: CivFactory = () => {
       peopleBuf[i * 4] = p.x; peopleBuf[i * 4 + 1] = p.y; peopleBuf[i * 4 + 2] = p.role; peopleBuf[i * 4 + 3] = p.home;
     }
     return {
-      villages: vs.map((v): Village => ({ id: v.id, x: v.x, y: v.y, souls: v.souls, name: v.name, tech: v.tech, belief: v.belief, food: v.food, mood: v.mood })),
+      villages: vs.map((v): Village => ({ id: v.id, x: v.x, y: v.y, souls: v.souls, name: v.name, tech: v.tech, belief: v.belief, food: v.food, mood: v.mood, enlightenment: v.enl ?? 0 })),
       souls: vs.reduce((s, v) => s + v.souls, 0),
       glowPerMinute: glow,
       people: peopleBuf.subarray(0, n * 4),
       peopleCount: n,
       era,
+      avatar: avatar ? { x: avatar.x, y: avatar.y, hp: avatar.hp, attackers, worshippers } : null,
     };
   };
 
@@ -305,6 +369,8 @@ export const factory: CivFactory = () => {
       vs = [];
       people = [];
       pending = surface.villageSites.map((s) => ({ x: s.x, belief: 'none' as Belief, tech: 0 }));
+      avatar = null;
+      pendingEv = [];
       tick = 0;
       nextId = 1;
       glow = 0;
@@ -313,6 +379,8 @@ export const factory: CivFactory = () => {
     step: (ticks, g, m, env, surface) => {
       const events: CivEvent[] = [];
       for (const e of surface) if (surfQ.length < 64) surfQ.push(e);
+      for (const e of pendingEv) events.push(e);
+      pendingEv = [];
       for (let t = 0; t < ticks; t++) {
         tick++;
         if (tick % EVAL === 0) {
@@ -324,6 +392,39 @@ export const factory: CivFactory = () => {
       return events;
     },
     view,
+    apply: (tool, ax) => {
+      const x = Math.round(ax);
+      const near = (rad: number) => vs.filter((v) => Math.abs(v.x - x) <= rad);
+      const push = (kind: CivEvent['kind'], v: V, detail?: number) => pendingEv.push({ kind, tick, villageId: v.id, x: v.x, y: v.y, belief: v.belief, ...(detail !== undefined ? { detail } : {}) });
+      if (tool === 'bless') {
+        for (const v of near(30)) { v.enl = Math.min(100, enl(v) + 12); v.mood = Math.min(100, v.mood + 20); v.food = Math.min(999, v.food + 80); push('blessed', v); }
+      } else if (tool === 'smite') {
+        for (const v of near(20)) { v.souls = Math.max(0, v.souls - Math.max(2, Math.ceil(v.souls * 0.3))); v.mood -= 30; push('smitten', v); }
+        people = people.filter((p) => Math.abs(p.x - x) > 6);
+        for (const v of vs) v.enl = Math.max(0, enl(v) - 15);
+      } else if (tool === 'sow') {
+        pending.unshift({ x, belief: 'none', tech: 0 });
+      } else if (tool === 'whisper') {
+        const v = near(40).sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0];
+        if (v) { v.belief = 'sky'; v.scores[BELIEFS.indexOf('sky')] = 80; v.enl = Math.min(100, enl(v) + 6); push('omen', v, 100); }
+      } else {
+        const bad = DESTRUCTIVE.has(tool);
+        for (const v of near(60)) {
+          if (bad) { v.enl = Math.max(0, enl(v) - 2); v.mood -= 4; v.scores[BELIEFS.indexOf(tool === 'fire' || tool === 'heat' ? 'fire' : tool === 'meteor' || tool === 'quake' ? 'stone' : 'sky')]! += 12; }
+          else { v.mood = Math.min(100, v.mood + 3); if (tool === 'water' || tool === 'rain') v.scores[BELIEFS.indexOf('sea')]! += 6; }
+          if (tick - (v.lastOmen ?? -99999) > 400) { v.lastOmen = tick; push('omen', v, SURFACE_TOOLS.indexOf(tool as never)); }
+        }
+      }
+    },
+    incarnate: (x) => {
+      const cx = Math.max(1, Math.min(Math.max(1, ground.length - 2), Math.round(x)));
+      avatar = { x: cx, y: ground.length ? ground[cx]! - 1 : 0, hp: 100, tx: cx, hitT: tick };
+    },
+    walk: (x) => { if (avatar) avatar.tx = Math.max(1, Math.min(Math.max(1, ground.length - 2), Math.round(x))); },
+    ascend: () => {
+      avatar = null;
+      for (const p of people) if (p.role === ROLE.attack || p.role === ROLE.kneel || p.role === ROLE.watch) { p.role = ROLE.idle; p.wait = 0; }
+    },
     snapshot: () => new TextEncoder().encode(JSON.stringify({ vs, people, pending, tick, nextId, glow, era })),
     restore: (s) => {
       const o = JSON.parse(new TextDecoder().decode(s)) as { vs: V[]; people: P[]; pending: typeof pending; tick: number; nextId: number; glow: number; era: number };

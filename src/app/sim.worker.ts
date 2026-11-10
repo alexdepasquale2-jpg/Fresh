@@ -1,6 +1,8 @@
 /// <reference lib="webworker" />
 /** Sim Worker: owns SurfaceSim, Civ and Chronicle for the open planet. */
 import type { ToWorker, FromWorker } from '@/contracts/worker';
+import { SOUL_TOOLS } from '@/contracts/sim';
+import type { SoulTool, SurfaceTool } from '@/contracts/sim';
 import { factory as sand } from '@/sim/sand';
 import { factory as civF } from '@/sim/civ';
 import { factory as chronicleF } from '@/sim/chronicle';
@@ -51,6 +53,18 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     const events = civ.step(m.ticks, sim.grid(), m.modifiers, sim.env(), surface);
     chronicle.record(events, m.year, planetRef, surface);
     chronicle.explain(m.sky, m.modifiers, m.skySays);
+    post();
+  } else if (m.type === 'tool' && open) {
+    if (!SOUL_TOOLS.includes(m.tool as SoulTool)) sim.apply(m.tool as SurfaceTool, m.x, m.y, m.r);
+    civ.apply(m.tool, m.x, m.y);
+    post();
+  } else if (m.type === 'incarnate' && open) {
+    civ.incarnate(m.x);
+    post();
+  } else if (m.type === 'walk' && open) {
+    civ.walk(m.x);
+  } else if (m.type === 'ascend' && open) {
+    civ.ascend();
     post();
   } else if (m.type === 'close') {
     open = false;

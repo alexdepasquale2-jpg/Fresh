@@ -38,6 +38,10 @@ export const createSimClient = (deps: { skyRules: SkyRules; sky: SkyGame; clock:
       latest = null;
     },
     latest: () => latest,
+    tool: (tool, x, y, r) => { if (planet) worker?.postMessage({ type: 'tool', tool, x, y, r } satisfies ToWorker); },
+    incarnate: (x) => { if (planet) worker?.postMessage({ type: 'incarnate', x } satisfies ToWorker); },
+    walk: (x) => { if (planet) worker?.postMessage({ type: 'walk', x } satisfies ToWorker); },
+    ascend: () => { if (planet) worker?.postMessage({ type: 'ascend' } satisfies ToWorker); },
     step: (ticks) => {
       if (!planet || busy || ticks <= 0) return;
       busy = true;

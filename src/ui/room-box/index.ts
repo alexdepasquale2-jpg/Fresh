@@ -23,6 +23,7 @@ const bedroom: ScreenFactory = () => {
         floor,
         narration(c.box.count() > 7 ? 'The box is heavier than it was.' : 'The PC hums. Mote waits by the box.'),
         button('Open the box', () => c.go('box'), { primary: true, id: 'open-box' }),
+        button('Go outside', () => c.go('outside'), { id: 'go-outside' }),
         el('p', { class: 'k-label hint' }, 'Tap the floor to walk'),
       );
     },

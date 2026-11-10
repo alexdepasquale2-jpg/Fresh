@@ -58,7 +58,7 @@ const dive: ScreenFactory = () => {
       const bestM = el('i', { class: 'bar-best' });
       ui = { fold: label('FOLD 0'), bar, best: bestM, rel: label('RELIQUARIES 3'), say: narration(''), pips: lightPips(c.light.view().pips) };
       root.append(
-        el('header', { class: 'row' }, backChip('SURFACE', () => (c.dive.surface(), c.persist(), c.go('box'))), ui.pips.el),
+        el('header', { class: 'row' }, backChip('SURFACE', () => (c.dive.surface(), c.persist(), c.go('box'))), c.battle?.outcome === 'ongoing' ? backChip('BATTLE', () => (c.dive.surface(), c.go('battle'))) : null, ui.pips.el),
         el('div', { class: 'row' }, ui.fold, ui.rel),
         el('div', { class: 'depth-bar' }, bar, bestM),
         field,

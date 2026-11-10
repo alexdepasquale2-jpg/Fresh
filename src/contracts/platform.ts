@@ -24,12 +24,15 @@ export interface Input {
 export type InputFactory = () => Input;
 
 /* ---------- Save ---------- */
-export const ScreenIdSchema = z.enum(['bedroom', 'box', 'dive', 'system', 'planet']);
+export const ScreenIdSchema = z.enum(['bedroom', 'box', 'dive', 'system', 'planet', 'outside', 'battle']);
 export type ScreenId = z.infer<typeof ScreenIdSchema>;
 const n = z.number().int().min(0);
 const BoxEntrySchema = z.object({
   serialNumber: z.number().int(),
-  stats: z.object({ worldsTended: z.number().int(), deepestFold: z.number().int(), lightFromGlow: z.number().int() }),
+  stats: z.object({
+    worldsTended: z.number().int(), deepestFold: z.number().int(), lightFromGlow: z.number().int(),
+    souls: z.number().int().optional(), era: z.number().int().optional(), belief: z.string().optional(), enlightenment: z.number().int().optional(),
+  }),
 });
 /**
  * Versioned save. Invariant: version is bumped on any shape change and a
@@ -45,6 +48,8 @@ export const SaveStateSchema = z.object({
   sky: z.object({ inventory: z.object({ comet: n, moon: n, belt: n, sun: n, rings: n, dust: n }), skies: z.array(SkyStateSchema) }),
   clock: z.object({ tick: z.number().int(), speed: z.union([z.literal(0), z.literal(1), z.literal(3)]) }),
   savedAtMs: z.number(),
+  /** Rival ids beaten (see contracts/battle.ts). */
+  rivalsBeaten: z.array(z.number().int()).optional(),
 });
 export type SaveState = z.infer<typeof SaveStateSchema>;
 export interface SaveStore {

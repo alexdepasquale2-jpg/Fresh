@@ -9,6 +9,8 @@ import type { GlCore, DiveRenderer, SystemRenderer, PlanetRenderer, RoomRenderer
 import type { Input, SaveStore, Audio, EdgeVoice, Perf, ScreenId } from './platform';
 import type { GridView, CivView, ChronicleEntry, SurfaceEnv } from './sim';
 import type { Clock, Pulse } from './time';
+import type { Battles, BattleState } from './battle';
+import type { Tool } from './sim';
 
 export type { ScreenId };
 
@@ -35,6 +37,11 @@ export interface SimClient {
   latest(): SimFrame | null;
   /** Run ticks with the current sky. Async; latest() updates when done. */
   step(ticks: number): void;
+  /** Touch the open surface with a god tool at grid (x, y), radius r. */
+  tool(tool: Tool, x: number, y: number, r: number): void;
+  incarnate(x: number): void;
+  walk(x: number): void;
+  ascend(): void;
 }
 
 /** Where the player is in the chain. Set by screens as they navigate. */
@@ -75,6 +82,10 @@ export interface AppContext {
     readonly room: RoomRenderer;
   };
   readonly selection: Selection;
+  readonly battles: Battles;
+  /** The battle in progress, kept while you go into a universe to change it. */
+  battle: BattleState | null;
+  readonly rivalsBeaten: Set<number>;
   go(to: ScreenId): void;
   /** Persist now. */
   persist(): void;

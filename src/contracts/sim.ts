@@ -42,7 +42,7 @@ export interface SurfaceEnv {
   readonly lightning: number;
 }
 
-export type SurfaceEventKind = 'impact' | 'flood' | 'drought' | 'freeze' | 'thaw' | 'fire' | 'storm' | 'bloom' | 'blight' | 'ore' | 'lightning';
+export type SurfaceEventKind = 'impact' | 'flood' | 'drought' | 'freeze' | 'thaw' | 'fire' | 'storm' | 'bloom' | 'blight' | 'ore' | 'lightning' | 'quake';
 export interface SurfaceEvent {
   readonly kind: SurfaceEventKind;
   readonly tick: number;
@@ -79,6 +79,8 @@ export interface SurfaceSim {
   grid(): GridView;
   tick(): number;
   env(): SurfaceEnv;
+  /** A god tool touches the surface at (x, y) with radius r (grid cells). */
+  apply(tool: SurfaceTool, x: number, y: number, r: number): void;
   /** Surface events since the last call. */
   drainEvents(): readonly SurfaceEvent[];
   snapshot(): Uint8Array;
@@ -104,10 +106,13 @@ export interface Village {
   readonly food: number;
   /** -100..100 */
   readonly mood: number;
+  /** 0..100. At 100 they understand what you are and will not fear you. */
+  readonly enlightenment: number;
 }
 export type CivEventKind =
   | 'found' | 'grow' | 'split' | 'die' | 'migrate' | 'light'
-  | 'famine' | 'tech' | 'convert' | 'feud' | 'festival' | 'burn' | 'flooded' | 'frozen' | 'launch';
+  | 'famine' | 'tech' | 'convert' | 'feud' | 'festival' | 'burn' | 'flooded' | 'frozen' | 'launch'
+  | 'omen' | 'stranger' | 'attack' | 'slain' | 'worship' | 'enlightened' | 'smitten' | 'blessed';
 export interface CivEvent {
   readonly kind: CivEventKind;
   readonly tick: number;
@@ -119,7 +124,7 @@ export interface CivEvent {
   readonly belief?: Belief;
 }
 /** Person roles in CivView.people. */
-export const ROLE = { idle: 0, farm: 1, fish: 2, pray: 3, travel: 4, lamp: 5 } as const;
+export const ROLE = { idle: 0, farm: 1, fish: 2, pray: 3, travel: 4, lamp: 5, attack: 6, kneel: 7, watch: 8 } as const;
 export interface CivView {
   readonly villages: readonly Village[];
   readonly souls: number;
@@ -130,12 +135,44 @@ export interface CivView {
   readonly peopleCount: number;
   /** Highest tech level reached on this planet. */
   readonly era: number;
+  /** The player's incarnation on this surface, if any. */
+  readonly avatar: Avatar | null;
 }
+
+/** The player walking the surface in a body. */
+export interface Avatar {
+  readonly x: number;
+  readonly y: number;
+  /** 0..100 */
+  readonly hp: number;
+  /** How many villagers are attacking right now. */
+  readonly attackers: number;
+  /** How many villagers are kneeling right now. */
+  readonly worshippers: number;
+}
+
+/**
+ * God tools. Surface tools change the grid (SurfaceSim.apply); soul tools act on
+ * villages (Civ.apply). Every use is seen by the inhabitants as an omen.
+ */
+export type SurfaceTool = 'water' | 'sand' | 'stone' | 'seed' | 'fire' | 'freeze' | 'meteor' | 'rain' | 'quake' | 'lightning' | 'heat' | 'cold' | 'erase';
+export type SoulTool = 'bless' | 'smite' | 'sow' | 'whisper';
+export type Tool = SurfaceTool | SoulTool;
+export const SURFACE_TOOLS: readonly SurfaceTool[] = ['water', 'sand', 'stone', 'seed', 'fire', 'freeze', 'meteor', 'rain', 'quake', 'lightning', 'heat', 'cold', 'erase'];
+export const SOUL_TOOLS: readonly SoulTool[] = ['bless', 'smite', 'sow', 'whisper'];
 /** Villages on the grid. Deterministic like SurfaceSim. Reads the grid, never writes it. */
 export interface Civ {
   init(planet: PlanetSpec, surface: PlanetSurface): void;
   step(ticks: number, grid: GridView, modifiers: SurfaceModifiers, env: SurfaceEnv, surface: readonly SurfaceEvent[]): readonly CivEvent[];
   view(): CivView;
+  /** A soul tool, or the omen of a surface tool, at x. */
+  apply(tool: Tool, x: number, y: number): void;
+  /** Take a body at column x. Replaces any current avatar. */
+  incarnate(x: number): void;
+  /** Walk the avatar toward column x. */
+  walk(x: number): void;
+  /** Leave the body. */
+  ascend(): void;
   snapshot(): Uint8Array;
   restore(snapshot: Uint8Array): void;
 }

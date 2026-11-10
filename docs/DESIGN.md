@@ -32,9 +32,27 @@ Bedroom -> The Box -> Dive -> Solar system -> Planet.
 2. **The Box.** ROOM back chip, title, count; Mote card (Mote never goes in the box); 5x5 slot grid with a glyph per universe; detail for the selected universe: name, serial like No. 3F9A-77, law tags, three stats (worlds tended, deepest fold, light from glow); ENTER and WORLDS n.
 3. **Dive.** Full-bleed fractal of nested rings (each ring holds 1 centre child and 6 around it); SURFACE chip; LIGHT pips; FOLD counter with depth bar and best marker; narration line; RELIQUARIES (3); large round HOLD. Hold to fall, let go to hover, tap a flicker to throw a reliquary, let go near a star to stop.
 4. **Solar system.** DIVE chip, system name, universe and fold; star with up to 4 orbits; selected planet card with placed pieces and one line about the surface; WATCH THE SURFACE; SKY PIECES tray of six tiles with counts (Comet, Moon, Belt, Sun, Rings, Dust). Drag a piece onto an orbit.
-5. **Planet.** SKY chip, planet name, age and year; pixel surface map; THEIR SKY strip; three stats (souls, villages, glow to your light); THEIR CHRONICLE, newest first; pause, 1x, 3x; CHANGE THEIR SKY. **Watch only.**
+5. **Planet.** SKY chip, planet name, age and year; pixel surface map; a palette of god tools; THEIR SKY strip; three stats (souls, villages, glow to your light); villages with faith, era and enlightenment; THEIR CHRONICLE, newest first; pause, 1x, 3x; CHANGE THEIR SKY.
 
-The rule on screen 5, "You only watch here. To change them, change their sky", is the whole interaction model: the player never edits a surface directly. That keeps the sky-to-surface table small and legible.
+The sky is still the main lever: it shapes climate, faith and history. You can also reach in with god tools, from micro to macro:
+- **Paint:** water, sand, stone, seed, erase, fire, freeze, heat and cold.
+- **Strike:** rain, lightning, meteor and quake.
+- **Souls:** bless, whisper, sow and smite.
+- **Body:** take a body on the surface and walk among them.
+
+Every touch is an omen to the inhabitants, and it moves their faith and their fear. Unless a village is fully enlightened, its people attack your body. Half-enlightened villages keep their distance. Enlightened ones kneel, which doubles their glow.
+
+## The bedroom layer: battles
+
+**Go outside** from the bedroom to find other kids with boxes. There are eight rivals, from the twins next door to whoever lives in the lamp, and each one unlocks the next.
+- **Your team** is your three strongest universes, fighting with what their worlds have become:
+  - **Might** comes from souls, era and worlds tended.
+  - **Depth** comes from your deepest fold.
+  - **Radiance** comes from glow and enlightenment.
+  - **Element** comes from the law set: fire > bloom > stone > tide > cold > fire; void is even with all.
+- **Moves:** strike, fold (a depth hit that can crit), shine (heal and ward), and swap.
+- **Go into a universe mid-battle:** the battle waits while you change its sky, bless it or walk in it. When you come back, the fighter has whatever stats its worlds now earn.
+- **Win** and you catch one of their universes into your Box and get sky pieces. **Lose** and you spend a pip of Light.
 
 | Screen | State it needs | Units that own it |
 |---|---|---|
