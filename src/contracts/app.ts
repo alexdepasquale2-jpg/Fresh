@@ -32,7 +32,12 @@ export interface SimFrame {
 }
 /** Main-thread handle on the sim Worker (built in src/app). */
 export interface SimClient {
-  open(universe: UniverseSpec, planet: PlanetSpec): void;
+  /**
+   * Open a world. Worlds persist: one that was stored when last closed is restored and goes on
+   * from that tick (no time is simulated for the real time away). `fresh` starts it over.
+   */
+  open(universe: UniverseSpec, planet: PlanetSpec, opts?: { fresh?: boolean }): void;
+  /** Stores the world, then lets it go. */
   close(): void;
   /** True while this very world is open and has produced a frame. */
   isOpen(universe: UniverseSpec, planet: PlanetSpec): boolean;
@@ -45,6 +50,32 @@ export interface SimClient {
   walk(x: number): void;
   ascend(): void;
   act(action: import('./sim').BodyAction): void;
+  /** True when a snapshot of this world is stored (false until the index has been read at boot). */
+  hasStored?(universe: UniverseSpec, planet: PlanetSpec): boolean;
+  /** What is stored of this world, or null. */
+  storedInfo?(universe: UniverseSpec, planet: PlanetSpec): StoredWorldInfo | null;
+  /** Delete this world's snapshot: "start this world over". If it is open now, open it again to see its first morning. */
+  forget?(universe: UniverseSpec, planet: PlanetSpec): void;
+  /** For the open world: the tick it stood at on its first frame (0 for a fresh one). Null before that frame. */
+  openedTick?(): number | null;
+  /** For the open world: real ms between when it was last stored and when it was opened. Null if it began fresh. */
+  awayMs?(): number | null;
+  /** Cost of the last save and the last restore from the store this session (ms, bytes on disk); null until one happened. */
+  storeStats?(): { saveMs: number | null; restoreMs: number | null; bytes: number | null };
+  /** Store the open world now (it is also stored on close, each minute, and when the page hides). */
+  saveNow?(): void;
+}
+/** What the store knows of one world. */
+export interface StoredWorldInfo {
+  readonly tick: number;
+  readonly souls: number;
+  readonly villages: number;
+  /** True highest era, 0..8. */
+  readonly era: number;
+  /** Real time it was last stored, ms since epoch. */
+  readonly savedAtMs: number;
+  /** Bytes on disk. */
+  readonly bytes: number;
 }
 
 /** Where the player is in the chain. Set by screens as they navigate. */
