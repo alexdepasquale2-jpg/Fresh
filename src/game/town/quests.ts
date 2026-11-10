@@ -148,12 +148,12 @@ export const QUESTS: QuestDef[] = [
   },
   {
     id: 'three', name: 'Company', thread: 'side', giver: 'pip',
-    offer: 'How many have you got in your Box? I am not asking to see. Only, come back when it is three. One is lonely and two is an argument.',
+    offer: 'How many have you got in your Box? I am not asking to see. Only, come back when you have three you have been right to the bottom of. One is lonely and two is an argument.',
     steps: [
-      { hint: 'Hold three universes in your Box.', on: { type: 'cond', need: { fact: ['count', '>=', 3] } }, mark: [84, 57] },
+      { hint: 'Reach the floor of three dives (any of your universes).', on: { type: 'cond', need: { fact: ['floors', '>=', 3] } }, mark: [84, 57] },
       { hint: 'Tell Pip.', on: { type: 'talk', npc: 'pip', say: 'Three. Good. Now they can take sides. Have this, it is my second-best.' } },
     ],
-    reward: { items: [['pip-marble', 1]], sky: [['dust', 2]] }, end: 'Three in the Box. Pip approves.',
+    reward: { items: [['pip-marble', 1]], sky: [['dust', 2]] }, end: 'Three known to the floor. Pip approves.',
   },
   {
     id: 'skim', name: 'Seven Skips', thread: 'side', giver: 'nell',

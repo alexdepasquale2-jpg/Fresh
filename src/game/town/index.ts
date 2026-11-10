@@ -102,7 +102,7 @@ const create = (): Town => {
     if (c.has) { if (typeof c.has === 'string' ? !S.has(st, c.has) : !S.has(st, c.has[0], c.has[1])) return false; }
     if (c.flag && !st.flags[c.flag]) return false;
     if (c.noFlag && st.flags[c.noFlag]) return false;
-    if (c.fact) { const v = facts[c.fact[0]], n = c.fact[2]; if (c.fact[1] === '>=' ? v < n : c.fact[1] === '<' ? v >= n : v !== n) return false; }
+    if (c.fact) { const v = Number(facts[c.fact[0]] ?? 0), n = c.fact[2]; if (c.fact[1] === '>=' ? v < n : c.fact[1] === '<' ? v >= n : v !== n) return false; }
     if (c.found && foundOf(c.found[0]) < c.found[1]) return false;
     if (c.districts !== undefined && st.districts.length < c.districts) return false;
     if (c.beat !== undefined && !facts.beatenIds.includes(c.beat)) return false;
@@ -249,15 +249,18 @@ const create = (): Town => {
 
   /* ---- Finds ---- */
   const finds: Find[] = [];
-  { const used = new Set<number>();
+  { const used = new Set<number>(), base = { tiles: outdoor.baseTiles ?? outdoor.tiles, reach: outdoor.baseReach ?? outdoor.reach };
     for (const k of COLLECT) {
       const r = rng(child(SEED, `find-${k.id}`));
       const allowed = k.districts ? k.districts.map((d) => DISTRICTS.findIndex((x) => x.id === d)) : null;
       for (let n = 0; n < k.count; n++) {
         for (let tries = 0; tries < 4000; tries++) {
           const x = 3 + r.int(W - 6), y = 3 + r.int(H - 6), i = y * W + x;
-          if (!outdoor.reach[i] || !OPEN_GROUND.has(outdoor.tiles[i]!) || used.has(i) || (allowed && !allowed.includes(outdoor.district[i]!))) continue;
-          used.add(i); finds.push({ id: `${k.id}-${n}`, kind: k.id, x, y, taken: false }); break;
+          if (!base.reach[i] || !OPEN_GROUND.has(base.tiles[i]!) || used.has(i) || (allowed && !allowed.includes(outdoor.district[i]!))) continue;
+          used.add(i);
+          // If a later place has since built over the spot, the thing lies on the nearest open tile instead.
+          const p = outdoor.reach[i] && !solidTile(outdoor.tiles[i]!) ? [x, y] as const : nearestOpen(outdoor, x, y);
+          finds.push({ id: `${k.id}-${n}`, kind: k.id, x: p[0], y: p[1], taken: false }); break;
         }
       }
     } }
@@ -331,7 +334,13 @@ const create = (): Town => {
           checkConds();
           return shopScene(shopId, who, `${item(k.item).name}. ${item(k.item).desc}`);
         } };
-      }), { text: 'That is all', pick: () => null }],
+      }), ...(shop.buys ?? []).filter((k) => S.has(st, k.item)).map((k) => ({ text: `Sell ${item(k.item).name} · +${k.price}c (you have ${st.bag[k.item] ?? 0})`, pick: (): Scene => {
+        if (!S.has(st, k.item)) return shopScene(shopId, who, 'You have none left.');
+        S.addItem(st, k.item, -1); st.coins += k.price; dirty = true;
+        emit({ type: 'coins', n: k.price });
+        checkConds();
+        return shopScene(shopId, who, `${k.price} coin${k.price === 1 ? '' : 's'} for the ${item(k.item).name.toLowerCase()}, counted twice.`);
+      } })), { text: 'That is all', pick: () => null }],
     };
   };
   const pickLine = (lines: readonly Line[], id: string): Line | null => {
@@ -358,8 +367,11 @@ const create = (): Town => {
       if (on.choices) {
         return done({ who: a.name, text: on.say, choices: on.choices.map((c) => ({ text: c.text, pick: (): Scene => {
           const pass = c.set?.includes('pass');
-          const got = pass ? advance(q) : '';
-          const after = pass ? checkConds() : null;
+          for (const f of c.set ?? []) if (f !== 'pass') S.setFlag(st, f);
+          const mine = give(c.give);
+          const got = [mine, pass ? advance(q) : ''].filter(Boolean).join(', ');
+          dirty = true;
+          const after = checkConds();
           return { who: a.name, text: withGot(c.say ?? '…', got), look: a.look, ...(after ? { choices: [{ text: '…', pick: () => after }] } : {}) };
         } })) });
       }
@@ -372,6 +384,7 @@ const create = (): Town => {
       return done({ who: a.name, text: q.offer, choices: [
         { text: 'I will.', pick: (): Scene => { startQuest(q); const more = checkConds(); return more ?? say(a.name, q.accept ?? 'Good. I will be here.', a.look); } },
         { text: 'Not now.', pick: (): Scene => say(a.name, 'Then it will keep. Most things do, here.', a.look) },
+        ...(def.shop ? [{ text: 'What do you sell?', pick: (): Scene => shopScene(def.shop!, a.name) }] : []),
       ] });
     }
     // 3. What they have to say.

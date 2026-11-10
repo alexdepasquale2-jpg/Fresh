@@ -43,8 +43,26 @@ export interface Facts {
   bestName: string;
   /** Rival ids beaten. */
   beatenIds: readonly number[];
+  /* Everything below is optional and reads as 0 when absent. Flags are 0 or 1. */
+  /** Most moons hung over one world; two moons over one world; a ringed world. */
+  moons?: number; twoMoons?: number; ringed?: number;
+  /** Named people on the world being watched; villages lost (ever). */
+  named?: number; lost?: number;
+  /** A body has been taken (incarnated) at least once. */
+  body?: number;
+  /** Mirror fragments found. */
+  fragments?: number;
+  /** Universes in the Box that were merged from two others. */
+  merged?: number;
+  /** A boss rival has been beaten. */
+  boss?: number;
+  /** Today's daily duel prize taken; relics held by creatures. */
+  daily?: number; relics?: number;
+  /** Almanac streak in days; deeds claimed. */
+  streak?: number; deeds?: number;
 }
-export type FactKey = 'count' | 'deepest' | 'souls' | 'era' | 'rare' | 'floors' | 'wins' | 'beaten' | 'light' | 'room';
+export type FactKey = 'count' | 'deepest' | 'souls' | 'era' | 'rare' | 'floors' | 'wins' | 'beaten' | 'light' | 'room'
+  | 'moons' | 'twoMoons' | 'ringed' | 'named' | 'lost' | 'body' | 'fragments' | 'merged' | 'boss' | 'daily' | 'relics' | 'streak' | 'deeds';
 
 /** A condition on town state and real game state. Every field given must hold. */
 export interface Cond {
@@ -156,9 +174,11 @@ export interface QuestDef {
 
 export interface ItemDef { id: string; name: string; desc: string; kind: 'key' | 'tool' | 'food' | 'trinket' | 'find' | 'thing'; value?: number }
 export interface ShopDef { id: string; name: string; open: readonly Phase[]; stock: readonly { item: string; price: number; limit?: number }[]; buys?: readonly { item: string; price: number }[] }
-export interface CollectKind { id: string; name: string; one: string; count: number; item: string; districts?: readonly string[]; reward: Reward; says: string }
+export interface CollectKind { id: string; name: string; one: string; count: number; item: string; districts?: readonly string[]; reward: Reward; says: string;
+  /** How it lies on the ground: a palette index (see sprites PAL) and a shape. Default is a small glint. */
+  sprite?: { colour: number; shape?: 'dot' | 'feather' | 'leaf' | 'shard' | 'ring' | 'page' } }
 
-export interface GateDef { id: string; at: readonly [number, number]; w?: number; h?: number; open: Cond; shut: string; look?: 'gate' | 'dog' | 'dark' | 'bar' }
+export interface GateDef { id: string; at: readonly [number, number]; w?: number; h?: number; open: Cond; shut: string; look?: 'gate' | 'dog' | 'dark' | 'bar' | 'brambles' | 'chain' | 'rubble' | 'water' | (string & {}) }
 export interface PlaceDef {
   id: string;
   name: string;

@@ -1,7 +1,7 @@
 // The town renderer: a small 2D canvas, scaled up by whole pixels. Static tiles are pre-rendered in
 // 16x16-tile chunks (ground and over layers); a frame draws at most a few chunks, the visible sprites
 // y-sorted, weather, then the dark with holes cut for lamps and Mote. Nothing is allocated in draw().
-import { T, TILE, GATES, PLACES, DISTRICTS, CELL, type Town, type Actor } from '@/game/town';
+import { T, TILE, GATES, PLACES, DISTRICTS, COLLECT, CELL, type Town, type Actor } from '@/game/town';
 import { isSeen } from '@/game/town';
 import { PAL, drawTile, drawOver, sheet, glow, KID_LOOK, CELL_W, CELL_H, MAP_COL } from './sprites';
 import { createLife } from './life';
@@ -33,6 +33,8 @@ export const createRenderer = (canvas: HTMLCanvasElement, town: Town): Renderer 
   const kidSheet = sheet(KID_LOOK, true);
   const sheets = new Map<string, HTMLCanvasElement>();
   for (const a of town.actors) sheets.set(a.id, sheet(a.look, false));
+  const spriteOf = new Map<string, NonNullable<(typeof COLLECT)[number]['sprite']>>();
+  for (const k of COLLECT) if (k.sprite) spriteOf.set(k.id, k.sprite);
   const order: (Actor | null)[] = new Array<Actor | null>(town.actors.length + 1).fill(null);
   const RAIN = 70, rx = new Float32Array(RAIN), ry = new Float32Array(RAIN);
   let vw = 195, vh = 422, scale = 2, lastT = 0, qLook: Actor['look'] | null = null, qSheet: HTMLCanvasElement | null = null;
@@ -83,6 +85,10 @@ export const createRenderer = (canvas: HTMLCanvasElement, town: Town): Renderer 
         const x = (gt.at[0] + i) * TILE - cx, y = (gt.at[1] + j) * TILE - cy;
         if (x < -16 || y < -16 || x > vw || y > vh) continue;
         if (gt.look === 'dark') { g.fillStyle = PAL[15]; g.fillRect(x, y, 16, 16); }
+        else if (gt.look === 'brambles') { g.fillStyle = PAL[2]; g.fillRect(x, y + 3, 16, 12); g.fillStyle = PAL[3]; g.fillRect(x + 1, y + 2, 6, 5); g.fillRect(x + 8, y + 5, 7, 6); g.fillRect(x + 3, y + 9, 6, 5); g.fillStyle = PAL[1]; g.fillRect(x + 2, y + 6, 12, 1); g.fillRect(x + 5, y + 3, 1, 11); g.fillRect(x + 11, y + 4, 1, 10); g.fillStyle = PAL[12]; g.fillRect(x + 4, y + 5, 1, 1); g.fillRect(x + 10, y + 8, 1, 1); g.fillRect(x + 7, y + 12, 1, 1); g.fillRect(x + 13, y + 6, 1, 1); }
+        else if (gt.look === 'chain') { g.fillStyle = PAL[1]; g.fillRect(x + 1, y + 2, 2, 13); g.fillRect(x + 13, y + 2, 2, 13); g.fillStyle = PAL[6]; for (let b = 2; b < 14; b += 3) g.fillRect(x + b, y + 7 + ((b >> 1) & 1), 2, 2); g.fillStyle = PAL[7]; g.fillRect(x + 7, y + 9, 3, 3); }
+        else if (gt.look === 'rubble') { g.fillStyle = PAL[1]; g.fillRect(x + 1, y + 6, 14, 9); g.fillStyle = PAL[5]; g.fillRect(x + 2, y + 7, 6, 5); g.fillRect(x + 9, y + 9, 5, 5); g.fillStyle = PAL[6]; g.fillRect(x + 5, y + 4, 6, 5); g.fillStyle = PAL[8]; g.fillRect(x + 6, y + 4, 4, 1); }
+        else if (gt.look === 'water') { g.fillStyle = PAL[13]; g.fillRect(x, y, 16, 16); g.fillStyle = PAL[14]; g.fillRect(x + 2 + (((v.t / 600) | 0) & 3), y + 5, 5, 1); g.fillRect(x + 8, y + 11, 4, 1); }
         else if (gt.look === 'bar') { g.fillStyle = PAL[12]; g.fillRect(x, y + 6, 16, 3); g.fillStyle = PAL[9]; g.fillRect(x + 4, y + 6, 4, 3); g.fillRect(x + 12, y + 6, 4, 3); }
         else { g.fillStyle = PAL[1]; g.fillRect(x, y + 3, 16, 2); g.fillRect(x, y + 11, 16, 2); for (let b = 1; b < 16; b += 4) g.fillRect(x + b, y + 1, 2, 14); g.fillStyle = PAL[7]; g.fillRect(x + 7, y + 6, 3, 3); }
       }
@@ -93,10 +99,16 @@ export const createRenderer = (canvas: HTMLCanvasElement, town: Town): Renderer 
       if (f.taken || indoors) continue;
       const x = f.x * TILE - cx, y = f.y * TILE - cy;
       if (x < -16 || y < -16 || x > vw || y > vh) continue;
-      const c = f.kind === 'cap' ? 7 : f.kind === 'feather' ? 9 : f.kind === 'glass' ? 14 : 12;
+      const sp = spriteOf.get(f.kind), shape = sp?.shape ?? (f.kind === 'feather' ? 'feather' : 'dot');
+      const c = sp ? sp.colour & 15 : f.kind === 'cap' ? 7 : f.kind === 'feather' ? 9 : f.kind === 'glass' ? 14 : 12;
       g.fillStyle = PAL[1]; g.fillRect(x + 5, y + 9, 6, 2);
-      g.fillStyle = PAL[c];
-      if (f.kind === 'feather') { g.fillRect(x + 6, y + 5, 2, 5); g.fillRect(x + 8, y + 4, 2, 4); } else g.fillRect(x + 6, y + 6, 4, 3);
+      g.fillStyle = PAL[c]!;
+      if (shape === 'feather') { g.fillRect(x + 6, y + 5, 2, 5); g.fillRect(x + 8, y + 4, 2, 4); }
+      else if (shape === 'leaf') { g.fillRect(x + 5, y + 6, 6, 3); g.fillRect(x + 6, y + 5, 4, 5); g.fillStyle = PAL[1]; g.fillRect(x + 8, y + 5, 1, 5); }
+      else if (shape === 'shard') { g.fillRect(x + 7, y + 3, 2, 7); g.fillRect(x + 6, y + 6, 4, 3); }
+      else if (shape === 'ring') { g.fillRect(x + 5, y + 5, 6, 5); g.fillStyle = PAL[1]; g.fillRect(x + 7, y + 7, 2, 1); }
+      else if (shape === 'page') { g.fillRect(x + 5, y + 4, 6, 7); g.fillStyle = PAL[1]; g.fillRect(x + 6, y + 6, 4, 1); g.fillRect(x + 6, y + 8, 3, 1); }
+      else g.fillRect(x + 6, y + 6, 4, 3);
       if (((v.t / 400 + k) | 0) % 5 === 0 && !v.still) { g.fillStyle = PAL[9]; g.fillRect(x + 9, y + 4, 1, 3); g.fillRect(x + 8, y + 5, 3, 1); }
     }
     if (v.goX >= 0) { const x = v.goX * TILE - cx, y = v.goY * TILE - cy; g.fillStyle = PAL[10]; g.globalAlpha = 0.7; g.fillRect(x + 3, y + 7, 10, 1); g.fillRect(x + 3, y + 12, 10, 1); g.fillRect(x + 2, y + 8, 1, 4); g.fillRect(x + 13, y + 8, 1, 4); g.globalAlpha = 1; }

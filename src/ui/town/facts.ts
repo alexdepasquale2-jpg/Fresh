@@ -32,7 +32,22 @@ export const readFacts = (c: AppContext): Facts => {
   let wins = 0;
   for (const k of Object.keys(L.wins)) { const w = L.wins[k] ?? 0; wins += w; if (w > 0) ids.add(Number(k)); }
   const lv = c.light.view();
-  return { count, deepest, souls, era, rare, floors, wins: Math.max(wins, ids.size), beaten: ids.size, light: lv.pips, lightLow: lv.low, room: slots.length - count, firstName, bestName, beatenIds: [...ids] };
+  // The wider game, read-only and defensively: any of these may be missing on an older save or build.
+  const json = (k: string): Record<string, unknown> => { try { const j = JSON.parse(localStorage.getItem(k) ?? 'null') as unknown; return j && typeof j === 'object' ? (j as Record<string, unknown>) : {}; } catch { return {}; } };
+  const n = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  let moons = 0, ringed = 0, named = 0, merged = 0, boss = 0;
+  try { for (const s of c.sky.snapshot().skies) { let m = 0; for (const p of s.pieces) { if (p === 'moon') m++; else if (p === 'rings') ringed = 1; } moons = Math.max(moons, m); } } catch { /* no skies yet */ }
+  try { const v = (c as unknown as { sim?: { latest?: () => { figures?: readonly unknown[]; civ?: { figures?: readonly unknown[] } } | null } }).sim?.latest?.(); named = v?.figures?.length ?? v?.civ?.figures?.length ?? 0; } catch { /* no world being watched */ }
+  for (const e of slots) if (e && (e as { lineage?: unknown }).lineage) merged++;
+  try { for (const r of c.battles.rivals()) if (r.boss && ids.has(r.id)) boss = 1; } catch { /* no ladder */ }
+  const cx = json('sallow-codex'), tally = (cx.n && typeof cx.n === 'object' ? cx.n : {}) as Record<string, unknown>;
+  const lad = json('sallow-ladder'), daily = lad.daily as { done?: boolean } | undefined;
+  const more = {
+    moons, twoMoons: moons >= 2 ? 1 : 0, ringed, named: Math.max(named, n(tally.crowns) > 0 ? 1 : 0), lost: n(tally.vl), body: n(tally.bodies) > 0 || n(tally.body) > 0 ? 1 : 0,
+    fragments: n(json('sallow-endgame').fragments), merged: Math.max(merged, n(tally.merges)), boss,
+    daily: daily?.done ? 1 : 0, relics: Object.keys(L.held).length, streak: n(json('sallow-almanac').streak), deeds: n(tally.claimed),
+  };
+  return { ...more, count, deepest, souls, era, rare, floors, wins: Math.max(wins, ids.size), beaten: ids.size, light: lv.pips, lightLow: lv.low, room: slots.length - count, firstName, bestName, beatenIds: [...ids] };
 };
 
 export const bindTown = (c: AppContext): void => {

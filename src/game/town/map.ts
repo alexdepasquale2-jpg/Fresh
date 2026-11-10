@@ -87,6 +87,8 @@ export interface TownMap {
   readonly noise: Uint8Array;
   readonly lamps: readonly (readonly [number, number])[];
   readonly doors: readonly { x: number; y: number; label: string }[];
+  /** Tiles and reach as they were before registered places built on the map: seeded scatter is placed against these, so new places never move old finds. */
+  readonly baseTiles?: Uint8Array; readonly baseReach?: Uint8Array;
 }
 
 const SOLID = new Uint8Array(64);
@@ -244,13 +246,24 @@ const build = (): TownMap => {
     path([[45, 130], [40, 130], [40, 127], [24, 127], [24, 131]]); rect(46, 129, 2, 2, T.PLANK);
     path([[36, 142], [14, 142]]); house(12, 137, 5, 4, 2, T.SHED); doors.push({ x: 14, y: 140, label: 'Pump house' }); set(14, 141, T.PATH); }
 
-  // Registered places: benches, signs, stops, and anything they build themselves.
+  // Registered places: benches, signs, stops. Then a snapshot, then anything places build themselves.
   for (const p of PLACES) {
     if (p.stop) set(p.at[0], p.at[1], T.STOP);
     if (p.sign) set(p.at[0], p.at[1], T.SIGN);
     if (p.bench) set(p.at[0], p.at[1], T.BENCH);
-    p.build?.(B);
   }
+  const flood = (out: Uint8Array): void => {
+    const q = new Int32Array(W * H); let qh = 0, qt = 0;
+    q[qt++] = 57 * W + 62; out[57 * W + 62] = 1;
+    while (qh < qt) { const c = q[qh++]!, x = c % W, y = (c / W) | 0; for (let d = 0; d < 4; d++) { const nx = x + (d === 0 ? 1 : d === 1 ? -1 : 0), ny = y + (d === 2 ? 1 : d === 3 ? -1 : 0); if (!inb(nx, ny)) continue; const n = ny * W + nx; if (out[n] || (SOLID[tiles[n]!] && !BASE_GATE.has(n))) continue; out[n] = 1; q[qt++] = n; } }
+  };
+  // The first eight gates are the shipped ones; they count as open ground for the snapshot, as they always did.
+  const BASE_GATE = new Set<number>();
+  GATES.slice(0, 8).forEach((g) => { for (let j = 0; j < (g.h ?? 1); j++) for (let k = 0; k < (g.w ?? 1); k++) BASE_GATE.add((g.at[1] + j) * W + g.at[0] + k); });
+  const baseTiles = tiles.slice(), baseReach = new Uint8Array(W * H);
+  for (const n of BASE_GATE) baseTiles[n] = T.GATE;
+  flood(baseReach);
+  for (const p of PLACES) p.build?.(B);
   GATES.forEach((g, i) => { for (let j = 0; j < (g.h ?? 1); j++) for (let k = 0; k < (g.w ?? 1); k++) { set(g.at[0] + k, g.at[1] + j, T.GATE); gate[(g.at[1] + j) * W + g.at[0] + k] = i + 1; } });
   // Lamps list is rebuilt from tiles so extension lamps count.
   lamps.length = 0;
@@ -264,7 +277,7 @@ const build = (): TownMap => {
     const c = q[qh++]!, x = c % W, y = (c / W) | 0;
     for (let d = 0; d < 4; d++) { const nx = x + (d === 0 ? 1 : d === 1 ? -1 : 0), ny = y + (d === 2 ? 1 : d === 3 ? -1 : 0); if (!inb(nx, ny)) continue; const n = ny * W + nx; if (reach[n] || SOLID[tiles[n]!]) continue; reach[n] = 1; q[qt++] = n; }
   }
-  return { w: W, h: H, tiles, district, gate, reach, noise, lamps, doors };
+  return { w: W, h: H, tiles, district, gate, reach, noise, lamps, doors, baseTiles, baseReach };
 };
 
 /** A reachable, plain tile near (x, y): the nearest by rings. Used for seeded scatter and safe spawns. */
