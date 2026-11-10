@@ -164,10 +164,10 @@ export const factory: SurfaceSimFactory = () => {
     }
   };
 
-  const impact = (m: SurfaceModifiers) => {
-    const x = 4 + ri(W - 8);
+  const impact = (m: SurfaceModifiers, atX = -1, big = 0) => {
+    const x = atX >= 0 ? Math.max(4, Math.min(W - 5, atX)) : 4 + ri(W - 8);
     const y = surfaceY(x);
-    const rad = 3 + ri(3) + (m.impacts > 50 ? 2 : 0);
+    const rad = 3 + ri(3) + (m.impacts > 50 ? 2 : 0) + big;
     for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++) {
       const px = x + dx, py = y + dy;
       if (px < 0 || px >= W || py < 0 || py >= H || dx * dx + dy * dy > rad * rad) continue;
@@ -188,11 +188,11 @@ export const factory: SurfaceSimFactory = () => {
     if (m.nightLight > 0) emit('ore', x, y, rad);
   };
 
-  const strike = () => {
+  const strike = (atX = -1) => {
     // Lightning hits the highest point under the wettest cloud.
     let best = 0;
     for (let c = 1; c < FW; c++) if (hum[c]! > hum[best]!) best = c;
-    const x = Math.min(W - 1, best * FIELD + ri(FIELD));
+    const x = atX >= 0 ? Math.max(0, Math.min(W - 1, atX)) : Math.min(W - 1, best * FIELD + ri(FIELD));
     const y = surfaceY(x);
     if (y >= H - 1) return;
     const i = y * W + x;
@@ -435,6 +435,61 @@ export const factory: SurfaceSimFactory = () => {
     grid: () => view,
     tick: () => tick,
     env: () => env,
+    apply: (tool, ax, ay, r) => {
+      const m = mods ?? { tide: 0, nightLight: 0, impacts: 40, seasons: 0, dimming: 0, warmth: 0, dust: 0 };
+      const x0 = Math.max(0, Math.min(W - 1, Math.round(ax)));
+      const y0 = Math.max(0, Math.min(H - 1, Math.round(ay)));
+      const rad = Math.max(1, Math.min(24, Math.round(r)));
+      const disk = (f: (i: number, c: number, px: number, py: number) => void) => {
+        for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++) {
+          if (dx * dx + dy * dy > rad * rad) continue;
+          const px = x0 + dx, py = y0 + dy;
+          if (px < 0 || px >= W || py < 0 || py >= H) continue;
+          const i = py * W + px;
+          f(i, cells[i]!, px, py);
+        }
+      };
+      const field = (delta: number) => {
+        const fx0 = (x0 / FIELD) | 0, fy0 = (y0 / FIELD) | 0, fr = Math.max(1, (rad / FIELD) | 0) + 1;
+        for (let fy = fy0 - fr; fy <= fy0 + fr; fy++) for (let fx = fx0 - fr; fx <= fx0 + fr; fx++) {
+          if (fx < 0 || fy < 0 || fx >= FW || fy >= FH) continue;
+          const k = fy * FW + fx;
+          temp[k] = Math.max(0, Math.min(255, temp[k]! + delta));
+        }
+      };
+      switch (tool) {
+        case 'water': disk((i, c) => { if (c === 0 && ri(3) === 0) set(i, WATER); }); break;
+        case 'sand': disk((i, c) => { if (c === 0 && ri(3) === 0) set(i, SAND); }); break;
+        case 'stone': disk((i, c) => { if (c === 0 || kind[c] === K.powder) set(i, STONE); }); break;
+        case 'erase': disk((i, c) => { if (c !== 0) set(i, 0); }); break;
+        case 'seed': disk((i, c, px, py) => {
+          if ((c === SAND || c === ASH || c === STONE) && py > 0 && cells[i - W] === 0) set(i, MOSS);
+          else if (c === 0 && py < H - 1 && cells[i + W] === SAND && ri(2) === 0) set(i + W, MOSS);
+          void px;
+        }); break;
+        case 'fire': disk((i, c) => { if ((c === 0 && ri(4) === 0) || c === MOSS || kind[c] === K.life) set(i, FIRE); }); field(30); break;
+        case 'freeze': disk((i, c) => { if (c === WATER) set(i, ICE); else if (c === 0 && ri(6) === 0) set(i, SNOW); else if (c === FIRE) set(i, 0); }); field(-60); break;
+        case 'meteor': impact(m, x0, Math.min(8, rad >> 1)); break;
+        case 'rain': for (let c = Math.max(0, ((x0 - rad) / FIELD) | 0); c <= Math.min(FW - 1, ((x0 + rad) / FIELD) | 0); c++) hum[c] = Math.min(255, hum[c]! + 90); break;
+        case 'lightning': strike(x0); break;
+        case 'heat': field(70); break;
+        case 'cold': field(-70); break;
+        case 'quake': {
+          // Cracks and slides: stone shatters to sand, everything loose jumps.
+          for (let k = 0; k < rad * rad * 3; k++) {
+            const px = x0 + ri(rad * 4 + 1) - rad * 2, py = y0 + ri(rad * 2 + 1) - rad;
+            if (px < 1 || px >= W - 1 || py < 1 || py >= H - 1) continue;
+            const i = py * W + px;
+            if (cells[i] === STONE && ri(3) === 0) set(i, SAND);
+            else if (kind[cells[i]!] === K.powder || kind[cells[i]!] === K.liquid) swap(i, i + (ri(2) ? 1 : -1) - W);
+          }
+          for (let cy = 0; cy < CY; cy++) for (let cx = 0; cx < CX; cx++) next[cy * CX + cx] = 1;
+          emit('quake', x0, y0, rad);
+          break;
+        }
+      }
+      for (let cy = 0; cy < CY; cy++) for (let cx = 0; cx < CX; cx++) next[cy * CX + cx] = 1;
+    },
     drainEvents: () => {
       const e = events;
       events = [];

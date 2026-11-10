@@ -12,3 +12,4 @@ export * from './platform';
 export * from './app';
 export * from './units';
 export * from "./worker";
+export * from './battle';

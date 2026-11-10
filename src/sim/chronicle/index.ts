@@ -24,6 +24,15 @@ const EVENT: Partial<Record<Kind, string[]>> = {
   tech: ['%v learned %t.', '%v came into the age of %t.'],
   launch: ['From %v a small light rose and did not come down.', '%v sent a lamp into the sky.'],
   light: ['%v sang toward the sky.'],
+  stranger: ['A stranger walked near %v. They kept their distance.', 'In %v they watched a shining stranger and did not know what to do.'],
+  attack: ['A stranger came to %v and they met it with stones.', 'The people of %v drove at a shining stranger with spears.'],
+  slain: ['%v killed the stranger who walked among them.', 'In %v they struck down the thing that came from the sky.'],
+  worship: ['A stranger came to %v and they knelt.', '%v welcomed the one who made their sky.'],
+  enlightened: ['%v understood at last what watches them.', 'The people of %v looked up and knew.'],
+  blessed: ['A warmth settled on %v.', '%v woke to full stores and quiet hearts.'],
+  smitten: ['Death fell on %v from nowhere.', 'Half of %v did not wake.'],
+  omen: ['They saw an omen over %v.'],
+  quake: ['The ground split and shook.', 'The world trembled.'],
   impact: ['A stone fell from the sky.', 'Something struck the world and the ground shook.'],
   storm: ['A great storm came.', 'The clouds broke open.'],
   freeze: ['The seas froze.', 'Ice closed over the water.'],
@@ -44,7 +53,7 @@ const FITS: Partial<Record<Kind, Kind[]>> = {
   frozen: ['freeze', 'storm'],
   convert: ['impact', 'storm', 'lightning', 'freeze', 'flood', 'fire', 'bloom', 'thaw'],
 };
-const LOUD_SURFACE = new Set<Kind>(['impact', 'storm', 'freeze', 'thaw', 'fire', 'flood', 'drought', 'bloom', 'blight']);
+const LOUD_SURFACE = new Set<Kind>(['quake', 'impact', 'storm', 'freeze', 'thaw', 'fire', 'flood', 'drought', 'bloom', 'blight']);
 const TECH = ['huts', 'fire', 'iron', 'lamps', 'bells', 'star-reaching'];
 const GOD: Record<Belief, string> = { none: 'nothing', sun: 'sun', moon: 'moon', sea: 'sea', stone: 'falling stones', fire: 'fire', sky: 'storm' };
 
@@ -60,6 +69,7 @@ const VOICE: Record<Belief, string> = {
 };
 const CAUSE: Partial<Record<Kind, string>> = {
   impact: 'the sky threw stones',
+  quake: 'the ground split',
   storm: 'the storm was owed',
   freeze: 'the seas froze',
   flood: 'the waters rose',
@@ -98,6 +108,12 @@ export const factory: ChronicleFactory = ({ names }) => {
         // One line per village per kind per year is enough.
         if (entries.slice(-40).some((x) => x.kind === e.kind && x.year === year && x.event.includes(vname(e.villageId)))) continue;
         if ((e.kind === 'festival' || e.kind === 'convert' || e.kind === 'grow') && entries.slice(-40).some((x) => x.kind === e.kind && year - x.year < 2)) continue;
+        const OMEN = ['Water poured from an empty sky near %v.', 'Sand fell like rain on %v.', 'A wall of stone rose near %v.', 'Green came up from dead ground by %v.', 'Fire fell from an open hand over %v.', 'The water froze at a touch near %v.', 'A star was thrown down at %v.', 'Clouds gathered from nothing over %v.', 'The ground heaved under %v.', 'Lightning was called down on %v.', 'The air burned around %v.', 'A cold came to %v from nowhere.', 'Part of the world was taken from %v.'];
+        if (e.kind === 'omen') {
+          const t = e.detail === 100 ? 'A voice spoke to %v from above.' : OMEN[e.detail ?? 0] ?? 'They saw an omen over %v.';
+          entries.push({ id: nextId++, year, kind: e.kind, tick: e.tick, event: t.replace('%v', vname(e.villageId)), ...(e.belief ? { belief: e.belief } : {}) });
+          continue;
+        }
         const opts = e.kind === 'migrate' && e.detail === e.villageId ? ['%v climbed away from the water.', 'The people of %v moved to higher ground.'] : EVENT[e.kind] ?? ['%v endured.'];
         const text = pick(opts, nextId + e.tick)
           .replace('%v', vname(e.villageId))
@@ -125,6 +141,12 @@ export const factory: ChronicleFactory = ({ names }) => {
             reason = prior ? `After ${CAUSE[prior.kind]}, it seemed the only answer.` : says[0] ? `They watched the sky. ${says[0]}` : 'No one remembers why.';
             break;
           case 'feud': reason = 'Each said the other prayed wrong.'; break;
+          case 'attack': case 'slain': reason = `${voice} it was a demon wearing light.`; break;
+          case 'stranger': reason = 'Some wanted to kneel. Some wanted to run.'; break;
+          case 'worship': case 'enlightened': reason = 'They had been watching your light for a long time.'; break;
+          case 'blessed': reason = `${voice} the sky remembered them.`; break;
+          case 'smitten': reason = `${voice} they had been judged.`; break;
+          case 'omen': reason = e.event.includes('voice') ? 'They turned their faces to the storm.' : `${voice} something is watching.`; break;
           case 'migrate': reason = e.event.includes('higher') || e.event.includes('climbed') ? `${voice} the water was patient.` : 'They went where the stores were fuller.'; break;
           case 'tech': reason = e.event.includes('iron') ? 'The fallen stones were good metal.' : 'Many hands, long years.'; break;
           case 'launch': reason = 'They had been watching your light.'; break;

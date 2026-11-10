@@ -1,12 +1,16 @@
 import type { PlanetSpec } from './system';
 import type { UniverseSpec } from './universe';
 import type { SurfaceModifiers, SkyState } from './sky';
-import type { CivView, ChronicleEntry, SurfaceEnv } from './sim';
+import type { CivView, ChronicleEntry, SurfaceEnv, Tool } from './sim';
 
 /** Messages main -> sim Worker. */
 export type ToWorker =
   | { type: 'open'; universe: UniverseSpec; planet: PlanetSpec }
   | { type: 'step'; ticks: number; year: number; sky: SkyState; modifiers: SurfaceModifiers; skySays: readonly string[] }
+  | { type: 'tool'; tool: Tool; x: number; y: number; r: number }
+  | { type: 'incarnate'; x: number }
+  | { type: 'walk'; x: number }
+  | { type: 'ascend' }
   | { type: 'close' };
 
 /** Messages sim Worker -> main. cells is a transferred copy of the grid. */

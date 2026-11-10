@@ -33,6 +33,12 @@ export interface UniverseStats {
   readonly worldsTended: number;
   readonly deepestFold: number;
   readonly lightFromGlow: number;
+  /** Last seen state of its most-watched world (feeds battles). */
+  readonly souls?: number;
+  readonly era?: number;
+  readonly belief?: string;
+  /** 0..100 best enlightenment seen. */
+  readonly enlightenment?: number;
 }
 export interface BoxEntry {
   readonly serialNumber: SerialNumber;
@@ -49,6 +55,7 @@ export interface Box {
   recordDepth(slot: number, depth: number): void;
   recordTended(slot: number): void;
   recordGlow(slot: number, light: number): void;
+  recordLife(slot: number, life: { souls: number; era: number; belief: string; enlightenment: number }): void;
   snapshot(): (BoxEntry | null)[];
   restore(slots: readonly (BoxEntry | null)[]): void;
 }

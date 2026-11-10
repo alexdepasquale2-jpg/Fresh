@@ -32,5 +32,7 @@
 | 26 | `src/platform/input` | `src/contracts/platform.ts` (`InputFactory`) | Pointer gestures behind the Input contract. | `src/platform/input/index.test.ts` |
 | 27 | `src/platform/edge-voice` | `src/contracts/platform.ts` (`EdgeVoiceFactory`) | Optional adapter, cache by seed, grammar fallback; off by default. | `src/platform/edge-voice/index.test.ts` |
 | 28 | `src/platform/perf` | `src/contracts/platform.ts` (`PerfFactory`) | Frame-time monitor, resolution scaling, sim tick shedding. | `src/platform/perf/index.test.ts` |
+| 29 | `src/game/battle` | `src/contracts/battle.ts` (`BattlesFactory`) | Rivals, fighters from universe stats, elements, strike/fold/shine/swap, refresh after going in. | n/a |
+| 30 | `src/ui/battle` | `src/contracts/app.ts` (`ScreenFactory` outside, battle) | Outside (rivals) and Battle screens, catch on win. | n/a |
 
 Merge order for integration: gen (1 to 5), rules and atlas (6 to 8), sim (9 to 12), game (17 to 20), platform (24 to 28), render (13 to 16), ui (21 to 23).
