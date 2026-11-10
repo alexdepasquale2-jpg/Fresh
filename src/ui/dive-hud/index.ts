@@ -3,7 +3,8 @@ import type { ScreenFactory, AppContext } from '@/contracts/app';
 import { SKY_PIECE_KINDS } from '@/contracts/sky';
 import { foldFrame, childAt } from '@/core/fold-layout';
 import { seedToU32 } from '@/core/hash';
-import { el, backChip, lightPips, label, narration, holdButton, burst } from '@/ui/kit';
+import { el, backChip, lightPips, label, narration, holdButton, burst, flash } from '@/ui/kit';
+import './dive-hud.css';
 
 const CAPTURE: Record<string, string> = {
   'no-reliquary': 'No reliquaries left.',
@@ -14,18 +15,21 @@ const CAPTURE: Record<string, string> = {
 
 const dive: ScreenFactory = () => {
   let ctx: AppContext | null = null;
-  let ui: { fold: HTMLElement; bar: HTMLElement; best: HTMLElement; rel: HTMLElement; say: HTMLElement; pips: ReturnType<typeof lightPips> } | null = null;
+  let ui: { root: HTMLElement; fold: HTMLElement; bar: HTMLElement; best: HTMLElement; floor: HTMLElement; wrap: HTMLElement; rel: HTMLElement; say: HTMLElement; pips: ReturnType<typeof lightPips> } | null = null;
   let message: { text: string; until: number } | null = null;
   let t = 0;
   let lastGrantDepth = 0;
   let leaving = false;
   let tickMs = 0;
   let lastDepth = 0;
+  let mounts = 0;
   return {
     id: 'dive',
     mount: (root, c) => {
       ctx = c;
       leaving = false;
+      mounts++;
+      lastDepth = 0;
       const slot = c.box.selected();
       const u = c.selection.universe ?? c.universes.fromSerial(c.box.slots()[slot]?.serialNumber ?? 0);
       c.selection.universe = u;
@@ -66,11 +70,13 @@ const dive: ScreenFactory = () => {
       });
       const bar = el('i', { class: 'bar-fill' });
       const bestM = el('i', { class: 'bar-best' });
-      ui = { fold: label('FOLD 0'), bar, best: bestM, rel: label('RELIQUARIES 3'), say: narration(''), pips: lightPips(c.light.view().pips) };
+      const floorM = el('i', { class: 'bar-floor', hidden: true });
+      const wrap = el('div', { class: 'depth-bar' }, bar, bestM, floorM);
+      ui = { root, floor: floorM, wrap, fold: label('FOLD 0'), bar, best: bestM, rel: label('RELIQUARIES 3'), say: narration(''), pips: lightPips(c.light.view().pips) };
       root.append(
         el('header', { class: 'row' }, backChip('SURFACE', () => (c.dive.surface(), c.persist(), c.go('box'))), c.battle?.outcome === 'ongoing' ? backChip('BATTLE', () => (c.dive.surface(), c.go('battle'))) : null, ui.pips.el),
         el('div', { class: 'row' }, ui.fold, ui.rel),
-        el('div', { class: 'depth-bar' }, bar, bestM),
+        wrap,
         field,
         ui.say,
         el('div', { class: 'center' }, hold),
@@ -87,14 +93,23 @@ const dive: ScreenFactory = () => {
       const v = ctx.dive.view();
       const pips = ctx.light.view().pips;
       ui.pips.update(pips);
-      ui.fold.textContent = `FOLD ${v.depth}`;
+      ui.fold.textContent = v.bottom ? `FOLD ${v.depth} · THE FLOOR` : `FOLD ${v.depth}`;
       if (v.depth !== lastDepth) { lastDepth = v.depth; ctx.audio.sfx('fold', Math.min(1, v.depth / 40)); try { navigator.vibrate?.(8); } catch { /* not allowed */ } }
       ui.rel.textContent = `RELIQUARIES ${v.reliquaries}`;
       const scale = Math.max(40, v.best + 5);
+      // The floor shows on the bar only once it is close.
+      const toBottom = v.toBottom ?? 99;
+      const near = toBottom <= 6 && v.phase !== 'surfaced';
+      if (ui.floor.hidden === near) {
+        ui.floor.hidden = !near;
+        ui.wrap.classList.toggle('near-floor', near);
+        if (near && !v.bottom) { ctx.audio.sfx('fold', 1); message = { text: 'Something is below.', until: t + 2200 }; }
+      }
+      if (near) ui.floor.style.left = `${Math.min(100, ((v.depth + toBottom) / scale) * 100)}%`;
       ui.bar.style.width = `${(v.depth / scale) * 100}%`;
       ui.best.style.left = `${(v.best / scale) * 100}%`;
       // A new piece of sky every 8 folds past your best.
-      if (v.depth >= lastGrantDepth + 8 && v.address) {
+      if (v.depth >= lastGrantDepth + 8 && v.address && !v.bottom) {
         lastGrantDepth = v.depth;
         const kind = SKY_PIECE_KINDS[seedToU32(v.address.pathHash) % SKY_PIECE_KINDS.length]!;
         ctx.sky.grant(kind, 1);
@@ -104,7 +119,22 @@ const dive: ScreenFactory = () => {
       const say = message && message.until > t ? message.text : v.phase === 'falling' && v.children[v.aim]?.star ? 'Falling into a star…' : v.star && v.phase === 'falling' && v.progress < 500 ? 'A star nearby. Let go to stop, or tap it to fall in.' : v.narration;
       if (ui.say.textContent !== say) ui.say.textContent = say;
       ctx.renderers.dive.draw({ dive: v, pulse: ctx.pulse().phase(), lightPips: pips }, dt);
-      if (!leaving && v.phase === 'stopped' && v.star) {
+      if (!leaving && v.bottom) {
+        // The bottom of the universe: a floor, and a room on it.
+        leaving = true;
+        const root = ui.root;
+        const r = root.getBoundingClientRect();
+        ctx.audio.sfx('land');
+        try { navigator.vibrate?.([30, 60, 30]); } catch { /* not allowed */ }
+        flash(root);
+        burst(root, r.width / 2, r.height * 0.42, 18, true);
+        message = null;
+        ui.say.textContent = v.narration;
+        ctx.box.recordDepth(ctx.box.selected(), v.depth);
+        ctx.persist();
+        const mine = mounts;
+        setTimeout(() => { if (ctx && mounts === mine) ctx.go('mirror'); }, 1500);
+      } else if (!leaving && v.phase === 'stopped' && v.star) {
         leaving = true;
         ctx.audio.sfx('land');
         ctx.selection.star = v.star;
