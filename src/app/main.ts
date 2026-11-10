@@ -63,7 +63,7 @@ export const boot = async (host: HTMLElement) => {
   const app = createApp(gl, go, persist);
   const { ctx } = app;
   ctx.input.attach(layer);
-  window.addEventListener('pointerdown', () => void ctx.audio.unlock(), { once: true });
+  window.addEventListener('pointerdown', () => void ctx.audio.unlock(), { once: true, capture: true });
   // Every button answers a touch.
   window.addEventListener('click', (e) => { if ((e.target as HTMLElement | null)?.closest('button')) ctx.audio.sfx('tap'); });
 
