@@ -1,7 +1,7 @@
 // Universe generator (unit 01). Palette convention per index:
 // 0 void,1 shade,2 dark,3 line,4 stone,5 earth,6 sand,7 gold,8 paper,9 pale,10 glow,11 water,12 deep,13 fire,14 ember,15 life
 import type { UniverseGenFactory, UniverseSpec } from '@/contracts/universe';
-import { child, rng } from '@/core/hash';
+import { child, rng, seedToU32 } from '@/core/hash';
 import { formatSerial, serialToSeed } from '@/core/serial';
 import { character } from './character';
 
@@ -23,10 +23,22 @@ const lum = (hex: string) => {
   return ((n >> 16) * 3 + ((n >> 8) & 255) * 6 + (n & 255)) / 2550;
 };
 
+const LEGACY_LAWS = new Set(['ash-choir', 'cold-fire', 'first-light', 'glass-rain', 'pale-moss', 'salt-tide', 'slow-time', 'tallow-bloom']);
+/** The serials a new Box begins with (src/app/context.ts STARTER_SERIALS). */
+const STARTERS = new Set([0x3f9a77, 0x0b11e5, 0x5a17ee, 0x7a110e, 0xc401a1, 0x9e11a5, 0x2d0ce4]);
+
 export const factory: UniverseGenFactory = ({ atlas, names }) => {
   const fromSeed = (seed: UniverseSpec['seed'], serialNumber: number): UniverseSpec => {
     const r = rng(child(seed, 'spec'));
-    const law = r.pick(atlas.lawSets);
+    // The first eight law sets are picked exactly as they always were, so the rng stream and
+    // every older universe's name, glyph and character are untouched. A separate seed stream then
+    // moves two universes in five onto one of the later law sets. The universes every new player
+    // starts with never move.
+    const legacy = atlas.lawSets.filter((l) => LEGACY_LAWS.has(l.id));
+    let law = r.pick(legacy.length ? legacy : atlas.lawSets);
+    const later = atlas.lawSets.filter((l) => !LEGACY_LAWS.has(l.id));
+    const h = seedToU32(child(seed, 'later-laws'));
+    if (legacy.length && later.length && !STARTERS.has(serialNumber) && h % 100 < 40) law = later[(h >>> 8) % later.length]!;
     const hue = ((law.hue ?? 40) + r.range(-25, 25) + 360) % 360;
     const palette = BASE.map((c, i) => (TINT.includes(i) ? hsl((hue + (i === 15 ? 60 : i >= 11 ? 150 : 0)) % 360, 0.25 + r.int(20) / 100, Math.min(0.75, Math.max(0.15, lum(c)))) : c));
     const name = names.universe(seed);
