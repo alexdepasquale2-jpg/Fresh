@@ -67,7 +67,12 @@ const box: ScreenFactory = () => {
                   c.selection.system = null;
                   c.go('dive');
                 }, { primary: true, id: 'enter' }),
-                button(`Worlds ${entry.stats.worldsTended}`, () => c.selection.system && c.selection.universe?.serial === spec.serial && c.go('system'), { id: 'worlds', disabled: !(c.selection.system && c.selection.universe?.serial === spec.serial) }),
+                button(`Worlds ${entry.stats.worldsTended}`, () => {
+                  // Explore any universe straight away: open its home solar system.
+                  if (c.selection.universe?.serial !== spec.serial) { c.selection.star = null; c.selection.system = null; c.selection.planetIndex = 0; }
+                  c.selection.universe = spec;
+                  c.go('system');
+                }, { id: 'worlds' }),
               ),
             ),
           );

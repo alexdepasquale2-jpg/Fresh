@@ -19,6 +19,8 @@ const dive: ScreenFactory = () => {
   let t = 0;
   let lastGrantDepth = 0;
   let leaving = false;
+  let tickMs = 0;
+  let lastDepth = 0;
   return {
     id: 'dive',
     mount: (root, c) => {
@@ -31,7 +33,9 @@ const dive: ScreenFactory = () => {
       c.dive.start(u, best);
       lastGrantDepth = best;
       const hold = holdButton();
+      hold.addEventListener('contextmenu', (e) => e.preventDefault());
       const down = (e: PointerEvent) => {
+        e.preventDefault();
         e.stopPropagation();
         hold.setPointerCapture(e.pointerId);
         c.dive.hold();
@@ -48,8 +52,13 @@ const dive: ScreenFactory = () => {
       field.addEventListener('pointerdown', (e) => {
         const r = c.gl.canvas.getBoundingClientRect();
         const v = c.dive.view();
-        const i = childAt(foldFrame(c.gl.width(), c.gl.height(), v.progress), e.clientX - r.left, e.clientY - r.top);
+        const i = childAt(foldFrame(c.gl.width(), c.gl.height(), v.progress, v.aim), e.clientX - r.left, e.clientY - r.top);
         if (i < 0) return;
+        if (!v.children[i]?.flicker) {
+          c.dive.aim(i);
+          message = { text: v.children[i]?.star ? 'Steering into a star. Fall into it to land.' : i === 0 ? 'Steering to the centre.' : 'Steering into that ring.', until: t + 1600 };
+          return;
+        }
         const res = c.dive.throwAt(i);
         message = { text: res.ok ? `Caught ${c.universes.fromSerial(res.serialNumber).name}. It is in the box.` : CAPTURE[res.reason]!, until: t + 2500 };
         if (res.ok) c.persist();
@@ -69,11 +78,16 @@ const dive: ScreenFactory = () => {
     frame: (dt) => {
       if (!ctx || !ui) return;
       t += dt;
-      ctx.dive.update(Math.max(0, Math.round(dt / 50)));
+      // Carry the remainder: at 60 fps a frame is ~17 ms, less than one 50 ms tick.
+      tickMs += Math.min(dt, 250);
+      const ticks = Math.floor(tickMs / 50);
+      tickMs -= ticks * 50;
+      if (ticks > 0) ctx.dive.update(ticks);
       const v = ctx.dive.view();
       const pips = ctx.light.view().pips;
       ui.pips.update(pips);
       ui.fold.textContent = `FOLD ${v.depth}`;
+      if (v.depth !== lastDepth) { lastDepth = v.depth; try { navigator.vibrate?.(8); } catch { /* not allowed */ } }
       ui.rel.textContent = `RELIQUARIES ${v.reliquaries}`;
       const scale = Math.max(40, v.best + 5);
       ui.bar.style.width = `${(v.depth / scale) * 100}%`;
@@ -85,7 +99,7 @@ const dive: ScreenFactory = () => {
         ctx.sky.grant(kind, 1);
         message = { text: `Mote found a ${kind} in the fold.`, until: t + 2500 };
       }
-      const say = message && message.until > t ? message.text : v.star && v.phase === 'falling' && v.progress < 500 ? 'A star. Let go.' : v.narration;
+      const say = message && message.until > t ? message.text : v.phase === 'falling' && v.children[v.aim]?.star ? 'Falling into a star…' : v.star && v.phase === 'falling' && v.progress < 500 ? 'A star nearby. Let go to stop, or tap it to fall in.' : v.narration;
       if (ui.say.textContent !== say) ui.say.textContent = say;
       ctx.renderers.dive.draw({ dive: v, pulse: ctx.pulse().phase(), lightPips: pips }, dt);
       if (!leaving && v.phase === 'stopped' && v.star) {

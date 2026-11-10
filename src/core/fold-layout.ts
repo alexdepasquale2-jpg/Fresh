@@ -4,14 +4,8 @@
  * child (radius 1/3) and six ring children (radius 1/3, distance 2/3).
  * Zooming 3x into the centre child turns it into the next fold.
  */
-export interface FoldFrame { cx: number; cy: number; R: number; zoom: number }
-
-export const foldFrame = (w: number, h: number, progress: number): FoldFrame => ({
-  cx: w / 2,
-  cy: h * 0.47,
-  R: Math.min(w, h * 0.9) * 0.46,
-  zoom: Math.pow(3, Math.max(0, Math.min(999, progress)) / 1000),
-});
+/** zoom 1..3 through a fold; (ax, ay) is the aimed child's offset, t 0..1 how far the camera has slid to it. */
+export interface FoldFrame { cx: number; cy: number; R: number; zoom: number; ax: number; ay: number; t: number }
 
 /** Centre of child i (0 centre, 1..6 clockwise from top) in unit coords. */
 export const childOffset = (i: number): [number, number] => {
@@ -20,9 +14,16 @@ export const childOffset = (i: number): [number, number] => {
   return [(2 / 3) * Math.cos(a), (2 / 3) * Math.sin(a)];
 };
 
+export const foldFrame = (w: number, h: number, progress: number, aim = 0): FoldFrame => {
+  const zoom = Math.pow(3, Math.max(0, Math.min(999, progress)) / 1000);
+  const [ax, ay] = childOffset(aim);
+  return { cx: w / 2, cy: h * 0.47, R: Math.min(w, h * 0.9) * 0.46, zoom, ax, ay, t: (zoom - 1) / 2 };
+};
+
+/** Screen = centre + R*zoom*(unit - aim*t): at zoom 3 the aimed child fills the fold exactly. */
 export const childScreen = (f: FoldFrame, i: number) => {
   const [ox, oy] = childOffset(i);
-  return { x: f.cx + ox * f.R * f.zoom, y: f.cy + oy * f.R * f.zoom, r: (f.R * f.zoom) / 3 };
+  return { x: f.cx + (ox - f.ax * f.t) * f.R * f.zoom, y: f.cy + (oy - f.ay * f.t) * f.R * f.zoom, r: (f.R * f.zoom) / 3 };
 };
 
 /** Child index under a screen point, or -1. */
