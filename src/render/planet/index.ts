@@ -8,6 +8,8 @@ import type { PlanetRendererFactory, GlCore } from '@/contracts/render';
 import { ENGINE, FIELD, ROLE } from '@/contracts/sim';
 import { FULLSCREEN_VS } from '@/render/gl';
 import { createFirstPerson } from './first-person';
+import { createPeople } from './people';
+import type { People } from './people';
 import { FX_ONE } from '@/core/fixed';
 
 const O = { person: 1, wall: 2, roof: 3, window: 4, smoke: 5, rain: 6, snow: 7, lamp: 8, bonfire: 9, tower: 10, launch: 11, priest: 12, travel: 13, avatar: 14, attack: 15 } as const;
@@ -205,6 +207,8 @@ export const factory: PlanetRendererFactory = () => {
   let time = 0;
   let flash = 0;
   let fp: ReturnType<typeof createFirstPerson> | null = null;
+  let people: People | null = null;
+  const fract = (n: number) => n - Math.floor(n);
   let lastLightning = 9999;
 
   const makeTex = (w: number, h: number, internal: number, format: number, linear: boolean) => {
@@ -231,6 +235,7 @@ export const factory: PlanetRendererFactory = () => {
     W = H = 0;
     matKey = '';
     fp = null;
+    people = null;
   };
   const put = (x: number, y: number, code: number) => {
     if (x >= 0 && y >= 0 && x < W && y < H) over[y * W + x] = code;
@@ -293,9 +298,30 @@ export const factory: PlanetRendererFactory = () => {
       lastLightning = env.lightning;
       flash = Math.max(0, flash - dt / 250);
 
+      people ??= createPeople(core);
+      people.update(v.civ, dt);
+      const sunUp = -Math.cos((env.day / 1000) * Math.PI * 2);
+      const dayl = Math.max(0, Math.min(1, (sunUp + 0.3) / 0.65));
+      const ambP = (0.32 + Math.max(0, v.modifiers.nightLight) / 250 + (1 - 0.32) * dayl) * (1 - Math.max(0, v.modifiers.dimming) / 220);
       if (v.view?.fp) {
         fp ??= createFirstPerson(core);
-        fp.draw({ view: v, W, H, top, matTex: tex.mat!, palTex: tex.pal!, time, flash });
+        const body = people.avatar();
+        const view3 = v.view.fp;
+        const cam = fp.draw({ view: v, W, H, top, matTex: tex.mat!, palTex: tex.pal!, time, flash, eyeX: body ? body.x : view3.x });
+        people.draw({
+          fp: { ro: cam.ro, yaw: cam.yaw, pitch: cam.pitch, depth: cam.depth,
+            // Those who come for you (or to you) step out of the slice toward where you stand.
+            place: (s) => {
+              const near = s.role === ROLE.attack || s.role === ROLE.kneel || s.role === ROLE.watch || s.role === ROLE.listen;
+              const z = near ? view3.z + (s.seed - 0.5) * 8 : s.z;
+              // Nobody stands inside your head: keep them at arm's length.
+              let x = s.x;
+              const dx = x - cam.ro[0];
+              if (near && Math.abs(dx) < 2.4) x = cam.ro[0] + (dx >= 0 ? 1 : -1) * (2.6 + fract(s.seed * 5.3) * 2.2);
+              return [x, cam.ground(x, z), z];
+            } },
+          view: { cx: 0, cy: 0, zoom: 1 }, rect: v.rect, W, H, time, amb: ambP, night: 1 - dayl, pal: tex.pal!,
+        });
         return;
       }
       // ---- overlay ----
@@ -334,14 +360,6 @@ export const factory: PlanetRendererFactory = () => {
           nv++;
         }
       }
-      const pp = v.civ.people;
-      for (let i = 0; i < v.civ.peopleCount; i++) {
-        const x = pp[i * 4]!, y = pp[i * 4 + 1]!, role = pp[i * 4 + 2]!;
-        const code = role === ROLE.lamp ? O.lamp : role === ROLE.pray || role === ROLE.kneel ? O.priest : role === ROLE.travel ? O.travel : role === ROLE.attack ? O.attack : O.person;
-        put(x, y, role === ROLE.attack ? O.attack : O.person);
-        if (role === ROLE.kneel) { put(x, y - 1, O.priest); continue; }
-        put(x, y - 1, code === O.person ? O.person : code);
-      }
       if (env.rain > 0) {
         const drops = Math.min(160, env.rain);
         for (let k = 0; k < drops; k++) {
@@ -355,12 +373,6 @@ export const factory: PlanetRendererFactory = () => {
           put(xx, y, env.snowing ? O.snow : O.rain);
           if (!env.snowing) put(xx, y - 1, O.rain);
         }
-      }
-      const av = v.civ.avatar;
-      if (av) {
-        for (let j = 0; j < 4; j++) put(av.x, av.y - j, O.avatar);
-        put(av.x - 1, av.y - 2, O.avatar); put(av.x + 1, av.y - 2, O.avatar);
-        if (nv < 12) { vill.set([av.x, av.y - 2, 10, 1.2 * (av.hp / 100) + 0.3], nv * 4); nv++; }
       }
       upload(tex.over!, W, H, gl.RED_INTEGER, over);
 
@@ -400,6 +412,7 @@ export const factory: PlanetRendererFactory = () => {
       gl.uniform4fv(loc.u_vill!, vill);
       gl.uniform1i(loc.u_nvill!, nv);
       core.quad(prog);
+      people.draw({ fp: null, view: { cx: v.view?.cx ?? W / 2, cy: v.view?.cy ?? H / 2, zoom: Math.max(1, v.view?.zoom ?? 1) }, rect: v.rect, W, H, time, amb: ambP, night: 1 - dayl, pal: tex.pal! });
     },
     dispose: () => { core = null; },
   };

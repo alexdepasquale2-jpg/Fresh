@@ -42,6 +42,7 @@ export interface SimClient {
   incarnate(x: number): void;
   walk(x: number): void;
   ascend(): void;
+  act(action: import('./sim').BodyAction): void;
 }
 
 /** Where the player is in the chain. Set by screens as they navigate. */

@@ -6,7 +6,7 @@ import { seedToHex } from '@/core/hash';
 import { SKY_PIECE_KINDS } from '@/contracts/sky';
 import { child } from '@/core/hash';
 import { el, backChip, label, button, skyPieceTile, stat, narration, tag, burst, shake, flash } from '@/ui/kit';
-import type { Tool } from '@/contracts/sim';
+import type { Tool, BodyAction } from '@/contracts/sim';
 import { GRID_W, GRID_H } from '@/contracts/sim';
 
 const ensureSystem = (c: AppContext) => {
@@ -173,7 +173,7 @@ const system: ScreenFactory = () => {
 type Mode = Tool | 'watch' | 'body';
 const TOOLS: { mode: Mode; label: string; r: number; paint: boolean; hint: string }[] = [
   { mode: 'watch', label: 'Watch', r: 0, paint: false, hint: 'Only watch. Drag to look around; pinch or + to zoom in close.' },
-  { mode: 'body', label: 'Body', r: 0, paint: false, hint: 'Tap to take a body there. Tap again to walk. Unless they are enlightened, they will try to kill you.' },
+  { mode: 'body', label: 'Body', r: 0, paint: false, hint: 'Tap to take a body there. Tap again to walk. Zoom all the way in to see through its eyes. Unless they are enlightened, they will try to kill you.' },
   { mode: 'bless', label: 'Bless', r: 0, paint: false, hint: 'Fill their stores, ease their hearts, bring them closer to understanding.' },
   { mode: 'whisper', label: 'Whisper', r: 0, paint: false, hint: 'Speak to the nearest village. They will look up.' },
   { mode: 'sow', label: 'Sow', r: 0, paint: false, hint: 'Set a new people down.' },
@@ -214,6 +214,9 @@ const planet: ScreenFactory = () => {
   const zoomLabel = el('span', { class: 'k-label zoom-label' }, '1×');
   let lastPaint = 0;
   let lastBolt = 9999;
+  let bodyRow: HTMLElement | null = null;
+  let lastHp = 100;
+  let walkSent = 0;
   let lastTick = -1;
   let planetSpec: import('@/contracts/system').PlanetSpec | null = null;
   return {
@@ -264,17 +267,12 @@ const planet: ScreenFactory = () => {
         const r = slotEl.getBoundingClientRect();
         if (view.fp) {
           // Zooming out of first person rises back to the map.
-          if (factor < 0.97) { view.cx = view.fp.x; view.zoom = 4.5; view.fp = null; walking = false; walkBtn.hidden = true; c.audio.sfx('nav'); clampView(); }
+          if (factor < 0.97) { leaveBody(); c.audio.sfx('nav'); }
           return;
         }
         if (factor > 1.03 && view.zoom >= 5.9) {
           // Zooming in past the map drops you onto the ground, in first person.
-          const g = toGrid(px, py);
-          view.fp = { x: Math.max(3, Math.min(GRID_W - 4, g.gx)), z: 5, yaw: g.gx > GRID_W / 2 ? Math.PI : 0, pitch: -0.05, bob: 0 };
-          walkBtn.hidden = false;
-          ui!.hint.textContent = 'You are standing on their world. Drag to look, hold WALK to move, tap to use a tool where you look. − rises back up.';
-          c.audio.sfx('land');
-          clampView();
+          enterBody();
           return;
         }
         const before = toGrid(px, py);
@@ -284,6 +282,25 @@ const planet: ScreenFactory = () => {
         view.cy = before.gy - (py / r.height - 0.5) * (GRID_H / view.zoom);
         clampView();
       };
+      // First person is the body's eyes: no body, no eyes.
+      const enterBody = () => {
+        const av = c.sim.latest()?.civ.avatar;
+        if (!av) {
+          ui!.hint.textContent = 'You can only stand on their world in a body. Choose Body, tap the ground, then zoom in (or press Eyes).';
+          c.audio.sfx('deny');
+          return;
+        }
+        // Open your eyes facing the nearest village.
+        const vs = c.sim.latest()!.civ.villages;
+        const nearest = [...vs].sort((p, q) => Math.abs(p.x - av.x) - Math.abs(q.x - av.x))[0];
+        const faceLeft = nearest ? nearest.x < av.x : av.x > GRID_W / 2;
+        view.fp = { x: av.x, z: 2.5, yaw: (faceLeft ? Math.PI : 0) - 0.12, pitch: -0.05, bob: 0 };
+        walkBtn.hidden = false;
+        ui!.hint.textContent = 'You see through your body. Drag to look, hold WALK to move, use the body actions below. − leaves your eyes.';
+        c.audio.sfx('land');
+        clampView();
+      };
+      const leaveBody = () => { if (!view.fp) return; view.cx = view.fp.x; view.zoom = 4.5; view.fp = null; walking = false; walkBtn.hidden = true; clampView(); };
       const gridAt = (e: PointerEvent) => {
         const r = slotEl.getBoundingClientRect();
         if (!c.sim.latest()) return null;
@@ -393,7 +410,29 @@ const planet: ScreenFactory = () => {
         });
         return b;
       }));
-      const ascend = button('Ascend', () => c.sim.ascend(), { id: 'ascend' });
+      const ascend = button('Ascend', () => { leaveBody(); c.sim.ascend(); c.audio.sfx('nav'); }, { id: 'ascend' });
+      const ACTS: { a: BodyAction; label: string; sfx: string; hint: string }[] = [
+        { a: 'strike', label: 'Strike', sfx: 'crit', hint: 'Fell the two nearest attackers. The rest run, and the village fears you more.' },
+        { a: 'preach', label: 'Preach', sfx: 'whisper', hint: 'Speak. Those near sit and listen, and understanding grows.' },
+        { a: 'gift', label: 'Gift', sfx: 'bless', hint: 'Give of your own body: food and joy for the nearest village.' },
+        { a: 'shine', label: 'Shine', sfx: 'flare', hint: 'Show your light. The wise kneel; the rest flee.' },
+        { a: 'rest', label: 'Rest', sfx: 'heal', hint: 'Mend yourself, if no one is striking you.' },
+      ];
+      bodyRow = el('div', { class: 'tools body-row', hidden: true },
+        (() => { const b = el('button', { class: 'k-tag tool', type: 'button', 'data-id': 'eyes' }, 'Eyes'); b.addEventListener('click', () => (view.fp ? leaveBody() : enterBody())); return b; })(),
+        ...ACTS.map((t) => {
+          const b = el('button', { class: 'k-tag tool', type: 'button', 'data-id': `act-${t.a}` }, t.label);
+          b.addEventListener('click', () => {
+            c.sim.act(t.a);
+            c.audio.sfx(t.sfx);
+            ui!.hint.textContent = t.hint;
+            const r = slotEl.getBoundingClientRect();
+            burst(slotEl, r.width / 2, r.height * 0.6, t.a === 'rest' ? 6 : 12, t.a === 'shine' || t.a === 'strike');
+            if (t.a === 'strike') shake(slotEl);
+            if (t.a === 'shine') flash(slotEl);
+          });
+          return b;
+        }));
       const speeds = el('div', { class: 'row nowrap' }, ...([0, 1, 3] as const).map((s) => {
         const b = button(s === 0 ? 'Pause' : `${s}x`, () => {
           c.clock.setSpeed(s);
@@ -407,6 +446,7 @@ const planet: ScreenFactory = () => {
         ui.slot,
         palette,
         el('div', { class: 'row nowrap tool-row' }, ui.hint, ui.body, ascend),
+        bodyRow,
         el('div', { class: 'row' }, ui.weather, ui.era),
         el('div', { class: 'row start' }, label('THEIR SKY'), ...(sky.pieces.length ? sky.pieces.map((k) => tag(k)) : [label('empty')])),
         el('div', { class: 'row' }, ui.souls.el, ui.villages.el, ui.glow.el),
@@ -424,14 +464,26 @@ const planet: ScreenFactory = () => {
       if (!f) return;
       if (view.fp) {
         const p = view.fp;
-        if (walking) {
-          const sp = (dt / 1000) * 9;
-          p.x = Math.max(2, Math.min(GRID_W - 3, p.x + Math.cos(p.yaw) * sp));
-          p.z = Math.max(-70, Math.min(70, p.z + Math.sin(p.yaw) * sp));
+        const av0 = ctx.sim.latest()?.civ.avatar;
+        if (!av0) {
+          // The body died (or was given up): you are thrown back into the sky.
+          view.cx = p.x; view.zoom = 4.5; view.fp = null; walking = false;
+          ui.slot.querySelector<HTMLElement>('[data-id=walk]')!.hidden = true;
+          zoomLabel.textContent = `${view.zoom.toFixed(1)}×`;
+          ui.hint.textContent = 'Your body is gone. You are back above them.';
+          flash(ui.slot); shake(ui.slot, true); ctx.audio.sfx('lose');
+        } else p.x = av0.x;
+        walkSent += dt;
+        if (walking && av0) {
+          const sp = (dt / 1000) * 6;
+          const dir = Math.cos(p.yaw);
+          // The body walks along the world; you may also drift a little to either side of it.
+          if (walkSent > 120) { walkSent = 0; ctx.sim.walk(Math.abs(dir) > 0.25 ? av0.x + Math.sign(dir) * 4 : av0.x); }
+          p.z = Math.max(-12, Math.min(12, p.z + Math.sin(p.yaw) * sp));
           stride += dt;
           if (stride > 330) { stride = 0; ctx.audio.sfx('step'); }
           p.bob = Math.sin(stride / 330 * Math.PI) * 0.12;
-        } else p.bob *= 0.8;
+        } else { p.bob *= 0.8; if (av0 && walkSent > 200 && walkSent < 1e8) { walkSent = 1e9; ctx.sim.walk(av0.x); } }
       }
       const cr = ctx.gl.canvas.getBoundingClientRect();
       const sr = ui.slot.getBoundingClientRect();
@@ -460,6 +512,9 @@ const planet: ScreenFactory = () => {
       const av = f.civ.avatar;
       ui.body.textContent = av ? `BODY ${av.hp} HP${av.attackers ? ` · ${av.attackers} ATTACKING` : ''}${av.worshippers ? ` · ${av.worshippers} KNEEL` : ''}` : '';
       (ui.body.nextElementSibling as HTMLElement | null)?.toggleAttribute('hidden', !av);
+      bodyRow?.toggleAttribute('hidden', !av);
+      if (av && av.hp < lastHp) { shake(ui.slot); ui.slot.classList.add('hurt'); setTimeout(() => ui?.slot.classList.remove('hurt'), 250); ctx.audio.sfx('strike'); }
+      lastHp = av ? av.hp : 100;
       ui.vlist.replaceChildren(...f.civ.villages.slice(0, 4).map((v) => el('div', { class: 'vrow' },
         el('span', { class: 'k-narration' }, ctx!.names.village(child(planetSpec!.seed, v.id + 1))),
         label(`${v.souls} souls · ${v.belief === 'none' ? 'no faith' : v.belief} · ${ERA_NAMES[v.tech]}${v.enlightenment >= 100 ? ' · enlightened' : v.enlightenment >= 50 ? ' · wondering' : ''} · ${v.food > 300 ? 'fed' : v.food > 60 ? 'lean' : 'hungry'}${v.mood < -30 ? ' · restless' : v.mood > 50 ? ' · joyful' : ''}`),

@@ -196,7 +196,8 @@ void main(){
     col = mix(col, pal(9), step(mix(0.985, 0.992, snow) - u_rain * 0.03, h21(g)) * 0.35);
   }
   col *= 0.85 + 0.15 * smoothstep(1.3, 0.4, length(uv));
-  o = vec4(col, 1.0);
+  // Alpha carries distance, so sprites drawn afterwards can hide behind the terrain.
+  o = vec4(col, hit ? sqrt(clamp(t / 260.0, 0.0, 1.0)) : 1.0);
 }`;
 
 const BLIT_FS = `#version 300 es
@@ -207,10 +208,12 @@ void main(){
   vec2 fc = vec2(v_uv.x * u_res.x, (1.0 - v_uv.y) * u_res.y);
   vec2 q = (fc - u_rect.xy) / u_rect.zw;
   if (q.x < 0.0 || q.y < 0.0 || q.x >= 1.0 || q.y >= 1.0) discard;
-  o = texture(u_tex, vec2(q.x, 1.0 - q.y));
+  o = vec4(texture(u_tex, vec2(q.x, 1.0 - q.y)).rgb, 1.0);
 }`;
 
 export interface FpFrame {
+  /** Eye column: the body's smoothed position. */
+  eyeX: number;
   view: PlanetRenderView;
   W: number;
   H: number;
@@ -300,13 +303,6 @@ export const createFirstPerson = (core: GlCore) => {
         if (vg.tech >= 4) built(vg.x + 1, 9, 2, 1.5, 0.6);
         if (nv < 12) { vill.set([vg.x, H - f.top[Math.max(0, Math.min(W - 1, vg.x))]!, 0, (night ? 1 : 0.2) * (0.5 + vg.tech * 0.15)], nv * 4); nv++; }
       }
-      const person = (x: number, role: number, i: number) => {
-        if (x < 0 || x >= W) return;
-        const k = (2 * W + x) * 4;
-        cols[k] = 255; cols[k + 1] = role; cols[k + 2] = Math.round((((i * 37) % 90) / 90 - 0.5) * 9 * 16 + 128);
-      };
-      for (let i = 0; i < civ.peopleCount; i++) person(civ.people[i * 4]!, civ.people[i * 4 + 2]!, i);
-      if (civ.avatar) person(civ.avatar.x, 99, 4);
       gl.bindTexture(gl.TEXTURE_2D, colsTex);
       gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, W, 3, gl.RGBA, gl.UNSIGNED_BYTE, cols);
@@ -323,7 +319,7 @@ export const createFirstPerson = (core: GlCore) => {
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target, 0);
       }
       // ---- eye ----
-      const want = groundAt(f, fp.x, fp.z) + 2.4;
+      const want = groundAt(f, f.eyeX, fp.z) + 2.4;
       eyeY = eyeY < 0 || Math.abs(want - eyeY) > 30 ? want : eyeY + (want - eyeY) * 0.25;
       let hum = 0;
       for (let i = 0; i < v.env.humidity.length; i++) hum += v.env.humidity[i]!;
@@ -337,7 +333,8 @@ export const createFirstPerson = (core: GlCore) => {
       const md = v.modifiers;
       const count = (k: string) => v.sky.pieces.filter((p) => p === k).length;
       gl.uniform2f(loc.u_res!, fw, fh);
-      gl.uniform3f(loc.u_ro!, fp.x, eyeY + (fp.bob ?? 0), fp.z);
+      const ro: [number, number, number] = [f.eyeX, eyeY + (fp.bob ?? 0), fp.z];
+      gl.uniform3f(loc.u_ro!, ...ro);
       gl.uniform2f(loc.u_look!, fp.yaw, fp.pitch);
       gl.uniform2f(loc.u_grid!, W, H);
       gl.uniform1f(loc.u_day!, v.env.day / 1000);
@@ -370,6 +367,7 @@ export const createFirstPerson = (core: GlCore) => {
       gl.uniform2f(bloc.u_res!, core.width(), core.height());
       gl.uniform4f(bloc.u_rect!, v.rect.x, v.rect.y, v.rect.w, v.rect.h);
       core.quad(blit);
+      return { ro, yaw: fp.yaw, pitch: fp.pitch, depth: target!, ground: (x: number, z: number) => groundAt(f, x, z) };
     },
   };
 };

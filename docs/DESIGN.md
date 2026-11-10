@@ -84,7 +84,7 @@ Above about 1.5x the renderer draws detail smaller than a sim cell: rounded slop
 
 ## First person
 
-Zooming in past 6x on the planet drops you onto the ground in first person. The same sim cells are drawn in 3D:
+First person is only available through a body. Take one with the Body tool, then zoom in past 6x or press Eyes, and you see through it. If the body dies you are thrown back to the map. The same sim cells are drawn in 3D:
 - **Terrain:** each column's surface gives the height and material. The slice is extruded into depth as a valley that bends and rises away from it.
 - **Things on it:** houses (brick walls, gable roofs, windows lit at night), towers, bonfires and people stand where the sim has them. Water reflects the sky.
 - **Sky and light:** the sun, moons, rings, stars, clouds, rain and snow match the 2D view. The sun casts soft shadows, and village fires light the ground at night.
@@ -105,3 +105,21 @@ Merge universes and pieces from the MERGE chip in the Box.
 ## Effects
 
 `audio.sfx(name)` plays a synthesised effect for every tool, cosmic act, dive fold, catch, landing, battle hit, heal, win, loss, merge, footstep and button. `ui/kit` adds spark bursts, screen shake and flashes.
+
+## The body and the people
+
+**Body actions** appear while you have a body:
+- **Strike:** fells the two nearest attackers. The rest flee, and the village fears you more.
+- **Preach:** those near sit and listen, and enlightenment grows.
+- **Gift:** food and joy for the nearest village, paid for with your own health.
+- **Shine:** the wise kneel and the rest flee.
+- **Rest:** mends you when no one is striking.
+
+**Villagers** have layered routines:
+- **Work:** they walk out, work a while, and carry the harvest home on their heads.
+- **Idle time:** they stop to talk with neighbours.
+- **Festivals:** they dance by the fire.
+- **Night:** they sleep through the deep night, while lamp-bearers patrol.
+- **Around a body:** they flee, listen, watch, kneel or attack.
+
+**Drawing:** people are animated sprites (`render/planet/people.ts`). Each one eases toward its sim cell by stable id, so walking is smooth. Each role has its own pose: swinging legs, a raised club, a load on the head, kneeling, dancing, fishing. The same sprites appear on the map and as depth-tested billboards in first person.

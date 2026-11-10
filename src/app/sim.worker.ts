@@ -63,6 +63,9 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     post();
   } else if (m.type === 'walk' && open) {
     civ.walk(m.x);
+  } else if (m.type === 'act' && open) {
+    civ.act(m.action);
+    post();
   } else if (m.type === 'ascend' && open) {
     civ.ascend();
     post();

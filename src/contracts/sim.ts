@@ -112,7 +112,7 @@ export interface Village {
 export type CivEventKind =
   | 'found' | 'grow' | 'split' | 'die' | 'migrate' | 'light'
   | 'famine' | 'tech' | 'convert' | 'feud' | 'festival' | 'burn' | 'flooded' | 'frozen' | 'launch' | 'merged'
-  | 'omen' | 'stranger' | 'attack' | 'slain' | 'worship' | 'enlightened' | 'smitten' | 'blessed';
+  | 'struck' | 'preached' | 'gift' | 'omen' | 'stranger' | 'attack' | 'slain' | 'worship' | 'enlightened' | 'smitten' | 'blessed';
 export interface CivEvent {
   readonly kind: CivEventKind;
   readonly tick: number;
@@ -124,13 +124,18 @@ export interface CivEvent {
   readonly belief?: Belief;
 }
 /** Person roles in CivView.people. */
-export const ROLE = { idle: 0, farm: 1, fish: 2, pray: 3, travel: 4, lamp: 5, attack: 6, kneel: 7, watch: 8 } as const;
+export const ROLE = { idle: 0, farm: 1, fish: 2, pray: 3, travel: 4, lamp: 5, attack: 6, kneel: 7, watch: 8, flee: 9, listen: 10, carry: 11, chat: 12, dance: 13, sleep: 14 } as const;
+/** Floats per person in CivView.people. */
+export const PERSON_STRIDE = 5;
+/** What the player's body can do. */
+export type BodyAction = 'strike' | 'preach' | 'gift' | 'shine' | 'rest';
+export const BODY_ACTIONS: readonly BodyAction[] = ['strike', 'preach', 'gift', 'shine', 'rest'];
 export interface CivView {
   readonly villages: readonly Village[];
   readonly souls: number;
   /** Glow sent to the player's light, per in-game minute (integer). */
   readonly glowPerMinute: number;
-  /** Walking people: [x, y, role, villageId] * count. */
+  /** People: [x, y, role, villageId, id] * count (PERSON_STRIDE). id is stable, so renderers can smooth movement. */
   readonly people: Readonly<Int16Array>;
   readonly peopleCount: number;
   /** Highest tech level reached on this planet. */
@@ -149,6 +154,9 @@ export interface Avatar {
   readonly attackers: number;
   /** How many villagers are kneeling right now. */
   readonly worshippers: number;
+  /** Last body action and how many ticks ago, for animation. */
+  readonly action: BodyAction | null;
+  readonly actionAge: number;
 }
 
 /**
@@ -173,6 +181,8 @@ export interface Civ {
   walk(x: number): void;
   /** Leave the body. */
   ascend(): void;
+  /** The body acts: strike attackers, preach, give, shine, or rest. */
+  act(action: BodyAction): void;
   snapshot(): Uint8Array;
   restore(snapshot: Uint8Array): void;
 }
