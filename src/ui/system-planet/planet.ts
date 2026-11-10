@@ -169,8 +169,10 @@ export const planet: ScreenFactory = () => {
       const solidAt = (x: number, y: number) => { const v = c.sim.latest()?.grid.cells[y * GRID_W + x]; return v !== undefined && v !== 0 && v !== 5; };
       const ground = (x: number) => {
         const gx = Math.max(0, Math.min(GRID_W - 1, Math.round(x)));
+        // Ground is the first run of four filled cells. Rain, snow, ash and falling stones in
+        // the air are not ground, so one drifting grain never reads as a spike of land.
         let gy = 0;
-        while (gy < GRID_H - 1 && !solidAt(gx, gy)) gy++;
+        while (gy < GRID_H - 4 && !(solidAt(gx, gy) && solidAt(gx, gy + 1) && solidAt(gx, gy + 2) && solidAt(gx, gy + 3))) gy++;
         return gy;
       };
       /** Zoom by a factor, keeping the world point under (px, py) fixed. */
