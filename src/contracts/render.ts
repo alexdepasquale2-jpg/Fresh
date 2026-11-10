@@ -74,6 +74,8 @@ export interface PlanetRenderView {
   readonly env: SurfaceEnv;
   readonly sky: SkyState;
   readonly modifiers: import('./sky').SurfaceModifiers;
+  /** The generated sky (star, sibling worlds, each moon). Without it the sky falls back to piece counts. */
+  readonly heavens?: import('./sky').Heavens;
   readonly pulse: Fx;
   /** Camera: centre in grid cells and zoom (1 shows the whole world). Above ~1.5 the renderer draws sub-cell detail. */
   readonly view?: {
@@ -91,6 +93,8 @@ export type PlanetRenderer = Renderer<PlanetRenderView>;
 export interface RoomRenderView {
   readonly kid: { x: number; y: number };
   readonly target: { x: number; y: number } | null;
+  /** Which room this is. When it changes, the kid starts again from `kid`. */
+  readonly scene?: number;
   readonly pulse: Fx;
   readonly lightPips: number;
 }

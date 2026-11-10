@@ -1,14 +1,15 @@
 // Solar system and Planet screens (unit 23). The player only ever changes the sky.
 import type { ScreenFactory, AppContext } from '@/contracts/app';
 import type { StarRef } from '@/contracts/fold';
-import type { SkyPieceKind, CosmicEvent } from '@/contracts/sky';
+import type { SkyPieceKind, CosmicEvent, Heavens } from '@/contracts/sky';
 import { seedToHex } from '@/core/hash';
-import { SKY_PIECE_KINDS } from '@/contracts/sky';
+import { SKY_PIECE_KINDS, SKY_MAX_PIECES } from '@/contracts/sky';
 import { child } from '@/core/hash';
 import { el, backChip, label, button, skyPieceTile, stat, narration, tag, burst, shake, flash } from '@/ui/kit';
 import type { Tool, BodyAction } from '@/contracts/sim';
 import { GRID_W, GRID_H, PERSON_STRIDE } from '@/contracts/sim';
 import './notable.css';
+import './sky.css';
 
 const ensureSystem = (c: AppContext) => {
   const u = c.selection.universe ?? c.universes.fromSerial(c.box.slots()[c.box.selected()]?.serialNumber ?? 0);
@@ -258,6 +259,59 @@ const planet: ScreenFactory = () => {
   let walkSent = 0;
   let lastTick = -1;
   let planetSpec: import('@/contracts/system').PlanetSpec | null = null;
+  // Their sky, changed from here: take a piece down, hang one you hold, or make one out of Light.
+  const skyPanel = el('div', { class: 'sky-panel', 'data-id': 'sky-panel' });
+  let heavens: Heavens | null = null;
+  let skyKey = '';
+  const skyKeyNow = () => {
+    if (!ctx || !planetSpec) return '';
+    const sky = ctx.sky.skyOf(planetSpec), inv = ctx.sky.inventory();
+    return `${sky.pieces.join()}|${sky.built ?? 0}|${sky.drift ?? 0}|${SKY_PIECE_KINDS.map((k) => inv[k]).join()}|${ctx.light.view().pips}`;
+  };
+  const renderSky = () => {
+    const c = ctx, p = planetSpec, sys = c?.selection.system;
+    if (!c || !p || !sys) return;
+    const orbit = sys.orbits.find((o) => o.planet === c.selection.planetIndex) ?? sys.orbits[0]!;
+    const sky = c.sky.skyOf(p), inv = c.sky.inventory();
+    const key = seedToHex(p.seed);
+    heavens = c.sky.heavens(sys, orbit.index);
+    skyKey = skyKeyNow();
+    const full = sky.pieces.length >= SKY_MAX_PIECES;
+    const changed = (sfx: string) => {
+      c.audio.sfx(sfx);
+      c.bus.emit('sky:changed', { planetKey: key });
+      c.persist();
+      if (ui) { flash(ui.slot); burst(ui.slot, ui.slot.clientWidth / 2, 30, 10); }
+      renderSky();
+    };
+    const take = (k: SkyPieceKind, i: number) => {
+      const b = el('button', { class: 'sky-take', type: 'button', 'data-id': `sky-take-${i}`, 'aria-label': `Take down the ${k}` }, k, el('small', {}, 'take'));
+      b.addEventListener('click', () => { c.sky.remove(key, i); c.sky.grant(k, 1); changed('zoom'); });
+      return b;
+    };
+    const add = (k: SkyPieceKind) => {
+      const have = inv[k] > 0;
+      const b = el('button', { class: have ? 'sky-add' : 'sky-add make', type: 'button', 'data-id': `sky-add-${k}` }, k, el('small', {}, have ? `x${inv[k]}` : '1 light')) as HTMLButtonElement;
+      b.disabled = full || (!have && !c.light.canSpend(1));
+      b.addEventListener('click', () => {
+        if (!have) {
+          // Nothing left to hang: make one out of your own Light.
+          if (!c.light.spend(1)) { c.audio.sfx('deny'); return; }
+          c.sky.grant(k, 1);
+          c.bus.emit('light:changed', { pips: c.light.view().pips });
+        }
+        const res = c.sky.place(k, sys, orbit.index);
+        if (!res.ok) { c.audio.sfx('deny'); renderSky(); return; }
+        changed('place');
+      });
+      return b;
+    };
+    skyPanel.replaceChildren(
+      el('div', { class: 'row start' }, label(`THEIR SKY ${sky.pieces.length}/${SKY_MAX_PIECES}`), ...(sky.pieces.length ? sky.pieces.map(take) : [label('nothing hung there yet')])),
+      el('div', { class: 'row start' }, label(full ? 'FULL' : 'HANG'), ...SKY_PIECE_KINDS.map(add)),
+      el('p', { class: 'k-narration sky-says' }, heavens.says.join(' ')),
+    );
+  };
   // The notable: the one named person the chronicle follows. A card by the village list, and Find.
   const nName = el('span', { class: 'k-narration notable-name' });
   const nMeta = el('span', { class: 'k-label notable-meta' });
@@ -292,7 +346,8 @@ const planet: ScreenFactory = () => {
       const { u, sys } = ensureSystem(c);
       const p = sys.planets[c.selection.planetIndex] ?? sys.planets[0]!;
       planetSpec = p;
-      c.sim.open(u, p);
+      // A world already open (the box dreamed it while you were away) is kept as it stands.
+      if (!c.sim.isOpen(u, p)) c.sim.open(u, p);
       // Cosmic events thrown from the solar system land now.
       const landed = c.sky.takeQueued(seedToHex(p.seed));
       for (const ev of landed) {
@@ -305,7 +360,6 @@ const planet: ScreenFactory = () => {
       }
       c.box.recordTended(c.box.selected());
       c.persist();
-      const sky = c.sky.skyOf(p);
       ui = {
         souls: stat(0, 'souls'), villages: stat(0, 'villages'), glow: stat(0, 'glow to you'),
         chron: el('ol', { class: 'chronicle' }), when: label(''), weather: label(''), vlist: el('div', { class: 'vlist' }),
@@ -529,7 +583,7 @@ const planet: ScreenFactory = () => {
         el('div', { class: 'row nowrap tool-row' }, ui.hint, ui.body, ascend),
         bodyRow,
         el('div', { class: 'row' }, ui.weather, ui.era),
-        el('div', { class: 'row start' }, label('THEIR SKY'), ...(sky.pieces.length ? sky.pieces.map((k) => tag(k)) : [label('empty')])),
+        skyPanel,
         el('div', { class: 'row' }, ui.souls.el, ui.villages.el, ui.glow.el),
         nCard,
         ui.vlist,
@@ -539,6 +593,7 @@ const planet: ScreenFactory = () => {
         button('Change their sky', () => c.go('system'), { primary: true, id: 'change-sky' }),
       );
       lastTick = -1;
+      renderSky();
       nKey = ''; nFollow = 0; nCard.hidden = true;
     },
     frame: (dt) => {
@@ -616,12 +671,14 @@ const planet: ScreenFactory = () => {
       ctx.renderers.planet.draw({
         universe: ctx.selection.universe, grid: f.grid, civ: f.civ, env: f.env, sky,
         modifiers: ctx.skyRules.effects(sky, planetSpec), pulse: ctx.pulse().phase(),
+        heavens: heavens ?? undefined,
         rect: { x: sr.left - cr.left, y: sr.top - cr.top, w: sr.width, h: sr.height },
         view,
         quality: ctx.perf.resolutionScale(),
       }, dt);
       if (f.tick === lastTick) return;
       lastTick = f.tick;
+      if (skyKeyNow() !== skyKey) renderSky();
       const e = f.env;
       if (e.lightning < lastBolt) { ctx.audio.sfx('lightning'); flash(ui.slot); }
       lastBolt = e.lightning;

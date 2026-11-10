@@ -16,6 +16,7 @@ export const factory: RoomRendererFactory = () => {
   const mote = { x: 36, y: 54 };
   const moteCss = { x: 0, y: 0 };
   let started = false;
+  let scene = 0;
   const rect = (x0: number, y0: number, w: number, h: number, c: number, b = base) => {
     for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (x >= 0 && y >= 0 && x < BW && y < BH) b[y * BW + x] = c;
   };
@@ -36,7 +37,7 @@ export const factory: RoomRendererFactory = () => {
       if (!core || core.lost()) return;
       const R = ROOM_RECT(core.width());
       const s = R.w / BW;
-      if (!started) { kid.x = (v.kid.x - R.x) / s; kid.y = (v.kid.y - R.y) / s; started = true; }
+      if (!started || (v.scene ?? 0) !== scene) { kid.x = (v.kid.x - R.x) / s; kid.y = (v.kid.y - R.y) / s; mote.x = kid.x + 6; mote.y = kid.y - 6; started = true; scene = v.scene ?? 0; }
       if (v.target) {
         const tx = Math.max(3, Math.min(BW - 4, (v.target.x - R.x) / s)), ty = Math.max(8, Math.min(BH - 4, (v.target.y - R.y) / s));
         const dx = tx - kid.x, dy = ty - kid.y, d = Math.hypot(dx, dy);
