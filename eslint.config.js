@@ -10,7 +10,7 @@ const nondeterministic = [
 ];
 
 export default tseslint.config(
-  { ignores: ['dist', 'dev-dist', 'node_modules', 'playwright-report', 'test-results', '.claude'] },
+  { ignores: ['dist', 'dist-artifact', 'dev-dist', 'node_modules', 'playwright-report', 'test-results', '.claude'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

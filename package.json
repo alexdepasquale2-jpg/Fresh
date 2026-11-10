@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run lint && npm run test",
     "e2e": "playwright test --trace off",
-    "atlas": "tsx tools/atlas/cli.ts"
+    "atlas": "tsx tools/atlas/cli.ts",
+    "build:artifact": "ARTIFACT=1 vite build"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
