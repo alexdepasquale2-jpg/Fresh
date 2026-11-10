@@ -51,3 +51,15 @@
   .guide-drift::after { animation: none; transform: translate(var(--dx, 0), var(--dy, 0)); }
   .guide-card { transition: none; }
 }
+
+/* Mote's note at the top of a menu page, the first time the page is opened. */
+.guide-inpage { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; column-gap: 6px; padding: 8px; margin-bottom: var(--gap); background: var(--panel); border: 2px solid var(--line); box-shadow: 0 0 14px color-mix(in srgb, var(--glow) 18%, transparent); }
+.guide-inpage .guide-mote { justify-self: center; }
+.guide-inpage .guide-btn { pointer-events: auto; }
+.guide-btn:focus-visible, .guide-dot:focus-visible, .guide-chip:focus-visible { outline: 2px solid var(--glow); outline-offset: -2px; }
+.guide-head { text-wrap: balance; }
+
+/* The Settings switch for less motion, as well as the system one. */
+:root.sallow-reduce-motion .guide-mote, :root.sallow-reduce-motion .guide-ring::after, :root.sallow-reduce-motion .guide-arrow::after { animation: none; }
+:root.sallow-reduce-motion .guide-drift::after { animation: none; transform: translate(var(--dx, 0), var(--dy, 0)); }
+:root.sallow-reduce-motion .guide-card, :root.sallow-reduce-motion .guide-chip { transition: none; }
