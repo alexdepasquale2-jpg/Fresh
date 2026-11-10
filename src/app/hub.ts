@@ -39,6 +39,19 @@ export const createHub = (host: HTMLElement, sfx: (name: string) => void): Pick<
   for (const e of [btn, sheet]) e.addEventListener('pointerdown', (ev) => ev.stopPropagation());
 
   let isOpen = false;
+  const pending: { text: string; opts?: { title?: string; sfx?: string } }[] = [];
+  const pump = () => {
+    while (pending.length && toasts.childElementCount < 2) {
+      const { text, opts } = pending.shift()!;
+      const t = mk('div', 'hub-toast');
+      if (opts?.title) t.append(mk('b', '', opts.title));
+      t.append(text);
+      toasts.append(t);
+      if (opts?.sfx !== '') sfx(opts?.sfx ?? 'gain');
+      window.setTimeout(() => { t.remove(); pump(); }, 4300);
+    }
+    if (pending.length > 12) pending.splice(0, pending.length - 12);
+  };
   let cleanup: (() => void) | null = null;
   const leave = () => { try { cleanup?.(); } catch (e) { console.error(e); } cleanup = null; };
   const badgeOf = (e: MenuEntry) => { try { return e.badge?.() ?? null; } catch { return null; } };
@@ -84,14 +97,10 @@ export const createHub = (host: HTMLElement, sfx: (name: string) => void): Pick<
       close,
       isOpen: () => isOpen,
     },
+    // At most two notices show at once; the rest wait their turn so they never pile over the screen.
     toast: (text, opts) => {
-      const t = mk('div', 'hub-toast');
-      if (opts?.title) t.append(mk('b', '', opts.title));
-      t.append(text);
-      toasts.append(t);
-      while (toasts.childElementCount > 3) toasts.firstElementChild?.remove();
-      if (opts?.sfx !== '') sfx(opts?.sfx ?? 'gain');
-      window.setTimeout(() => t.remove(), 4300);
+      pending.push({ text, opts });
+      pump();
     },
     store: (key, init) => {
       const k = `sallow-${key}`;
