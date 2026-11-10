@@ -1,0 +1,23 @@
+/* The Body page: needs, what the body can do here, how the villages stand, what it has done. Tokens only. */
+.pl-needs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.pl-need { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pl-need .pl-bar { flex: none; height: 6px; }
+.pl-need .pl-bar i.bad { background: var(--gold); }
+.pl-bodytags { color: var(--glow); line-height: 1.35; white-space: normal; }
+.pl-deeds { display: flex; flex-direction: column; gap: 4px; }
+.pl-deed { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; width: 100%; min-height: var(--touch); padding: 6px 8px; text-align: left; white-space: normal; background: transparent; cursor: pointer; touch-action: manipulation; overflow: hidden; }
+.pl-deed b { font-weight: normal; font-size: 13px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-bright); }
+.pl-deed span { font-family: var(--font-voice); font-size: 13px; line-height: 1.2; letter-spacing: 0; text-transform: none; color: var(--ink-muted); }
+.pl-deed.cooling, .pl-deed.off { border-style: dashed; }
+.pl-deed.cooling b, .pl-deed.off b { color: var(--ink-off); }
+.pl-deed.off span, .pl-deed.cooling span { color: var(--ink-off); }
+.pl-tool.off { color: var(--ink-off); }
+.pl-standing, .pl-bodylog, .pl-told { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.pl-standing li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 12px; line-height: 1.25; }
+.pl-standing li b { font-weight: normal; color: var(--ink-bright); }
+.pl-standing li em { font-style: normal; color: var(--glow); text-transform: uppercase; letter-spacing: .05em; font-size: 11px; }
+.pl-standing li.bad em { color: var(--gold); }
+.pl-standing li span { flex-basis: 100%; font-family: var(--font-voice); color: var(--ink-muted); }
+.pl-bodylog li, .pl-told li { font-family: var(--font-voice); font-size: 13px; line-height: 1.25; color: var(--ink-muted); }
+.pl-told li { color: var(--ink); }
+.pl-told li small { display: block; font-size: 12px; color: var(--ink-off); }

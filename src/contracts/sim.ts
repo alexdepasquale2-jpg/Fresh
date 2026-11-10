@@ -160,7 +160,9 @@ export type CivEventKind =
   // Hardship and recovery.
   | 'plague' | 'plagueEnd' | 'refugees' | 'resettled' | 'recovered'
   // Culture, works and people.
-  | 'song' | 'wonder' | 'school' | 'invention' | 'ark' | 'voyage' | 'crowned' | 'fell';
+  | 'song' | 'wonder' | 'school' | 'invention' | 'ark' | 'voyage' | 'crowned' | 'fell'
+  // The life of the player's body: detail is a deed code particular to sim/civ and sim/chronicle.
+  | 'body';
 export interface CivEvent {
   readonly kind: CivEventKind;
   readonly tick: number;
@@ -186,8 +188,43 @@ export const ROLE = { idle: 0, farm: 1, fish: 2, pray: 3, travel: 4, lamp: 5, at
 /** Floats per person in CivView.people. */
 export const PERSON_STRIDE = 5;
 /** What the player's body can do. */
-export type BodyAction = 'strike' | 'preach' | 'gift' | 'shine' | 'rest';
+export type BodyAction = 'strike' | 'preach' | 'gift' | 'shine' | 'rest' | BodyDeed;
 export const BODY_ACTIONS: readonly BodyAction[] = ['strike', 'preach', 'gift', 'shine', 'rest'];
+/**
+ * Things a body can do only where they apply (see Avatar.options). heal the sick, work a field or
+ * a great work, trade, teach, speak to a ruler (plead for peace, incite a war, petition against a
+ * tribute), stand between armies, challenge a heretic or side with one, bless or curse a harvest,
+ * keep vigil at a shrine, bury the dead, carry and deliver between villages, found a village with
+ * followers, accept a role, eat at their table, steal.
+ */
+export type BodyDeed =
+  | 'heal' | 'work' | 'trade' | 'teach' | 'plead' | 'incite' | 'petition' | 'stand' | 'challenge' | 'side'
+  | 'blessHarvest' | 'curseHarvest' | 'vigil' | 'bury' | 'carry' | 'deliver' | 'found' | 'role' | 'eat' | 'steal';
+export const BODY_DEEDS: readonly BodyDeed[] = ['heal', 'work', 'trade', 'teach', 'plead', 'incite', 'petition', 'stand', 'challenge', 'side', 'blessHarvest', 'curseHarvest', 'vigil', 'bury', 'carry', 'deliver', 'found', 'role', 'eat', 'steal'];
+/** One thing the body could do now, or why not yet. */
+export interface BodyOption {
+  readonly id: BodyAction;
+  readonly ready: boolean;
+  /** Ticks until it can be used again (0 when it is not cooling). */
+  readonly wait: number;
+  /** Why it cannot be used, when ready is false and it is not only cooling. */
+  readonly reason?: string;
+  /** What it will do here, in a sentence. */
+  readonly does?: string;
+  /** The village it would act on. */
+  readonly villageId?: number;
+}
+/** How a village treats the body. */
+export type StandingLevel = 'hunted' | 'shunned' | 'tolerated' | 'welcome' | 'followed';
+export interface BodyStanding {
+  readonly villageId: number;
+  /** -100..100 */
+  readonly value: number;
+  readonly level: StandingLevel;
+  /** What they remember, most told first, e.g. 'healed their sick'. */
+  readonly remembered: readonly string[];
+}
+export type BodyRole = 'healer' | 'envoy' | 'prophet';
 export interface CivView {
   readonly villages: readonly Village[];
   readonly souls: number;
@@ -252,6 +289,36 @@ export interface Avatar {
   /** Last body action and how many ticks ago, for animation. */
   readonly action: BodyAction | null;
   readonly actionAge: number;
+  /** Everything the body can do here, the five old actions first, with readiness. */
+  readonly options?: readonly BodyOption[];
+  /** How each village that knows the body stands toward it. */
+  readonly standing?: readonly BodyStanding[];
+  /** Needs, 0..100. Hunger and weariness hurt mildly above 80. wound lowers the most the body can mend to. */
+  readonly hunger?: number;
+  readonly weariness?: number;
+  readonly wound?: number;
+  /** True while the plague is in the body. */
+  readonly sick?: boolean;
+  /** What the weather is doing to it, if anything. */
+  readonly exposure?: 'cold' | 'storm' | null;
+  /** True when it stands in a village that will let it sleep safely. */
+  readonly sheltered?: boolean;
+  readonly role?: BodyRole | null;
+  /** A role the villagers are offering; the 'role' action accepts it. */
+  readonly roleOffer?: BodyRole | null;
+  readonly followers?: number;
+  /** What it carries for another village, in words. */
+  readonly carrying?: string | null;
+  /** The village a carried message or load is meant for. */
+  readonly carryingTo?: number | null;
+  /** The village whose ruler is hunting it, if any. */
+  readonly huntedBy?: number | null;
+  /** Name of the creed that has formed about the body, if one has. */
+  readonly creed?: string | null;
+  /** How many bodies have walked this world, this one included. */
+  readonly lives?: number;
+  /** What this body has done this life, oldest first, short lines. */
+  readonly log?: readonly string[];
 }
 
 /**
@@ -293,6 +360,15 @@ export interface ChronicleEntry {
   readonly year: number;
   readonly event: string;
   readonly reason?: string;
+  /** What kind of event wrote the line: a CivEventKind, a SurfaceEventKind or 'quiet'. */
+  readonly kind?: string;
+  /** Where it happened, in grid cells, when it happened somewhere. */
+  readonly x?: number;
+  readonly y?: number;
+  /** The village it is about. */
+  readonly villageId?: number;
+  /** For kind 'body': which deed, e.g. 'heal', 'death', 'creed'. */
+  readonly deed?: string;
 }
 export interface Chronicle {
   record(events: readonly CivEvent[], year: number, planet: PlanetSpec, surface?: readonly SurfaceEvent[]): void;

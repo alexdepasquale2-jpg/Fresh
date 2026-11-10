@@ -18,3 +18,7 @@
 6. Lines are under 90 characters in the IM Fell voice: no modern words (blocklist test).
 
 Plus: `npm run check` passes, and `demo.ts` shows the unit alone in `/dev` with a fixed seed.
+
+## The body (`body.ts`)
+
+CivEvent kind `'body'` (the life of the player's body) is told from the tables in `body.ts`, keyed by `detail` (the same codes as `B` in `src/sim/civ/body.ts`). Entries now also carry optional `kind`, `x`, `y`, `villageId` and, for body lines, `deed`. A list restored without `kind` wakes as plain lines.

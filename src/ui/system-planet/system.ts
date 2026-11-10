@@ -142,6 +142,7 @@ export const system: ScreenFactory = () => {
             const res = c.sky.place(d.kind, sys, d.overOrbit);
             c.audio.sfx(res.ok ? 'place' : 'deny');
             if (res.ok) {
+              c.box.recordPieceHung?.(c.box.selected());
               c.selection.planetIndex = sys.orbits[d.overOrbit]?.planet ?? d.overOrbit;
               c.bus.emit('sky:changed', { planetKey: res.sky.planetKey });
               c.persist();

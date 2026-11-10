@@ -33,8 +33,11 @@ const CN: Record<Belief, string[]> = {
   fire: ['Ember', 'Hearth', 'Ash', 'Flame'],
   sky: ['Storm', 'Thunder', 'Wind', 'Cloud'],
 };
+// Creeds about the player's body have ids from 1024: 1024 + 16 * n + deed, named for what the body mostly did.
+const STRANGER = ['Open Hand', 'Spoken Light', 'Mending', 'Red Stranger', 'Empty Jar', 'One Who Left', 'Still Spears', 'Long Shadow', 'Worn Hands', 'Lit Mind'];
 export const creedName = (seed: Seed, id: number, belief: Belief): string => {
   const h = seedToU32(mix(child(seed, 'creed-name'), id));
+  if (id >= 1024) { const n = (id - 1024) >> 4, t = `the ${STRANGER[id % 16] ?? 'Walking Light'}`; return n ? `${t} of the ${CA[h % CA.length]!} Road` : t; }
   const n = CN[belief] ?? CN.none;
   return `the ${CA[h % CA.length]!} ${n[(h >>> 8) % n.length]!}`;
 };

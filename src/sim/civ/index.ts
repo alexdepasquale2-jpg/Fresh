@@ -12,6 +12,8 @@ import type { Seed } from '@/contracts/seed';
 import type { Rng } from '@/core/hash';
 import type { Figure, Relation } from '@/contracts/sim';
 import { figName, creedName, WORKS } from './lore';
+import { makeBody, newBodyWorld } from './body';
+import type { BodyWorld, Life } from './body';
 
 type V = {
   id: number; x: number; y: number; souls: number; name: string; tech: number; belief: Belief;
@@ -34,6 +36,8 @@ type W = {
   rel: Record<string, Rel>; creeds: { id: number; belief: Belief; holyV?: number }[]; nextCreed: number; nextFig: number;
   ruins: { x: number; id: number; t: number }[]; inv: number; pm: number[] | null; arks: number; arkT?: number;
   coldT: number; coldN: number; coldLo: number; coldHi: number; metT: number; metN: number; metLo: number; metHi: number; signQ: number[];
+  /** What the world remembers of the player's bodies. Absent in snapshots from before bodies had lives. */
+  body?: BodyWorld;
 };
 const newWorld = (): W => ({ rel: {}, creeds: [], nextCreed: 1, nextFig: 1, ruins: [], inv: 0, pm: null, arks: 0, coldT: -1, coldN: 0, coldLo: 0, coldHi: 0, metT: -1, metN: 0, metLo: 0, metHi: 0, signQ: [] });
 // How each faith (row: BELIEFS order) meets a sign in the sky (column): 1 joy, 2 dread, 0 a shrug.
@@ -51,9 +55,10 @@ const REACT: number[][] = [
 // The high day of each faith: 1 sowing, 2 midsummer, 3 harvest, 4 midwinter.
 const FEAST = [3, 2, 4, 1, 3, 4, 3];
 const WORK_COST = [0, 120, 180, 220, 160, 280, 360];
-type A = { x: number; y: number; hp: number; tx: number; hitT: number; action: BodyAction | null; actionT: number; preachT: number };
+type A = { x: number; y: number; hp: number; tx: number; hitT: number; action: BodyAction | null; actionT: number; preachT: number; b?: Life };
+const OLD_ACTS = new Set<BodyAction>(['strike', 'preach', 'gift', 'shine', 'rest']);
 const DESTRUCTIVE = new Set<Tool>(['fire', 'meteor', 'lightning', 'quake', 'freeze', 'erase', 'cold', 'heat']);
-type P = { x: number; y: number; role: number; home: number; tx: number; wait: number; id?: number; until?: number; work?: number };
+type P = { x: number; y: number; role: number; home: number; tx: number; wait: number; id?: number; until?: number; work?: number; fol?: number };
 
 const EVAL = 20;
 const MAX_PEOPLE = 240;
@@ -258,7 +263,19 @@ export const factory: CivFactory = () => {
 
   const enl = (v: V) => v.enl ?? 0;
   // How a village's people meet the stranger: kneel, keep away, or attack.
-  const stance = (v: V | undefined) => (!v ? ROLE.idle : enl(v) >= 100 ? ROLE.kneel : enl(v) >= 50 ? ROLE.watch : ROLE.attack);
+  // Standing with the village (what the body has done there) bends it: see ./body.
+  const stance = (v: V | undefined): number => body.stance(v);
+  const killAvatar = () => {
+    if (!avatar) return;
+    const a = avatar;
+    // The village whose people struck the last blow, or else the nearest.
+    const hitter = people.find((p) => p.role === ROLE.attack && Math.abs(p.x - a.x) <= 1);
+    const v = vs.find((o) => o.id === hitter?.home) ?? vs.reduce<V | null>((b, o) => (!b || Math.abs(o.x - a.x) < Math.abs(b.x - a.x) ? o : b), null);
+    if (v && (a.b?.how ?? 1) === 1) pendingEv.push({ kind: 'slain', tick, villageId: v.id, x: a.x, y: a.y, belief: v.belief });
+    body.death(a, v ?? undefined);
+    avatar = null;
+    for (const p of people) if (p.role === ROLE.attack || p.role === ROLE.kneel || p.role === ROLE.watch || p.role === ROLE.listen || p.role === ROLE.flee) { p.role = ROLE.idle; p.wait = 0; }
+  };
 
   const moveAvatar = (g: GridView) => {
     if (!avatar) return;
@@ -276,32 +293,36 @@ export const factory: CivFactory = () => {
       if (p.role === ROLE.attack && d <= 1) attackers++;
       if (p.role === ROLE.kneel && d <= 3) worshippers++;
     }
-    if (attackers === 0 && tick % 20 === 0) avatar.hp = Math.min(100, avatar.hp + 1);
     if (attackers > 0 && tick - avatar.hitT >= 20) {
       avatar.hitT = tick;
       avatar.hp -= attackers;
-      if (avatar.hp <= 0) {
-        const v = vs.reduce<V | null>((b, o) => (!b || Math.abs(o.x - avatar!.x) < Math.abs(b.x - avatar!.x) ? o : b), null);
-        if (v) pendingEv.push({ kind: 'slain', tick, villageId: v.id, x: avatar.x, y: avatar.y, belief: v.belief });
-        avatar = null;
-        for (const p of people) if (p.role === ROLE.attack || p.role === ROLE.kneel || p.role === ROLE.watch || p.role === ROLE.listen || p.role === ROLE.flee) { p.role = ROLE.idle; p.wait = 0; }
-      }
+      const ax = avatar.x;
+      body.hit(avatar, attackers, people.find((p) => p.role === ROLE.attack && Math.abs(p.x - ax) <= 1)?.home ?? 0);
     }
+    if (avatar.hp <= 0) killAvatar();
   };
 
   const movePeople = (g: GridView, day: number) => {
     moveAvatar(g);
+    const huntV = avatar ? body.hunted() : 0;
     for (let i = people.length - 1; i >= 0; i--) {
       const p = people[i]!;
-      if ((p.role === ROLE.flee || p.role === ROLE.listen) && (p.until ?? 0) > tick) {
+      if (p.fol && !avatar) p.fol = 0;
+      if (p.fol && avatar && p.role !== ROLE.travel) {
+        // Those who follow the body walk where it walks.
+        p.role = ROLE.kneel;
+        p.tx = Math.max(0, Math.min(g.width - 1, avatar.x + (p.x <= avatar.x ? -1 : 1) * (2 + (i % 3))));
+        p.wait = 0;
+      } else if ((p.role === ROLE.flee || p.role === ROLE.listen) && (p.until ?? 0) > tick) {
         // Still running, or still listening.
         if (p.role === ROLE.flee && avatar) p.tx = Math.max(0, Math.min(g.width - 1, p.x + (p.x >= avatar.x ? 30 : -30)));
         if (p.role === ROLE.listen) continue;
-      } else if (avatar && p.role !== ROLE.travel && p.role !== ROLE.sleep && Math.abs(p.x - avatar.x) < 45) {
-        const s = stance(vs.find((v) => v.id === p.home));
+      } else if (avatar && p.role !== ROLE.travel && (p.role !== ROLE.sleep || p.home === huntV) && Math.abs(p.x - avatar.x) < (p.home === huntV ? 120 : 45)) {
+        const hv = vs.find((v) => v.id === p.home);
+        const s = stance(hv);
         if (s !== ROLE.idle) {
           p.role = s;
-          const keep = s === ROLE.kneel ? 2 : s === ROLE.watch ? 12 : 0;
+          const keep = body.keepOf(hv, s);
           const side = p.x <= avatar.x ? -1 : 1;
           p.tx = Math.max(0, Math.min(g.width - 1, avatar.x + side * keep));
           p.wait = 0;
@@ -358,6 +379,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
 
   const evaluate = (g: GridView, m: SurfaceModifiers, env: SurfaceEnv, surface: readonly SurfaceEvent[], events: CivEvent[]) => {
     scanGround(g);
+    wetGrid = g;
     const day = env.day;
     const night = !isDay(day);
     const winter = env.season > 600 && env.season < 900;
@@ -598,6 +620,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       for (let k = want; k < mine.length; k++) if (!notable || mine[k]!.id !== notable.pid) people.splice(people.indexOf(mine[k]!), 1);
     }
     world(g, m, env, events);
+    if (avatar && !body.step(avatar, env, events)) killAvatar();
     people = people.filter((p) => p.role === ROLE.travel || vs.some((v) => v.id === p.home));
     tendNotable(events, surface);
     const nl = Math.max(0, m.nightLight);
@@ -1039,7 +1062,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
 
   const world = (g: GridView, m: SurfaceModifiers, env: SurfaceEnv, events: CivEvent[]) => {
     const phase = (tick / EVAL) & 3;
-    if (phase === 0) relationsStep(events);
+    if (phase === 0) { relationsStep(events); body.worldStep(events); }
     else if (phase === 1) faithStep(m, events);
     else if (phase === 2) hardshipStep(g, events);
     else cultureStep(env, events);
@@ -1188,6 +1211,42 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
     }
   };
 
+  const foundVillage = (x: number, belief: Belief, tech: number, souls: number, creed: number): V | null => {
+    const cx = Math.max(2, Math.min(Math.max(2, ground.length - 3), Math.round(x)));
+    if (!ground.length || vs.length >= 12) return null;
+    const v: V = { id: nextId++, x: cx, y: ground[cx]! - 1, souls, name: `#${nextId - 1}`, tech, belief, food: 160, mood: 40, age: 0, scores: BELIEFS.map((k) => (k === belief && k !== 'none' ? 70 : 0)), progress: 0, wet: 0, starving: false, cold: false, lastBurn: -9999, lastLaunch: -99999, enl: 60 };
+    if (creed && w.creeds.some((c) => c.id === creed && c.belief === belief)) v.creed = creed;
+    vs.push(v);
+    return v;
+  };
+  let wetGrid: GridView | null = null;
+  const body = makeBody<V, P>({
+    vs: () => vs, people: () => people, bw: () => (w.body ??= newBodyWorld()), tick: () => tick, era: () => era, dice,
+    relOf, warOf: (v) => warOf(v), has, trait, startPlague, newCreed,
+    addCreed: (id, belief) => { w.creeds.push({ id, belief }); },
+    takeCreed, foundVillage,
+    ruins: () => w.ruins,
+    resettle: (ru) => { w.ruins = w.ruins.filter((q) => q.id !== ru.id); pending.push({ x: ru.x, belief: 'none', tech: Math.max(0, Math.min(5, era) - 2), ruin: ru.id }); },
+    worldInv: () => w.inv,
+    ground: () => ground,
+    wet: (x) => !!wetGrid && ground.length > 0 && at(wetGrid, x, ground[Math.max(0, Math.min(ground.length - 1, x))]!) === WATER,
+    attackers: () => attackers,
+    emit: (e) => { pendingEv.push(e); },
+    roles: { attack: ROLE.attack, kneel: ROLE.kneel, watch: ROLE.watch, idle: ROLE.idle },
+  });
+  const avatarView = (a: A) => {
+    const L = a.b;
+    const base = { x: a.x, y: a.y, hp: a.hp, attackers, worshippers, action: a.action, actionAge: tick - a.actionT };
+    if (!L) return base;
+    const opts = body.options(a).map((o) => (o.id === 'preach' ? { ...o, wait: Math.max(0, 60 - (tick - a.preachT)), ready: tick - a.preachT >= 60 } : o));
+    const wb = w.body;
+    return {
+      ...base, options: opts, standing: body.standing(), hunger: L.hunger, weariness: L.tired, wound: L.wound, sick: L.sickT > tick,
+      exposure: L.expo === 1 ? 'cold' as const : L.expo === 2 ? 'storm' as const : null, sheltered: L.shelter,
+      role: body.roleName(L.role), roleOffer: body.roleName(L.offer), followers: L.fol, carrying: body.carrying(L), carryingTo: L.carry?.to ?? null,
+      huntedBy: body.hunted() || null, creed: wb?.creed && body.creedAlive() ? creedName(pseed, wb.creed, 'sky') : null, lives: wb?.lives ?? 1, log: L.log.slice(),
+    };
+  };
   const prosperityOf = (v: V) => Math.round(Math.min(30, (v.food / 600) * 30) + Math.min(40, ((v.wealth ?? 0) / 300) * 40) + ((Math.max(-100, Math.min(100, v.mood)) + 100) / 200) * 30);
   const warOf = (v: V) => vs.find((o) => o !== v && w.rel[key(v, o)]?.war);
   const extra = (v: V): Partial<Village> => {
@@ -1247,7 +1306,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
       launches,
       launchAge: tick - lastLaunchT,
       notable: notable ? { personId: notable.pid % 30000, name: notableName(pseed, notable.ord, notable.house).full, calling: CALLINGS[notable.calling] ?? 'wanderer', age: Math.floor((tick - notable.bornT) / YEAR_TICKS), villageId: notable.home, deeds: notable.deeds.slice(), metYou: notable.metYou } : null,
-      avatar: avatar ? { x: avatar.x, y: avatar.y, hp: avatar.hp, attackers, worshippers, action: avatar.action, actionAge: tick - avatar.actionT } : null,
+      avatar: avatar ? avatarView(avatar) : null,
     };
   };
 
@@ -1346,12 +1405,19 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
     },
     incarnate: (x) => {
       const cx = Math.max(1, Math.min(Math.max(1, ground.length - 2), Math.round(x)));
+      if (avatar) { body.ascend(avatar); for (const p of people) p.fol = 0; }
       avatar = { x: cx, y: ground.length ? ground[cx]! - 1 : 0, hp: 100, tx: cx, hitT: tick, action: null, actionT: tick, preachT: -999 };
+      body.born(avatar);
     },
     walk: (x) => { if (avatar) avatar.tx = Math.max(1, Math.min(Math.max(1, ground.length - 2), Math.round(x))); },
     act: (action) => {
       if (!avatar) return;
       const a = avatar;
+      if (!OLD_ACTS.has(action)) {
+        // The newer deeds live in ./body. One that cannot be done here leaves no mark.
+        if (body.act(a, action)) { a.action = action; a.actionT = tick; if (a.hp <= 0) killAvatar(); }
+        return;
+      }
       a.action = action;
       a.actionT = tick;
       const nearV = (rad: number) => vs.filter((v) => Math.abs(v.x - a.x) <= rad);
@@ -1369,6 +1435,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
           for (const p of people) if (p.role === ROLE.attack && Math.abs(p.x - a.x) < 16) { p.role = ROLE.flee; p.until = tick + 160; p.wait = 0; }
           for (const v of nearV(50)) { v.enl = Math.max(0, enl(v) - 6); v.mood -= 12; }
           if (closest) push('struck', closest);
+          body.noted(a, action, true);
         }
       } else if (action === 'preach') {
         if (tick - a.preachT < 60) return;
@@ -1381,6 +1448,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
           v.enl = Math.min(100, enl(v) + 5);
           if (tick - (v.lastPreach ?? -99999) > 1600) { v.lastPreach = tick; push('preached', v); }
         }
+        body.noted(a, action, true);
       } else if (action === 'gift') {
         if (closest && Math.abs(closest.x - a.x) < 40 && a.hp > 10) {
           a.hp -= 8;
@@ -1388,6 +1456,7 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
           closest.mood = Math.min(100, closest.mood + 15);
           closest.enl = Math.min(100, enl(closest) + 3);
           push('gift', closest);
+          body.noted(a, action, true);
         }
       } else if (action === 'shine') {
         if (a.hp <= 6) return;
@@ -1400,11 +1469,13 @@ if ((p.role === ROLE.mine || p.role === ROLE.craft || p.role === ROLE.build) && 
           p.wait = 0;
         }
         for (const v of nearV(45)) { v.scores[BELIEFS.indexOf('sky')]! += 30; if (tick - (v.lastOmen ?? -99999) > 400) { v.lastOmen = tick; push('omen', v, 101); } }
+        body.noted(a, action, true);
       } else if (action === 'rest') {
-        if (attackers === 0) a.hp = Math.min(100, a.hp + 15);
+        if (attackers === 0) { a.hp = Math.min(100, a.hp + 15); body.noted(a, action, true); }
       }
     },
     ascend: () => {
+      if (avatar) body.ascend(avatar);
       avatar = null;
       for (const p of people) if (p.role === ROLE.attack || p.role === ROLE.kneel || p.role === ROLE.watch || p.role === ROLE.listen || p.role === ROLE.flee) { p.role = ROLE.idle; p.wait = 0; }
     },
