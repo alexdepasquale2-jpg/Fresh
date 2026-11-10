@@ -18,7 +18,7 @@
 .pl-over-btn { position: absolute; top: 6px; min-height: var(--touch); min-width: var(--touch); padding: 0 8px; font-size: 11px; letter-spacing: .06em; background: color-mix(in srgb, var(--bg) 75%, transparent); }
 .pl-photo { right: 6px; }
 .pl-chip { left: 22px; max-width: 104px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-color: var(--glow); color: var(--glow); }
-.pl-mini { position: absolute; top: 8px; right: 62px; width: 150px; height: 28px; border: 1px solid var(--line); background: var(--bg); image-rendering: pixelated; touch-action: none; cursor: pointer; }
+.pl-mini { position: absolute; top: 8px; right: 76px; width: min(150px, 38%); height: 28px; border: 1px solid var(--line); background: var(--bg); image-rendering: pixelated; touch-action: none; cursor: pointer; }
 .pl-compass { position: absolute; top: 6px; left: 132px; right: 62px; display: flex; flex-direction: column; gap: 2px; padding: 3px 4px; pointer-events: none; background: color-mix(in srgb, var(--bg) 60%, transparent); }
 .pl-compass-bar { position: relative; height: 14px; border: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 70%, transparent); }
 .pl-compass-bar::after { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--ink-off); }
@@ -148,3 +148,7 @@
 .sallow-text-l .pl-header { padding-right: 48px; align-items: flex-start; }
 .sallow-text-l .pl-name > * { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.15; overflow-wrap: anywhere; }
 .sallow-text-l .sy > header { padding-right: 48px; }
+
+/* Narrow phones: the age line wraps under the name instead of being cut off. */
+.pl-header .col { min-width: 0; }
+.pl-header .col .k-label { white-space: normal; overflow: visible; text-overflow: clip; text-align: right; line-height: 1.25; }
