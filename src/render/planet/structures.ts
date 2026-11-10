@@ -8,7 +8,7 @@ import { BELIEFS, BUILDING_KINDS } from '@/contracts/sim';
 const VS = `#version 300 es
 layout(location=0) in vec2 a_pos;
 layout(location=1) in vec4 a_a;   // x, ground y, kind, seed
-layout(location=2) in vec4 a_b;   // launch 0..1 (pads), faith, prosperity 0..1, era 0..5
+layout(location=2) in vec4 a_b;   // launch 0..1 (pads) / 1 festival, 2 plague (houses) / 1 famine (farms), faith, prosperity 0..1, true era 0..8
 uniform vec3 u_cam; uniform vec2 u_grid;
 out vec2 v_p; out vec4 v_a; out vec4 v_b;
 void main(){
@@ -27,6 +27,7 @@ uniform float u_time, u_amb, u_night, u_zoom, u_pulse, u_wind, u_season, u_snow;
 vec3 pal(int i){ return texelFetch(u_pal, ivec2(i & 15, 0), 0).rgb; }
 float h1(float n){ return fract(sin(n * 91.345) * 47453.5453); }
 float bx(vec2 p, vec2 c, vec2 h){ vec2 d = abs(p - c) - h; return max(d.x, d.y); }
+float seg2(vec2 p, vec2 a, vec2 b){ vec2 pa = p - a, ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)); }
 float L(float z){ return smoothstep(z, z * 1.25, u_zoom); }     // a detail layer switches on at zoom z
 vec4 col = vec4(0.0); float emis = 0.0;
 void put(float d, vec3 c){ float a = smoothstep(0.03, -0.03, d); col = mix(col, vec4(c, 1.0), a); if (a > 0.5) emis = 0.0; }
@@ -42,7 +43,9 @@ void main(){
   float prosp = v_b.z, era = v_b.w;
   vec3 snowc = pal(9) * 0.95;
   // How many windows are lit: more in later ages and in good years. The last go dark late at night.
-  float lights = lamp * step(h1(seed + 3.0), 0.3 + 0.1 * era + 0.5 * prosp);
+  float sick = step(1.5, v_b.x) * step(v_b.x, 2.5);
+  // Plague: the shutters stay closed.
+  float lights = lamp * step(h1(seed + 3.0), (0.3 + 0.08 * era + 0.5 * prosp) * (1.0 - 0.85 * sick));
   if (kind == 0) {                                   // house
     float tall = 1.0 + 0.3 * step(0.5, h1(seed));
     put(bx(p, vec2(0.0, tall), vec2(1.4, tall)), wall * (1.0 - L(11.0) * 0.22 * max(step(0.86, fract(p.y * 2.2)), step(0.9, fract(p.x * 1.6 + floor(p.y * 2.2) * 0.5)))));
@@ -55,8 +58,9 @@ void main(){
     float win = bx(p, vec2(0.6, 1.25), vec2(0.34, 0.34));
     glow(win, mix(dark, lit * (0.8 + 0.08 * era), lights), lights);
     if (L(15.0) > 0.5) put(max(win, -min(abs(p.x - 0.6), abs(p.y - 1.25)) + 0.05), wood);
-    if (tall > 1.1 && era > 1.5) { float w2 = bx(p, vec2(-0.5, 1.95), vec2(0.26, 0.26)); glow(w2, mix(dark, lit, lamp * step(h1(seed + 5.0), 0.2 + 0.7 * prosp)), lamp * step(h1(seed + 5.0), 0.2 + 0.7 * prosp)); }
-    if (prosp > 0.64) {
+    if (tall > 1.1 && era > 1.5) { float on2 = lamp * step(h1(seed + 5.0), 0.2 + 0.7 * prosp) * (1.0 - sick); float w2 = bx(p, vec2(-0.5, 1.95), vec2(0.26, 0.26)); glow(w2, mix(dark, lit, on2), on2); }
+    if (sick > 0.5 && L(9.0) > 0.5) put(min(seg2(p, vec2(-0.8, 0.25), vec2(-0.3, 0.95)), seg2(p, vec2(-0.3, 0.25), vec2(-0.8, 0.95))) - 0.05, paper);   // a pale cross on the door
+    if (abs(v_b.x - 1.0) < 0.1) {
       // A festival: bunting strung from the ridge, and small lights along it after dark.
       float ax = abs(p.x), yl = 2.0 * tall + 1.25 - 0.9 * sin(3.14159 * clamp((ax - 0.2) / 4.8, 0.0, 1.0));
       float fx = fract(ax * 1.5), dn = yl - p.y;
@@ -76,11 +80,14 @@ void main(){
     put(bx(p, vec2(0.0, 0.06), vec2(3.4, 0.08)), pal(5) * 0.7);
     float row = floor(p.x * 1.6), fx = fract(p.x * 1.6) - 0.5;
     // Sown in spring, tall by summer, gold at harvest, stubble through the winter.
-    float grown = smoothstep(0.02, 0.3, u_season) * (1.0 - 0.82 * smoothstep(0.56, 0.64, u_season)), ripe = smoothstep(0.3, 0.52, u_season);
+    float famine = step(0.5, v_b.x);
+    float grown = smoothstep(0.02, 0.3, u_season) * (1.0 - 0.82 * smoothstep(0.56, 0.64, u_season)) * (1.0 - 0.92 * famine), ripe = smoothstep(0.3, 0.52, u_season);
+    // Famine: bare cracked earth and a few dead stalks.
+    if (famine > 0.5) put(bx(p, vec2(0.0, 0.1), vec2(3.4, 0.1)), mix(pal(5) * 0.55, pal(3), 0.4) * (0.8 + 0.3 * step(0.8, fract(p.x * 1.9 + seed))));
     float hgt = (0.45 + 0.5 * h1(row + seed)) * (0.18 + 0.95 * grown);
     float sway = (sin(u_time * (1.4 + abs(u_wind) * 2.0) + row) * (0.08 + abs(u_wind) * 0.12) - u_wind * 0.25) * p.y;
-    if (abs(p.x) < 3.3) put(max(abs(fx + sway) - 0.16 * (1.0 - p.y / hgt) - 0.03, p.y - hgt), mix(pal(15), gold, 0.2 * h1(row) + 0.7 * ripe));
-    if (L(15.0) > 0.5 && abs(p.x) < 3.3 && grown > 0.6) put(length(vec2(fx + sway, p.y - hgt)) - 0.11, gold);
+    if (abs(p.x) < 3.3) put(max(abs(fx + sway) - 0.16 * (1.0 - p.y / hgt) - 0.03, p.y - hgt), mix(mix(pal(15), gold, 0.2 * h1(row) + 0.7 * ripe), pal(3) * 0.8, famine));
+    if (L(15.0) > 0.5 && abs(p.x) < 3.3 && grown > 0.6 && famine < 0.5) put(length(vec2(fx + sway, p.y - hgt)) - 0.11, gold);
     if (u_snow > 0.03) put(bx(p, vec2(0.0, 0.14), vec2(3.4, 0.07 * u_snow)), snowc);
     put(bx(p, vec2(3.5, 0.5), vec2(0.07, 0.5)), wood); put(bx(p, vec2(-3.5, 0.5), vec2(0.07, 0.5)), wood);
     if (L(11.0) > 0.5) { put(bx(p, vec2(2.6, 0.9), vec2(0.05, 0.9)), wood); put(bx(p, vec2(2.6, 1.4), vec2(0.5, 0.06)), wood); put(length(p - vec2(2.6, 1.95)) - 0.22, paper); }
@@ -190,6 +197,8 @@ export const createStructures = (core: GlCore) => {
     }) => {
       let n = 0;
       const launch = o.civ.launchAge < 100 ? Math.max(0.001, o.civ.launchAge / 100) : 0;
+      // An older sim does not say when there is a festival: fall back to good years.
+      const live = o.civ.age !== undefined;
       for (const v of o.civ.villages) {
         for (const b of v.buildings) {
           if (n >= MAXN) break;
@@ -198,7 +207,7 @@ export const createStructures = (core: GlCore) => {
           const gy = Math.max(o.top[x - 1]!, o.top[x]!, o.top[x + 1]!);
           const k = n * 8;
           data[k] = x + 0.5; data[k + 1] = gy; data[k + 2] = BUILDING_KINDS.indexOf(b.kind); data[k + 3] = b.seed + v.id * 7;
-          data[k + 4] = b.kind === 'pad' ? launch : 0; data[k + 5] = BELIEFS.indexOf(v.belief); data[k + 6] = Math.max(0, Math.min(1, v.prosperity / 100)); data[k + 7] = v.tech;
+          data[k + 4] = b.kind === 'pad' ? launch : b.kind === 'house' ? (v.state === 'plague' ? 2 : v.state === 'festival' || (live === false && v.prosperity > 64) ? 1 : 0) : b.kind === 'farm' && v.food < 40 && v.souls > 0 ? 1 : 0; data[k + 5] = BELIEFS.indexOf(v.belief); data[k + 6] = Math.max(0, Math.min(1, v.prosperity / 100)); data[k + 7] = v.era ?? v.tech;
           n++;
         }
       }
