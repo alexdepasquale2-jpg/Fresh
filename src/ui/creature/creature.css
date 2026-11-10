@@ -1,0 +1,130 @@
+/* Creatures (ui/creature). Colours are the universe's palette (set as --c* on the root) and tokens; --glow is light and eyes only. */
+.creature { position: relative; display: inline-block; flex: none; width: var(--cr-size, 128px); height: var(--cr-size, 128px); pointer-events: none; }
+.creature svg { position: relative; display: block; width: 100%; height: 100%; overflow: visible; }
+.creature.face-left svg { transform: scaleX(-1); }
+.creature .cr-aura { position: absolute; inset: 2%; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--glow) 75%, transparent) 0%, color-mix(in srgb, var(--glow) 22%, transparent) 42%, transparent 70%); opacity: var(--cr-aura, .1); animation: cr-aura 3.4s ease-in-out infinite; }
+
+.cr-act, .cr-bob { transform-origin: 60px 96px; }
+.cr-bob { animation: cr-breathe var(--cr-beat, 3.2s) ease-in-out infinite; }
+.cr-bob.floaty { animation-name: cr-float; }
+.cr-shadow { fill: var(--bg); opacity: .55; }
+.cr-fill { fill: var(--cb); }
+.cr-outline { fill: none; stroke: var(--co); stroke-width: 1.6; stroke-linejoin: round; }
+.cr-flash { fill: var(--ink-bright); opacity: 0; }
+.cr-limb, .cr-fin { fill: var(--cb); stroke: var(--co); stroke-width: 1.4; stroke-linejoin: round; }
+.cr-fin { fill: var(--cs); }
+.cr-horn { fill: var(--c-paper); stroke: var(--co); stroke-width: 1.2; stroke-linejoin: round; }
+.cr-line { fill: none; stroke: var(--cs); stroke-width: 1.6; stroke-linecap: round; }
+.cr-tendril { fill: none; stroke: var(--cb); stroke-width: 3.4; stroke-linecap: round; transform-box: fill-box; transform-origin: 50% 0; animation: cr-sway 2.6s ease-in-out infinite; }
+.cr-tail { transform-box: fill-box; transform-origin: 100% 50%; animation: cr-sway 2.2s ease-in-out infinite; }
+.cr-ring { fill: none; stroke: var(--cs); stroke-width: 3.4; }
+.cr-ring.front { stroke-linecap: round; }
+.cr-bulb { fill: var(--glow); }
+.cr-mark { fill: var(--cs); opacity: .8; }
+.cr-stripe { fill: none; stroke: var(--cs); stroke-width: 3.2; stroke-linecap: round; opacity: .85; }
+.cr-belly { fill: color-mix(in srgb, var(--cb) 55%, var(--c-pale)); }
+.cr-mask { fill: var(--co); opacity: .32; }
+.cr-half { fill: var(--cb2); }
+.cr-seam { fill: none; stroke: var(--glow); stroke-width: 1.5; stroke-linejoin: round; }
+.cr-depth { fill: color-mix(in srgb, var(--co) 8%, transparent); stroke: var(--co); stroke-width: 1.1; opacity: .55; }
+.cr-blush { fill: var(--c-fire); opacity: .5; }
+.cr-plate { fill: none; stroke: var(--c-gold); stroke-width: 4.2; stroke-linejoin: round; }
+.cr-plate-edge { fill: none; stroke: var(--co); stroke-width: 6.6; stroke-linejoin: round; }
+
+.cr-white { fill: var(--glow); }
+.cr-pup { fill: var(--c-void); }
+.cr-glint { fill: var(--ink-bright); }
+.cr-lid { fill: var(--cb); }
+.el-void .cr-white { filter: drop-shadow(0 0 2px var(--glow)); }
+.el-void .cr-tendril { stroke: var(--cs); }
+.el-void .cr-outline { stroke-width: 2; }
+.cr-eye { transform-box: fill-box; transform-origin: 50% 50%; animation: cr-blink 4.8s infinite; }
+.cr-pupil { animation: cr-glance 7.3s ease-in-out infinite; }
+.cr-third { animation: cr-aura 2.4s ease-in-out infinite; }
+.cr-x { fill: none; stroke: var(--cf); stroke-width: 1.8; stroke-linecap: round; }
+.cr-mouth { fill: none; stroke: var(--cf); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.cr-maw { fill: var(--c-void); stroke: var(--cf); stroke-width: 1; stroke-linejoin: round; }
+.cr-fang { fill: var(--ink-bright); }
+.cr-halo { fill: none; stroke: var(--glow); stroke-width: 1.8; filter: drop-shadow(0 0 2px var(--glow)); animation: cr-aura 2.8s ease-in-out infinite; }
+.cr-lampglow { fill: var(--glow); opacity: .28; animation: cr-aura 1.9s ease-in-out infinite; }
+.cr-minion { animation: cr-hop 1.6s ease-in-out infinite; }
+.cr-mini { stroke: var(--co); stroke-width: 1; }
+
+/* Elements */
+.cr-flame { fill: var(--c-fire); stroke: var(--c-ember); stroke-width: .8; transform-box: fill-box; transform-origin: 50% 100%; animation: cr-flicker .9s ease-in-out infinite; }
+.cr-flame.alt { fill: var(--c-gold); }
+.cr-ember { fill: var(--c-gold); stroke: var(--c-fire); stroke-width: 1.2; }
+.cr-shard { fill: var(--c-pale); stroke: var(--c-water); stroke-width: 1; stroke-linejoin: round; }
+.cr-twinkle { fill: var(--ink-bright); transform-box: fill-box; transform-origin: 50% 50%; animation: cr-twinkle 2.6s ease-in-out infinite; }
+.cr-wave { fill: var(--c-deep); opacity: .55; }
+.cr-drip { fill: var(--c-water); animation: cr-drip 2.4s ease-in infinite; }
+.cr-crack { fill: none; stroke: var(--co); stroke-width: 1.2; stroke-linejoin: round; opacity: .8; }
+.cr-pebble { fill: var(--c-line); stroke: var(--co); stroke-width: 1; }
+.cr-leaf { fill: var(--c-life); stroke: var(--co); stroke-width: 1; stroke-linejoin: round; }
+.cr-petal { fill: var(--c-paper); }
+.cr-pollen { fill: var(--c-gold); }
+.cr-hole { fill: var(--c-void); stroke: var(--c-pale); stroke-width: 1; }
+.cr-bit { fill: var(--c-pale); opacity: .85; }
+.cr-mote { fill: var(--glow); filter: drop-shadow(0 0 2px var(--glow)); }
+.cr-moon { fill: var(--c-paper); stroke: var(--c-void); stroke-width: .8; }
+.cr-moonring { fill: none; stroke: var(--c-gold); stroke-width: 1; }
+
+/* Statuses */
+.cr-frost { fill: var(--c-pale); opacity: .34; }
+.cr-ward { fill: color-mix(in srgb, var(--glow) 7%, transparent); stroke: var(--glow); stroke-width: 1.6; stroke-dasharray: 7 5; transform-origin: 60px 64px; animation: cr-spin 9s linear infinite; }
+.cr-shield { fill: none; stroke: var(--gold); stroke-width: 3; stroke-linecap: round; }
+.cr-stem { fill: none; stroke: var(--c-life); stroke-width: 1.5; stroke-linecap: round; }
+.cr-sprout { transform-box: fill-box; transform-origin: 50% 100%; animation: cr-sway 2s ease-in-out infinite; }
+.cr-break { fill: none; stroke: var(--ink-bright); stroke-width: 1.4; stroke-linejoin: round; }
+.st-expose .cr-body { fill-opacity: .42; }
+.st-expose .cr-outline { stroke-dasharray: 4 3; stroke: var(--ink-bright); }
+.st-chill .cr-bob { animation-duration: 6.5s; }
+.is-guard .cr-bob { animation: none; transform: scale(1.05, .93); }
+
+/* Hurt and down */
+.is-low .cr-bob { animation: cr-droop 4.6s ease-in-out infinite; }
+.is-low .cr-aura { opacity: calc(var(--cr-aura, .1) * .4); animation: none; }
+.is-down .cr-bob, .is-down .cr-flame, .is-down .cr-tendril, .is-down .cr-tail { animation: none; }
+.is-down .cr-act { transform: translate(24px, 2px) rotate(-78deg) scale(.88); opacity: .42; }
+.is-down .cr-aura { opacity: 0; animation: none; }
+
+/* Actions */
+.a-attack .cr-act { animation: cr-attack .46s cubic-bezier(.3, 0, .3, 1); }
+.a-hit .cr-act { animation: cr-hit .42s linear; }
+.a-crit .cr-act { animation: cr-crit .64s linear; }
+.a-hit .cr-flash { animation: cr-flash .42s ease-out; }
+.a-crit .cr-flash { animation: cr-flash .32s ease-out 2; }
+.a-heal .cr-act { animation: cr-heal .82s ease-in-out; }
+.a-heal .cr-flash, .a-fuse .cr-flash { fill: var(--glow); animation: cr-flash .82s ease-out; }
+.a-heal .cr-aura, .a-fuse .cr-aura { animation: cr-surge .82s ease-out; }
+.a-guard .cr-act { animation: cr-guard .56s ease-out; }
+.a-fuse .cr-act { animation: cr-fuse .9s cubic-bezier(.2, .8, .3, 1); }
+.a-enter .cr-act { animation: cr-enter .42s ease-out; }
+.a-faint .cr-act { animation: cr-faint .82s ease-in forwards; }
+
+@keyframes cr-breathe { 50% { transform: translateY(-1.6px) scale(.985, 1.035); } }
+@keyframes cr-float { 50% { transform: translateY(-4.5px) scale(.99, 1.02); } }
+@keyframes cr-droop { 0%, 100% { transform: translateY(3px) scale(1.05, .9) rotate(-3deg); } 50% { transform: translateY(4px) scale(1.07, .87) rotate(-4deg); } }
+@keyframes cr-aura { 50% { opacity: calc(var(--cr-aura, 1) * .62); } }
+@keyframes cr-blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.08); } }
+@keyframes cr-glance { 0%, 38%, 100% { transform: translate(0, 0); } 44%, 58% { transform: translate(-1.6px, .3px); } 64%, 80% { transform: translate(.9px, -.7px); } }
+@keyframes cr-sway { 50% { transform: rotate(9deg); } }
+@keyframes cr-hop { 0%, 60%, 100% { transform: translateY(0); } 78% { transform: translateY(-3px); } }
+@keyframes cr-flicker { 0%, 100% { transform: scale(1, 1) skewX(0); } 30% { transform: scale(.9, 1.18) skewX(-5deg); } 65% { transform: scale(1.06, .88) skewX(5deg); } }
+@keyframes cr-twinkle { 0%, 100% { transform: scale(.4); opacity: .3; } 50% { transform: scale(1); opacity: 1; } }
+@keyframes cr-drip { 0%, 55% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(13px); opacity: 0; } }
+@keyframes cr-spin { to { transform: rotate(360deg); } }
+@keyframes cr-attack { 22% { transform: translateX(-9px) rotate(-7deg) scale(.96, 1.04); } 52% { transform: translateX(26px) rotate(9deg) scale(1.1, .95); } 100% { transform: none; } }
+@keyframes cr-hit { 15% { transform: translateX(-13px) rotate(-9deg); } 40% { transform: translateX(5px) rotate(3deg); } 60% { transform: translateX(-5px); } 80% { transform: translateX(2px); } }
+@keyframes cr-crit { 10% { transform: translateX(-18px) rotate(-16deg) scale(.9, 1.1); } 28% { transform: translateX(9px) rotate(7deg); } 44% { transform: translateX(-10px) rotate(-6deg); } 60% { transform: translateX(6px); } 80% { transform: translateX(-3px); } }
+@keyframes cr-flash { 0% { opacity: .95; } 100% { opacity: 0; } }
+@keyframes cr-heal { 35% { transform: translateY(-5px) scale(1.12); } 70% { transform: translateY(0) scale(.98, 1.03); } }
+@keyframes cr-surge { 30% { opacity: 1; transform: scale(1.18); } }
+@keyframes cr-guard { 30% { transform: scale(1.12, .84); } 60% { transform: scale(.98, 1.03); } }
+@keyframes cr-fuse { 0% { transform: scale(0, 1.3); } 45% { transform: scale(1.25, .85); } 70% { transform: scale(.94, 1.06); } 100% { transform: none; } }
+@keyframes cr-enter { 0% { transform: translateY(12px) scale(.5); opacity: 0; } 70% { transform: translateY(-3px) scale(1.06); opacity: 1; } }
+@keyframes cr-faint { 0% { transform: none; opacity: 1; } 25% { transform: translateY(-4px) rotate(6deg); } 100% { transform: translate(24px, 2px) rotate(-78deg) scale(.88); opacity: .42; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .creature, .creature * { animation: none !important; }
+}
