@@ -128,3 +128,12 @@
 @media (prefers-reduced-motion: reduce) {
   .creature, .creature * { animation: none !important; }
 }
+
+/* Grown forms, shields and held relics. */
+.cr-mane { fill: var(--cs); stroke: var(--co); stroke-width: 1.2; stroke-linejoin: round; }
+.cr-chest { fill: none; stroke: var(--cb2); stroke-width: 3; stroke-linecap: round; opacity: .8; }
+.cr-wing { fill: var(--cb2); stroke: var(--co); stroke-width: 1.3; stroke-linejoin: round; opacity: .92; }
+.cr-crown { fill: var(--c-gold); stroke: var(--co); stroke-width: 1; stroke-linejoin: round; }
+.cr-elder { fill: none; stroke: var(--glow); stroke-width: 1; stroke-dasharray: 2 4; opacity: .7; }
+.cr-relic { fill: var(--c-gold); stroke: var(--co); stroke-width: .9; }
+.cr-shell { fill: none; stroke: var(--c-pale); stroke-width: 2.4; stroke-linecap: round; opacity: .85; }

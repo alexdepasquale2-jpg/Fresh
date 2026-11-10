@@ -70,6 +70,8 @@ const planOf = (spec: UniverseSpec): Plan => {
 interface Look {
   element: Element; element2: Element | null; big: number; rings: number; aura: number; plates: number; motes: number;
   traits: string; status: string; low: boolean; down: boolean; guarding: boolean; fused: boolean;
+  /** 1, 2 or 3: grown forms carry more on the body. */
+  form: number; shield: boolean; relic: boolean;
 }
 const STATUSES: readonly StatusKind[] = ['burn', 'chill', 'ward', 'regen', 'expose'];
 const lookOf = (spec: UniverseSpec, f?: Fighter): Look => {
@@ -89,6 +91,7 @@ const lookOf = (spec: UniverseSpec, f?: Fighter): Look => {
     down: !!f && f.hp <= 0,
     guarding: !!f?.guarding,
     fused: !!f?.fused,
+    form: Math.max(1, Math.min(3, f?.form ?? 1)), shield: (f?.shield ?? 0) > 0, relic: !!f?.relic,
   };
 };
 
@@ -97,7 +100,7 @@ const draw = (p: Plan, k: Look, id: string, still: boolean): string => {
   const st = (s: string): boolean => k.status.split(' ').includes(s);
   const isEl = (e: Element): boolean => k.element === e || k.element2 === e;
   const stone = k.element === 'stone';
-  const R = (26 + 6 * k.big) * (has('thriving') ? 1.05 : 1);
+  const R = (26 + 6 * k.big) * (has('thriving') ? 1.05 : 1) * [0.9, 1, 1.08][k.form - 1]!;
   const rx = R * [1, 0.82, 1.2, 0.9, 0.86][p.sil]!, ry = R * [0.96, 1.16, 0.82, 0.9, 0.86][p.sil]!;
 
   // The silhouette: a radius around the centre, flattened where it sits.
@@ -238,6 +241,20 @@ const draw = (p: Plan, k: Look, id: string, still: boolean): string => {
   else if (p.mouth === 5) face.push(`<path class="cr-maw" d="M${n1(fx - mw)} ${n1(my - 1)}h${n1(mw * 2)}q${n1(-mw)} ${n1(mw * 1.5)} ${n1(-mw * 2)} 0z"/>`);
   else face.push(smile);
 
+  // Grown forms. The second wears a mane and a tail-plume; the third has wings, a crown and a second outline.
+  if (k.form >= 2) {
+    for (let i = 0; i < 5; i++) back.push(blade(-150 + i * 30, R * (0.34 + (i % 2) * 0.12), 4.2, i < 2 ? -2 : 2, 'cr-mane', 1.4, 0.9));
+    back.push(blade(140, R * 0.7, 5, -10, 'cr-mane cr-tail', 1.3));
+    inside.push(`<path class="cr-chest" d="M${n1(CX - rx * 0.5)} ${n1(CY + ry * 0.2)}q${n1(rx * 0.5)} ${n1(ry * 0.5)} ${n1(rx)} 0"/>`);
+  }
+  if (k.form >= 3) {
+    back.push(blade(200, R * 1.05, 9, 12, 'cr-wing', 1.5, 0.7), blade(222, R * 0.8, 7, 9, 'cr-wing', 1.5, 0.7), blade(-20, R * 1.05, 9, -12, 'cr-wing', 1.5, 0.7), blade(-42, R * 0.8, 7, -9, 'cr-wing', 1.5, 0.7));
+    const topY = at(-Math.PI / 2)[1];
+    over.push(`<path class="cr-crown" d="M${n1(CX - 9)} ${n1(topY + 1)}l2 -9 4 5 3 -8 3 8 4 -5 2 9z"/>`, dot(CX, topY - 9, 1.6, 'cr-bulb'));
+    over.push(`<path class="cr-elder" d="${body}" transform="translate(${CX} ${CY}) scale(1.09) translate(${-CX} ${-CY})"/>`);
+  }
+  if (k.relic) { const [px, py] = at(rad(70), 0.98); over.push(`<path class="cr-line" d="M${n1(px - 4)} ${n1(py - 5)}q4 5 4 5"/>`, `<path class="cr-relic" d="M${n1(px)} ${n1(py - 2)}l3 4 -3 4 -3 -4z"/>`); }
+
   // Traits anyone can see.
   if (has('awake')) {
     back.push(`<ellipse class="cr-halo" cx="${CX}" cy="${n1(at(-Math.PI / 2)[1] - 9)}" rx="${n1(rx * 0.62)}" ry="3.6"/>`);
@@ -271,6 +288,7 @@ const draw = (p: Plan, k: Look, id: string, still: boolean): string => {
   if (k.motes > 0) orbits.push(orbit(46, 14, -16, 7 - k.motes, Array.from({ length: k.motes }, () => dot(0, 0, 1.9, 'cr-mote'))));
   if (has('reaching')) orbits.push(orbit(42, 20, 24, 9, [`${dot(0, 0, 3.4, 'cr-moon')}<ellipse class="cr-moonring" rx="5.6" ry="1.6"/>`, dot(0, 0, 2.5, 'cr-moon')]));
   if (voidy) orbits.push(orbit(40, 30, 40, 11, Array.from({ length: p.count }, (_, i) => `<rect class="cr-bit" x="-2" y="-2" width="${3 + (i % 2)}" height="${3 + (i % 2)}" transform="rotate(${i * 31})"/>`)));
+  if (k.shield) orbits.push(`<path class="cr-shell" d="M${n1(CX - Math.max(rx, ry) - 9)} ${CY + 8}a${n1(Math.max(rx, ry) + 9)} ${n1(Math.max(rx, ry) + 9)} 0 0 1 ${n1((Math.max(rx, ry) + 9) * 2)} 0"/>`);
   if (st('ward')) orbits.push(`<circle class="cr-ward" cx="${CX}" cy="${CY}" r="${n1(Math.max(rx, ry) + 13)}"/>`);
   if (k.guarding) orbits.push(`<path class="cr-shield" d="M${n1(CX + rx + 10)} ${n1(CY - ry * 0.8)}q9 ${n1(ry * 0.8)} 0 ${n1(ry * 1.6)}"/>`);
 
@@ -311,8 +329,8 @@ export const creature = (spec: UniverseSpec, fighter?: Fighter, opts: CreatureOp
     key = next;
     const pick = (list: readonly number[], i: number) => col(list[i % list.length]!);
     const dark = k.element === 'void';
-    root.className = `creature el-${k.element}${opts.facing === 'left' ? ' face-left' : ''}${k.low ? ' is-low' : ''}${k.down ? ' is-down' : ''}${k.guarding ? ' is-guard' : ''}${k.fused ? ' is-fused' : ''}${k.status.split(' ').filter(Boolean).map((s) => ` st-${s}`).join('')}${anim !== 'idle' ? ` a-${anim}` : ''}`;
-    root.setAttribute('aria-label', `${f?.name ?? spec.name}, a ${k.element} creature`);
+    root.className = `creature el-${k.element}${opts.facing === 'left' ? ' face-left' : ''}${k.low ? ' is-low' : ''}${k.down ? ' is-down' : ''}${k.guarding ? ' is-guard' : ''}${k.fused ? ' is-fused' : ''} form-${k.form}${k.status.split(' ').filter(Boolean).map((s) => ` st-${s}`).join('')}${anim !== 'idle' ? ` a-${anim}` : ''}`;
+    root.setAttribute('aria-label', `${f?.name ?? spec.name}, a ${k.element} creature${k.form > 1 ? `, form ${k.form}` : ''}`);
     const vars: Record<string, string> = {
       '--cr-size': `${size}px`,
       '--cb': pick(BODY[k.element], p.body), '--cs': pick(SECOND[k.element], p.second),
