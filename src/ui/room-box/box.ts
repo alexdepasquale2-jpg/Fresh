@@ -412,6 +412,7 @@ export const box: ScreenFactory = () => {
           }));
       };
 
+      const claimable = () => SETS.filter((x) => !col.paid.includes(x.id) && x.have(held, col) >= x.need(c));
       const goalsPage = (): HTMLElement => {
         const laws = lawSets(c);
         const tempers = [...new Set<string>([...TEMPERS, ...held.map((h) => h.ch.temperament).filter(Boolean)])];
@@ -438,6 +439,17 @@ export const box: ScreenFactory = () => {
               return el('span', { class: n ? 'rb-have on' : 'rb-have' }, `${n ? '■' : '□'} ${t}`);
             }))),
           label(`SETS · ${col.paid.length} of ${SETS.length} paid · each pays once`),
+          claimable().length >= 2 ? button(`Claim all ${claimable().length}`, () => {
+            // Each set goes through the same claim() the single buttons use; one that will not pay is skipped.
+            const bankWas = c.light.view().bank ?? 0;
+            const got = claimable().filter((x) => claim(c, x, held, col));
+            if (!got.length) return;
+            note = `${got.length} ${got.length === 1 ? 'set' : 'sets'} paid: ${got.map((x) => `${x.name} (${rewardText(x)})`).join(', ')}.${(c.light.view().bank ?? 0) > bankWas ? ' Mote was full, so half of what spilled over went to the bank.' : ''}`;
+            c.audio.sfx('gain');
+            later(300, () => c.audio.sfx('shine'));
+            render();
+            burst(root, root.getBoundingClientRect().width / 2, 240, 20, true);
+          }, { primary: true, id: 'goals-claim-all' }) : null,
           ...SETS.map((s) => {
             const need = s.need(c), have = Math.min(need, s.have(held, col));
             const paid = col.paid.includes(s.id), ready = !paid && have >= need;
