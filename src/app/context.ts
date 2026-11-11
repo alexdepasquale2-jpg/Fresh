@@ -7,7 +7,8 @@ import { createBus } from '@/core/bus';
 import { ROOT_SEED } from '@/core/serial';
 import { seedToHex } from '@/core/hash';
 import { FX_ONE } from '@/core/fixed';
-import { registry as R } from './registry';
+import { core as R, lazy } from './units';
+import type { SystemRenderer, PlanetRenderer } from '@/contracts/render';
 import { createSimClient } from './sim-client';
 import type { Opened } from './sim-client';
 
@@ -17,6 +18,8 @@ export const STARTER_SERIALS = [0x3f9a77, 0x0b11e5, 0x5a17ee, 0x7a110e, 0xc401a1
 export interface App {
   ctx: AppContext;
   screens: Record<ScreenId, () => Screen>;
+  /** Fetch the code a screen needs. Null when it is already here; otherwise wait before calling screens[id](). */
+  prepare(id: ScreenId): Promise<void> | null;
   snapshot(): SaveState;
   restore(s: SaveState): void;
 }
@@ -87,8 +90,13 @@ export const createApp = (gl: GlCore, go: (to: ScreenId) => void, persist: () =>
     box.recordLife(box.selected(), { souls: civ.souls, era: civ.era, belief: faith, enlightenment: bestEnl, prosperity: civ.prosperity, orbiters });
     bus.emit('sim:frame', { tick: f.tick });
   };
-  const renderers = { dive: R['render/dive'](), system: R['render/system'](), planet: R['render/planet'](), room: R['render/room']() };
-  for (const r of Object.values(renderers)) r.init(gl);
+  // The system and planet renderers are fetched with their screens; until then these stand in.
+  const idleSystem: SystemRenderer = { init: () => {}, draw: () => {}, dispose: () => {}, orbitAt: () => -1 };
+  const idlePlanet: PlanetRenderer = { init: () => {}, draw: () => {}, dispose: () => {} } as unknown as PlanetRenderer;
+  const renderers: { dive: AppContext['renderers']['dive']; system: SystemRenderer; planet: PlanetRenderer; room: AppContext['renderers']['room'] } =
+    { dive: R['render/dive'](), system: idleSystem, planet: idlePlanet, room: R['render/room']() };
+  renderers.dive.init(gl);
+  renderers.room.init(gl);
 
   const ctx: AppContext = {
     bus,
@@ -124,9 +132,49 @@ export const createApp = (gl: GlCore, go: (to: ScreenId) => void, persist: () =>
 
   const rb = R['ui/room-box']();
   const dh = R['ui/dive-hud']();
-  const sp = R['ui/system-planet']();
-  const bt = R['ui/battle']();
-  const screens: Record<ScreenId, () => Screen> = { bedroom: rb.bedroom, box: rb.box, dive: dh.dive, system: sp.system, planet: sp.planet, outside: bt.outside, battle: bt.battle, mirror: R['ui/mirror']().mirror, town: R['ui/town']().town };
+  const screens: Record<ScreenId, () => Screen> = {
+    bedroom: rb.bedroom, box: rb.box, dive: dh.dive,
+    system: () => notLoaded('system'), planet: () => notLoaded('planet'), outside: () => notLoaded('outside'),
+    battle: () => notLoaded('battle'), mirror: () => notLoaded('mirror'), town: () => notLoaded('town'),
+  };
+  const notLoaded = (id: ScreenId): Screen => { throw new Error(`screen ${id} was used before prepare()`); };
+  // Each group of lazy screens is fetched once; a failed fetch is forgotten so it can be tried again.
+  const groups: Partial<Record<ScreenId, () => Promise<void>>> = {};
+  const once = (load: () => Promise<void>) => {
+    let p: Promise<void> | null = null;
+    return () => (p ??= load().catch((e: unknown) => { p = null; throw e; }));
+  };
+  const worlds = once(async () => {
+    const [rs, rp, sp] = await Promise.all([lazy['render/system'](), lazy['render/planet'](), lazy['ui/system-planet']()]);
+    const sys = rs();
+    const pl = rp();
+    sys.init(gl);
+    pl.init(gl);
+    renderers.system = sys;
+    renderers.planet = pl;
+    const f = sp();
+    screens.system = f.system;
+    screens.planet = f.planet;
+  });
+  const battle = once(async () => {
+    const f = (await lazy['ui/battle']())();
+    screens.outside = f.outside;
+    screens.battle = f.battle;
+  });
+  const mirror = once(async () => void (screens.mirror = (await lazy['ui/mirror']())().mirror));
+  const town = once(async () => void (screens.town = (await lazy['ui/town']())().town));
+  groups.system = worlds;
+  groups.planet = worlds;
+  groups.outside = battle;
+  groups.battle = battle;
+  groups.mirror = mirror;
+  groups.town = town;
+  const ready = new Set<ScreenId>(['bedroom', 'box', 'dive']);
+  const prepare = (id: ScreenId): Promise<void> | null => {
+    if (ready.has(id)) return null;
+    const g = groups[id];
+    return g ? g().then(() => void ready.add(id)) : null;
+  };
 
   let screen: ScreenId = 'bedroom';
   bus.on('navigate', ({ to }) => void (screen = to));
@@ -134,6 +182,7 @@ export const createApp = (gl: GlCore, go: (to: ScreenId) => void, persist: () =>
   return {
     ctx,
     screens,
+    prepare,
     snapshot: () => ({
       version: 1,
       screen,

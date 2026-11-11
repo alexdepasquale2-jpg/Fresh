@@ -102,10 +102,24 @@ export const boot = async (host: HTMLElement) => {
       queued = null;
       if (next && next !== currentId) go(next);
     };
-    if (transition && from) {
-      swapping = true;
-      try { transition(from, to, swap); } catch { swap(); }
-    } else swap();
+    const run = () => {
+      if (transition && from) {
+        swapping = true;
+        try { transition(from, to, swap); } catch { swap(); }
+      } else swap();
+    };
+    // A screen whose code is not here yet is fetched first; navigations meanwhile wait in the queue.
+    const loading = app.prepare(to);
+    if (!loading) { run(); return; }
+    swapping = true;
+    loading.then(() => { swapping = false; run(); }, (e: unknown) => {
+      swapping = false;
+      console.error(`[sallow] could not load the ${to} screen`, e);
+      shellToast?.('That place could not be reached just now. Check your connection and try again.', { title: 'Mote', sfx: '' });
+      const next = queued;
+      queued = null;
+      if (next && next !== currentId) go(next);
+    });
   };
   const persist = () => {
     clearTimeout(saveTimer);
