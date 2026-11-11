@@ -92,7 +92,7 @@ export type LawSet = z.infer<typeof LawSetSchema>;
 export const SkyPieceKindSchema = z.enum(['comet', 'moon', 'belt', 'sun', 'rings', 'dust']);
 
 /** Partial modifier deltas, each clamped by the consumer to -100..100. */
-export const ModifierDeltaSchema = z.record(ModifierKeySchema, z.number().int().min(-100).max(100));
+export const ModifierDeltaSchema = z.partialRecord(ModifierKeySchema, z.number().int().min(-100).max(100));
 
 /**
  * One sky-to-surface rule. `when` lists 1 or 2 piece kinds that must all be
