@@ -3,7 +3,7 @@ import '@/ui/tokens.css';
 import './app.css';
 import type { Screen, ScreenId } from '@/contracts/app';
 import { createGlCore, createFrameLoop } from '@/render/gl';
-import { perfControl } from '@/platform/perf';
+import { perfControl, isPhone } from '@/platform/perf';
 import type { PerfMode } from '@/platform/perf';
 import { TICKS_PER_SECOND } from '@/contracts/time';
 import { createApp, STARTER_SERIALS } from './context';
@@ -43,7 +43,10 @@ export const boot = async (host: HTMLElement) => {
       }
     }
   } catch { /* storage blocked */ }
-  const gl = createGlCore(canvas, { resolutionScale: () => stage.glScale * safeScale });
+  // A phone draws one canvas pixel per CSS pixel instead of two or three: the art is pixel art and
+  // all text is HTML, so it looks the same, at a quarter (or a ninth) of the GPU work.
+  const phoneScale = isPhone() ? 1 / Math.max(1, Math.floor(Math.min(window.devicePixelRatio || 1, 2))) : 1;
+  const gl = createGlCore(canvas, { resolutionScale: () => stage.glScale * (phoneScale < 1 ? phoneScale * Math.max(0.75, safeScale) : safeScale) });
   // A phone that cannot keep up resets its GPU: the canvas blinks white and, after a few resets,
   // the browser gives up on the page. Each reset steps quality and resolution down and remembers it.
   let gpuResets = 0;

@@ -77,7 +77,10 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
   let events: DiveEvent[] = [];
   let taken: { has(key: number): boolean } | null = null;
 
-  const nearStar = () => children.find((c) => c.star)?.star ?? null;
+  /** The star the player just came back from: not offered again until the fall leaves its fold. */
+  let leftStar: StarRef | null = null;
+  const sameStar = (a: StarRef, b: StarRef) => a.seed.hi === b.seed.hi && a.seed.lo === b.seed.lo;
+  const nearStar = () => children.find((c) => c.star && !(leftStar && sameStar(c.star, leftStar)))?.star ?? null;
   const mult = () => multiplierOf(streak);
   const open = (a: FoldAddress): readonly FoldNode[] => {
     const cs = fold.childrenOf(a);
@@ -181,6 +184,8 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
         best = Math.max(best, b);
         startBest = best;
         progress = 0;
+        // Letting go early here would otherwise stop at this same star again, and again.
+        leftStar = landed ?? children.find((c) => c.star)?.star ?? null;
         landed = null;
         // Do not sit aimed at the star just left: holding would fall straight back into it.
         if (children[aim]?.star) { aim = 0; for (let k = 0; k < 7 && children[aim]?.star; k++) aim = (aim + 1) % 7; }
@@ -194,6 +199,7 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
         return;
       }
       universe = u;
+      leftStar = null;
       address = fold.root(u);
       children = open(address);
       best = b;
@@ -274,8 +280,8 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
       while (progress >= 1000) {
         progress -= 1000;
         const into = children[aim] ?? children[0]!;
-        // Falling into a star lands on it.
-        if (into.star) {
+        // Falling into a star lands on it (unless it is the one just left: then fall on past it).
+        if (into.star && !(leftStar && sameStar(into.star, leftStar))) {
           progress = 0;
           phase = 'stopped';
           landed = into.star;
@@ -291,6 +297,7 @@ export const factory: DiveFactory = ({ fold, light, box }) => {
         }
         const wasLocked = steerLocked;
         address = into.address;
+        leftStar = null;
         cameFrom = aim;
         children = open(address);
         best = Math.max(best, address.depth);

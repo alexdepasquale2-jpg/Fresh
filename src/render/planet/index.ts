@@ -513,9 +513,9 @@ export const factory: PlanetRendererFactory = () => {
       // Build at most one layer's programs per frame. Compiling them all in the first frame of a
       // world, on top of its heaviest drawing, can stall a phone's GPU until the system resets it.
       let made = 0;
-      // At Minimal quality the wildlife and civilisation overlays are neither built nor drawn: they
-      // are the heaviest layers, and Minimal is what a device that struggled is put on.
-      const lite = (v.quality ?? 1) < 0.52;
+      // Below High the wildlife and civilisation overlays are neither built nor drawn: they are the
+      // heaviest layers, and a phone never runs at High unless its owner chooses it.
+      const lite = (v.quality ?? 1) < 0.9;
       if (!people) { people = createPeople(core); made++; }
       people.update(v.civ, dt);
       if (pl.ref !== v.planet) {

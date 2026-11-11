@@ -12,6 +12,7 @@
 // A screen that sizes its own canvas (the town) should fill its root: root.clientWidth x root.clientHeight.
 import './desktop.css';
 import type { Plugin, Shell } from '../plugins';
+import { isPhone } from '@/platform/perf';
 import type { ScreenId } from '@/contracts/app';
 import type { InputAction, InputEvent, InputKeymap } from '@/contracts/platform';
 import { foldFrame, childAt } from '@/core/fold-layout';
@@ -130,7 +131,7 @@ export const plugin: Plugin = (shell: Shell) => {
     const w = window.innerWidth, h = window.innerHeight;
     if (st.layout === 'phone') return false;
     if (st.layout === 'desktop') return w >= 900 && h >= 560;
-    return w >= MIN_W && h >= MIN_H && fine();
+    return w >= MIN_W && h >= MIN_H && fine() && !isPhone();
   };
   let cl = -1, ct = -1, cw = -1, ch = -1;
   const placeCanvas = () => {

@@ -68,6 +68,17 @@ const loadMode = (): PerfMode => {
 };
 
 let mode: PerfMode = loadMode();
+/**
+ * A touch-first device (a phone or tablet). Its GPU is far weaker than its 60 fps vsync suggests,
+ * so in Auto it starts at Low and never climbs above Medium; High stays a manual choice.
+ */
+export const isPhone = (): boolean => {
+  try {
+    if (window.matchMedia('(pointer: coarse)').matches) return true;
+    return (navigator.maxTouchPoints ?? 0) > 0 && !window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  } catch { return false; }
+};
+const PHONE = isPhone();
 const modeCbs = new Set<() => void>();
 interface Live { stats(): PerfStats; history(out: Float32Array): number }
 let live: Live | null = null;
@@ -91,7 +102,7 @@ export const perfControl = {
 export const factory: PerfFactory = () => {
   const ring = new Float32Array(HISTORY);
   let head = 0, count = 0, sum = 0;
-  let level: PerfLevel = forced(mode) ?? 3;
+  let level: PerfLevel = forced(mode) ?? (PHONE ? 1 : 3);
   let scale: number = SCALES[level];
   let seen = 0, hitches = 0;
   let dropT = 0, dropN = 0;
@@ -133,7 +144,7 @@ export const factory: PerfFactory = () => {
     if (blockT >= RECOVER_BLOCK_MS) {
       fastMs = blockT / blockN < RECOVER_MS ? fastMs + blockT : 0;
       blockT = blockN = 0;
-      if (fastMs >= hold && level < 3) {
+      if (fastMs >= hold && level < (PHONE && mode === 'auto' ? 2 : 3)) {
         set((level + 1) as PerfLevel);
         sinceClimb = 0;
       }
